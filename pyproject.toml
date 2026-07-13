@@ -1,0 +1,11 @@
+[project]
+name = "click"
+version = "0.1.0"
+description = "大模型多提供商适配器，支持智谱GLM、OpenAI等"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+]

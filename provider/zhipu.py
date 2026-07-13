@@ -1,0 +1,266 @@
+"""
+智谱（ZhipuAI）大模型提供商适配器
+
+支持 GLM-5V-Turbo 等视觉模型，可传入：
+- 本地图片路径
+- 内存二进制数据 (bytes)
+- Base64 编码字符串
+与文本提示词一起发送，获取模型回复。
+"""
+
+import base64
+import logging
+import mimetypes
+import os
+from pathlib import Path
+from typing import Optional
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# 默认模型
+DEFAULT_VISION_MODEL = "glm-4.6v-flash"
+# 默认文本模型
+DEFAULT_TEXT_MODEL = "glm-4.5-flash"
+# 默认 max_tokens（各模型上限不同，这里取保守值）
+DEFAULT_TEXT_MAX_TOKENS = 4096
+DEFAULT_VISION_MAX_TOKENS = 1024
+# API 基础地址
+BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
+
+class ZhipuAI:
+    """智谱 AI 客户端，支持视觉和文本对话。"""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: str = BASE_URL,
+        timeout: int = 120,
+        http_client: Optional[httpx.Client] = None,
+    ):
+        """
+        Args:
+            api_key: 智谱 API Key，默认从环境变量 ZHIPUAI_API_KEY 读取
+            base_url: API 地址
+            timeout: 请求超时时间（秒）
+            http_client: 可传入自定义 httpx.Client，用于连接池复用等
+        """
+        self.api_key = api_key or os.environ.get("ZHIPUAI_API_KEY")
+        if not self.api_key:
+            raise ValueError(
+                "ZHIPUAI_API_KEY 未设置，请传入 api_key 或设置环境变量 ZHIPUAI_API_KEY"
+            )
+        self.base_url = base_url
+        self.timeout = timeout
+        self._http_client = http_client
+
+    # ----------------------------------------------------------------
+    # 公开方法
+    # ----------------------------------------------------------------
+
+    def chat(
+        self,
+        prompt: str,
+        model: str = DEFAULT_TEXT_MODEL,
+        system_prompt: Optional[str] = None,
+        temperature: float = 1.0,
+        max_tokens: Optional[int] = None,
+        stream: bool = False,
+    ) -> str:
+        """纯文本对话。
+
+        Args:
+            prompt: 用户输入文本
+            model: 模型名称
+            system_prompt: 系统提示词
+            temperature: 采样温度 [0, 1]
+            max_tokens: 最大输出 token 数，默认 None 时各方法使用模型对应的保守默认值
+            stream: 是否流式输出（暂未实现流式解析）
+
+        Returns:
+            模型回复文本
+        """
+        logger.info("📝 [Zhipu] chat | model=%s | prompt_len=%d", model, len(prompt))
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or DEFAULT_TEXT_MAX_TOKENS,
+            "stream": stream,
+        }
+
+        data = self._request(payload)
+        text = self._extract_text(data)
+        logger.info("✅ [Zhipu] chat done | tokens=%s", data.get("usage", {}))
+        return text
+
+    def chat_with_image(
+        self,
+        prompt: str,
+        image: str | bytes,
+        model: str = DEFAULT_VISION_MODEL,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.8,
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """发送图片 + 文本提示词，进行多模态对话。
+
+        Args:
+            prompt: 文本提示词
+            image: 图片输入，支持三种形式：
+                - 本地文件路径 (str, 如 "/path/to/img.png")
+                - 内存二进制数据 (bytes)
+                - Base64 编码字符串 (str, 以 "data:image/" 开头则为完整 URI，否则会被自动包装)
+            model: 视觉模型名称，默认 glm-5v-turbo
+            system_prompt: 系统提示词
+            temperature: 采样温度 [0, 1]
+            max_tokens: 最大输出 token 数
+
+        Returns:
+            模型回复文本
+        """
+        logger.info("🖼️ [Zhipu] chat_with_image | model=%s | prompt_len=%d", model, len(prompt))
+
+        image_url = self._resolve_image(image)
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "text", "text": prompt},
+            ],
+        })
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens or DEFAULT_VISION_MAX_TOKENS,
+            "stream": False,
+        }
+
+        data = self._request(payload)
+        text = self._extract_text(data)
+        logger.info("✅ [Zhipu] chat_with_image done | tokens=%s", data.get("usage", {}))
+        return text
+
+    # ----------------------------------------------------------------
+    # 内部方法
+    # ----------------------------------------------------------------
+
+    def _resolve_image(self, image: str | bytes) -> str:
+        """将各种形式的图片输入统一转为 Base64 Data URI 字符串。"""
+        if isinstance(image, bytes):
+            logger.debug("  ↳ image type: bytes (%d bytes)", len(image))
+            return self._bytes_to_data_uri(image)
+
+        # str 类型：可能是本地路径 或 已经是 base64 / data URI
+        if image.startswith("data:image/"):
+            logger.debug("  ↳ image type: data URI (len=%d)", len(image))
+            return image  # 已经是完整 data URI
+
+        if _is_likely_base64(image):
+            logger.debug("  ↳ image type: base64 string (len=%d)", len(image))
+            # 尝试推测格式，默认 png
+            mime = "image/png"
+            # 前几个字节特征判断
+            stripped = image.strip()
+            if stripped.startswith("/9j/"):
+                mime = "image/jpeg"
+            elif stripped.startswith("iVBOR"):
+                mime = "image/png"
+            elif stripped.startswith("UklGR"):
+                mime = "image/webp"
+            return f"data:{mime};base64,{stripped}"
+
+        # 当作本地文件路径处理
+        path = Path(image)
+        if not path.exists():
+            raise FileNotFoundError(f"图片文件不存在: {image}")
+
+        logger.debug("  ↳ image type: local file (%s)", path)
+        raw = path.read_bytes()
+        return self._bytes_to_data_uri(raw, path.suffix)
+
+    def _bytes_to_data_uri(self, data: bytes, suffix: str = "") -> str:
+        """将 bytes 转为 Base64 Data URI。"""
+        b64 = base64.b64encode(data).decode("ascii")
+        mime = mimetypes.guess_type(f"x{suffix}")[0] if suffix else None
+        if not mime:
+            mime = "image/png"
+        return f"data:{mime};base64,{b64}"
+
+    def _request(self, payload: dict) -> dict:
+        """发送 HTTP POST 请求到智谱 API。"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        client = self._http_client or httpx.Client(timeout=self.timeout)
+        # 如果是外部传入的 client，不在这里关闭
+        own_client = self._http_client is None
+
+        try:
+            logger.debug("🔗 [Zhipu] POST %s", self.base_url)
+            logger.debug("  ↳ payload keys: %s | model=%s | max_tokens=%s",
+                         list(payload.keys()), payload.get("model"), payload.get("max_tokens"))
+            logger.debug("  ↳ messages[0] content keys: %s",
+                         [c.get("type") for c in payload["messages"][0].get("content", [])]
+                         if isinstance(payload["messages"][0].get("content"), list) else "text")
+            resp = client.post(self.base_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error("❌ [Zhipu] HTTP error: %s %s", e.response.status_code, e.response.text)
+            raise
+        except httpx.RequestError as e:
+            logger.error("❌ [Zhipu] Request failed: %s", e)
+            raise
+        finally:
+            if own_client:
+                client.close()
+
+    @staticmethod
+    def _extract_text(data: dict) -> str:
+        """从 API 响应中提取回复文本。"""
+        try:
+            choice = data["choices"][0]
+            msg = choice["message"]
+            content = msg.get("content")
+            if content is None:
+                return ""
+            if isinstance(content, list):
+                # 部分多模态回复可能是 list 格式
+                parts = [p.get("text", "") for p in content if p.get("type") == "text"]
+                return "".join(parts)
+            return content
+        except (KeyError, IndexError) as e:
+            logger.error("❌ [Zhipu] 解析响应失败: %s | raw=%s", e, data)
+            raise ValueError(f"无法解析智谱 API 响应: {e}") from e
+
+
+# ----------------------------------------------------------------
+# 辅助函数
+# ----------------------------------------------------------------
+
+def _is_likely_base64(s: str) -> bool:
+    """粗略判断字符串是否可能是 Base64 编码。"""
+    s = s.strip()
+    # Base64 通常长度较长且仅含特定字符
+    if len(s) < 20:
+        return False
+    import re
+    return bool(re.fullmatch(r"[A-Za-z0-9+/=]+", s))
