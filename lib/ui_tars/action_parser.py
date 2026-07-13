@@ -1,5 +1,8 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: Apache-2.0
+#
+# Modified by Yuzhuo Yang (2025):
+#   - Added macOS support in type action (use command+v instead of ctrl+v)
 import re
 import ast
 import math

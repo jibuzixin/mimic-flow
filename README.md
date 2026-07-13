@@ -1,5 +1,7 @@
 # Click
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 大模型多提供商适配器，支持智谱 GLM、OpenAI 等模型。
 
 ## 快速开始
@@ -133,35 +135,10 @@ reply = client.chat_with_image(
 | `temperature` | `float` | `0.8` | 采样温度 [0, 1] |
 | `max_tokens` | `int` | `4096` | 最大输出 token 数 |
 
-## 日志
+# 手动解析模型输出内容
 
-默认日志级别为 `DEBUG`，会输出到 stderr：
-
+将模型输出内容粘贴到 mac_parse_demo.py 文件内，即可观察到后续执行操作。
+```python
+response = """Thought: 地址栏内容已被全选，现在直接输入bilibili.com，按下回车键即可跳转至 B 站网站。
+Action: type (content='bilibili.com\n')"""
 ```
-10:23:45 | INFO     | provider.zhipu | 🖼️ [Zhipu] chat_with_image | model=glm-5v-turbo | prompt_len=12
-10:23:47 | INFO     | provider.zhipu | ✅ [Zhipu] chat_with_image done | tokens={'prompt_tokens': 1234, 'completion_tokens': 56}
-```
-
-## 支持模型
-
-### 视觉模型
-
-- `glm-5v-turbo`（默认）
-- `glm-4.6v`
-- `glm-4.6v-flash`
-- `glm-4.6v-flashx`
-- `glm-4v-flash`
-- `glm-4.1v-thinking-flashx`
-- `glm-4.1v-thinking-flash`
-
-### 文本模型
-
-- `glm-5.2`（默认）
-- `glm-5.1`
-- `glm-5-turbo`
-- `glm-5`
-- `glm-4.7`
-- `glm-4.7-flash`
-- `glm-4.6`
-- `glm-4.5-air`
-- `glm-4.5-flash`
