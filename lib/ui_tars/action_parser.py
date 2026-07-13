@@ -3,6 +3,7 @@
 import re
 import ast
 import math
+import sys
 
 IMAGE_FACTOR = 28
 MIN_PIXELS = 100 * 28 * 28
@@ -411,7 +412,13 @@ def parsing_response_to_pyautogui_code(responses,
                 if input_swap:
                     pyautogui_code += f"\nimport pyperclip"
                     pyautogui_code += f"\npyperclip.copy('{stripped_content}')"
-                    pyautogui_code += f"\npyautogui.hotkey('ctrl', 'v')"
+                    if sys.platform == "darwin":
+                        # Mac
+                        pyautogui_code += f"\npyautogui.keyDown ('command')"
+                        pyautogui_code += f"\npyautogui.press ('v')"
+                        pyautogui_code += f"\npyautogui.keyUp ('command')"
+                    else:
+                        pyautogui_code += f"\npyautogui.hotkey('ctrl', 'v')"
                     pyautogui_code += f"\ntime.sleep(0.5)\n"
                     if content.endswith("\n") or content.endswith("\\n"):
                         pyautogui_code += f"\npyautogui.press('enter')"
