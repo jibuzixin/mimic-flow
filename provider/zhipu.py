@@ -214,11 +214,31 @@ class ZhipuAI:
         audio_model: Optional[Any] = None,
         use_parallel: bool = False,
         max_concurrency: int = 3,
-        batch_max_frames: int = 10,
+        batch_max_frames: int = 15,
         retry_times: int = 3,
         segment_duration: int = 60,
         min_segment_duration: int = 20,
     ) -> dict:
+        """按抽帧批次分析本地视频。
+
+        Args:
+            prompt: 用户给多模态模型的分析需求。
+            video_path: 本地视频文件路径。
+            model: 多模态模型名。
+            system_prompt: 可选系统提示词，会注入到每个批次请求。
+            temperature: 多模态模型采样温度。
+            max_tokens: 单次多模态请求的最大输出 token。
+            audio_model: 可选音频转文本回调，签名应为 ``Callable[[str], Any]``。
+            use_parallel: 是否并行请求多个批次；单批次时该参数无效果。
+            max_concurrency: 并行模式下最多同时请求的批次数。
+            batch_max_frames: 单次多模态请求最多发送多少张图片；当候选帧总数超过该值时，会继续切成多个带重叠的请求批次，而不是把整段视频压到这个总数以内。
+            retry_times: 单个批次的失败重试次数上限；当前实现对 length/异常最多尝试 2 次。
+            segment_duration: 智能抽帧扫描阶段使用的时间桶上限，影响多久重置一次抽帧节奏，不直接决定最终请求批次时长。
+            min_segment_duration: 智能抽帧扫描阶段的最小时间桶，避免过短时间桶导致抽帧节奏过碎。
+
+        Returns:
+            包含 summary、batch_results、metadata 的结果字典。
+        """
         started_at = time.perf_counter()
         logger.info(
             "🎬 [Zhipu] chat_with_video | video=%s | parallel=%s | batch_max_frames=%s | retry_times=%s",

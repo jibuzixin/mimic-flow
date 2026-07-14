@@ -64,6 +64,19 @@ class BatchVideoAnalyzer:
         batch_max_frames: int = 10,
         retry_times: int = 3,
     ) -> dict[str, Any]:
+        """编排视频抽帧、音频转写和多模态批处理。
+
+        Args:
+            video_path: 本地视频路径。
+            prompt: 传给每个视频批次的用户需求。
+            use_parallel: 是否并行执行多个批次。
+            max_concurrency: 并行模式下最多同时执行的批次数。
+            batch_max_frames: 单个批次最多包含的图片数；这是限制单次模型请求图片数量的核心参数。
+            retry_times: 单个批次失败后的最大重试次数；当前实现最多实际尝试 2 次。
+
+        Returns:
+            包含 summary、batch_results、metadata 的结果字典。
+        """
         total_started_at = time.perf_counter()
         work_dir = self.video_processor.create_work_dir()
         parallel_workers = max(1, max_concurrency)
@@ -129,6 +142,8 @@ class BatchVideoAnalyzer:
                 "use_parallel": use_parallel,
                 "max_concurrency": parallel_workers if use_parallel else 1,
                 "batch_max_frames": batch_max_frames,
+                "has_audio_track": material.has_audio_track,
+                "frame_sampling_mode": material.sampling_mode,
                 "audio_used": bool(transcript_segments),
                 "audio_segments": len(transcript_segments),
                 "segment_duration": self.segment_duration,
@@ -165,13 +180,14 @@ class BatchVideoAnalyzer:
                 end_time=segment.end_time,
             )
             logger.info(
-                "📦 [VideoBatch] build payload | batch=%s/%s | frames=%s | transcript_chars=%s | range=%s-%s",
+                "📦 [VideoBatch] build payload | batch=%s/%s | frames=%s | transcript_chars=%s | range=%s-%s | span=%.2fs",
                 segment.index + 1,
                 total_batches,
                 len(frame_paths),
                 len(transcript),
                 self._format_seconds(segment.start_time),
                 self._format_seconds(segment.end_time),
+                max(segment.end_time - segment.start_time, 0.0),
             )
             payloads.append(
                 {
