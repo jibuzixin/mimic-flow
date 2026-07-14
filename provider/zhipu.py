@@ -17,6 +17,8 @@ from typing import Optional
 
 import httpx
 
+from memory import BaseSessionMemory, JsonSessionMemory
+
 logger = logging.getLogger(__name__)
 
 # 默认模型
@@ -39,6 +41,7 @@ class ZhipuAI:
         base_url: str = BASE_URL,
         timeout: int = 120,
         http_client: Optional[httpx.Client] = None,
+        memory: Optional[BaseSessionMemory] = None,
     ):
         """
         Args:
@@ -46,6 +49,10 @@ class ZhipuAI:
             base_url: API 地址
             timeout: 请求超时时间（秒）
             http_client: 可传入自定义 httpx.Client，用于连接池复用等
+            memory: 会话记忆管理器。
+                    - 为 None 时，`chat(prompt, session_id=...)` 会按需懒加载默认的
+                      `JsonSessionMemory`（JSON 文件 + 内存）；
+                    - 想换后端时直接传入自定义的 `BaseSessionMemory` 子类即可。
         """
         self.api_key = api_key or os.environ.get("ZHIPUAI_API_KEY")
         if not self.api_key:
@@ -55,6 +62,7 @@ class ZhipuAI:
         self.base_url = base_url
         self.timeout = timeout
         self._http_client = http_client
+        self.memory = memory
 
     # ----------------------------------------------------------------
     # 公开方法
@@ -63,6 +71,7 @@ class ZhipuAI:
     def chat(
         self,
         prompt: str,
+        session_id: Optional[str] = None,
         model: str = DEFAULT_TEXT_MODEL,
         system_prompt: Optional[str] = None,
         temperature: float = 1.0,
@@ -71,10 +80,16 @@ class ZhipuAI:
     ) -> str:
         """纯文本对话。
 
+        - ``session_id=None``（默认）：单轮对话，不保留历史。
+        - ``session_id`` 给定：自动维护该会话的历史；首次调用且未传 memory 时，
+          会懒加载默认的 ``JsonSessionMemory``（JSON 文件 + 内存 FIFO 淘汰）。
+          持久化需显式调用 ``save_session(session_id)``。
+
         Args:
             prompt: 用户输入文本
+            session_id: 会话标识；为 None 时走单轮模式
             model: 模型名称
-            system_prompt: 系统提示词
+            system_prompt: 系统提示词（多轮模式下，仅在该 session 还没有 system 消息时注入）
             temperature: 采样温度 [0, 1]
             max_tokens: 最大输出 token 数，默认 None 时各方法使用模型对应的保守默认值
             stream: 是否流式输出（暂未实现流式解析）
@@ -82,12 +97,31 @@ class ZhipuAI:
         Returns:
             模型回复文本
         """
-        logger.info("📝 [Zhipu] chat | model=%s | prompt_len=%d", model, len(prompt))
+        if not prompt:
+            raise ValueError("prompt 不能为空")
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        # 1) 组装 messages
+        if session_id is None:
+            # 单轮：临时组装，不写入任何 memory
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            history_len = 0
+        else:
+            # 多轮：经由 memory 取历史 + 写回本轮
+            memory = self._ensure_memory()
+            messages = memory.get_messages(session_id)
+
+            if system_prompt and not any(m.get("role") == "system" for m in messages):
+                sys_msg = {"role": "system", "content": system_prompt}
+                memory.add_message(session_id, sys_msg)
+                messages.append(sys_msg)
+
+            user_msg = {"role": "user", "content": prompt}
+            memory.add_message(session_id, user_msg)
+            messages.append(user_msg)
+            history_len = len(messages) - 1  # 不含本轮 user
 
         payload = {
             "model": model,
@@ -97,9 +131,20 @@ class ZhipuAI:
             "stream": stream,
         }
 
+        logger.info(
+            "📝 [Zhipu] chat | sid=%s | model=%s | history=%d | prompt_len=%d",
+            session_id or "-", model, history_len, len(prompt),
+        )
+
         data = self._request(payload)
         text = self._extract_text(data)
-        logger.info("✅ [Zhipu] chat done | tokens=%s", data.get("usage", {}))
+
+        # 2) 多轮模式下回写 assistant 回复
+        if session_id is not None:
+            memory.add_message(session_id, {"role": "assistant", "content": text})
+
+        logger.info("✅ [Zhipu] chat done | sid=%s | tokens=%s",
+                    session_id or "-", data.get("usage", {}))
         return text
 
     def chat_with_image(
@@ -155,6 +200,28 @@ class ZhipuAI:
         text = self._extract_text(data)
         logger.info("✅ [Zhipu] chat_with_image done | tokens=%s", data.get("usage", {}))
         return text
+
+    # ----------------------------------------------------------------
+    # 会话管理（最小化 API）
+    # ----------------------------------------------------------------
+
+    def _ensure_memory(self) -> BaseSessionMemory:
+        """懒加载默认的 JSON + 内存 memory。"""
+        if self.memory is None:
+            self.memory = JsonSessionMemory()
+        return self.memory
+
+    def save_session(self, session_id: str, path: Optional[str] = None) -> str:
+        """将指定 session 持久化到磁盘，返回写入路径。"""
+        return self._ensure_memory().save(session_id, path)
+
+    def load_session(self, session_id: str, path: Optional[str] = None) -> bool:
+        """从磁盘恢复指定 session 的历史到内存。"""
+        return self._ensure_memory().load(session_id, path)
+
+    def clear_session(self, session_id: Optional[str] = None) -> None:
+        """清除指定 session（或全部 session）的历史。"""
+        self._ensure_memory().clear(session_id)
 
     # ----------------------------------------------------------------
     # 内部方法

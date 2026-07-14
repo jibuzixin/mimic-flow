@@ -1,3 +1,5 @@
+import time
+
 from lib.ui_tars.action_parser import parse_action_to_structure_output, parsing_response_to_pyautogui_code
 from PIL import Image, ImageDraw
 import pyautogui
@@ -50,7 +52,8 @@ def save_pyautogui_script(code_str: str, out_file: str = "auto_action.py"):
     print(f"\n✅ 自动化脚本已自动生成：{out_file}")
 
 if __name__ == "__main__":
-    response = "Thought: Click the button\nAction: click(point='<point>200 300</point>')"
+    time.sleep(6)
+    response = "Thought: 现在需要切换到B站网页，浏览器顶部标签栏第一个就是bilibili的标签页，点击它就能进入bilibili.com页面。\nAction: click(point='<point>121 46</point>')"
 
     # 1. 截屏，拿到图片物理分辨率（只用于画图）
     temp_img_path = "tmp_screen.png"
