@@ -147,6 +147,28 @@ def smart_resize(height: int,
     return h_bar, w_bar
 
 
+def replace_ctrl_for_mac(keys) -> list:
+    processed = []
+    for k in keys:
+        if k.lower() == "ctrl":
+            processed.append(repr("command"))
+        else:
+            processed.append(repr(k))
+    return processed
+
+
+def convert_hotkey_for_mac(keys) -> str:
+    # 用 keyDown 按住所有键，再依次 keyUp 释放，替代 hotkey，mac 无bug
+    # 拼接多行代码：先按下所有修饰+按键，再反向释放
+    press_lines = []
+    for k in keys:
+        press_lines.append(f"pyautogui.keyDown({k})")
+    for k in reversed(keys):
+        press_lines.append(f"pyautogui.keyUp({k})")
+
+    return "\n".join(press_lines)
+
+
 def parse_action_to_structure_output(text,
                                      factor,
                                      origin_resized_height,
@@ -208,10 +230,10 @@ def parse_action_to_structure_output(text,
                 content = match.group(1)  # 获取 content 的值
                 return content
 
-            # 使用正则表达式进行替换
+            # 使用正则表达式进行替换，支持多行和转义字符
             pattern = r"type\(content='(.*?)'\)"  # 匹配 type(content='...')
-            if re.search(pattern, action_str):  # 检查是否有匹配项
-                content = re.sub(pattern, escape_quotes, action_str)
+            if re.search(pattern, action_str, re.DOTALL):  # 检查是否有匹配项，支持多行
+                content = re.sub(pattern, escape_quotes, action_str, flags=re.DOTALL)
             else:
                 raise ValueError("Pattern not found in the input string.")
 
@@ -350,7 +372,10 @@ def parsing_response_to_pyautogui_code(responses,
                     if key == "space":
                         key = ' '
                     convert_keys.append(key)
-                pyautogui_code += f"\npyautogui.hotkey({', '.join([repr(k) for k in convert_keys])})"
+                if sys.platform == "darwin":
+                    pyautogui_code += f"\n{convert_hotkey_for_mac(replace_ctrl_for_mac(convert_keys))}"
+                else:
+                    pyautogui_code += f"\npyautogui.hotkey({', '.join([repr(k) for k in convert_keys])})"
 
         elif action_type in ["press", "keydown"]:
             # Parsing press action
