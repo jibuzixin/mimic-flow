@@ -12,12 +12,14 @@ import base64
 import logging
 import mimetypes
 import os
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
 from memory import BaseSessionMemory, JsonSessionMemory
+from provider.batch_video_analyzer import BatchVideoAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +28,8 @@ DEFAULT_VISION_MODEL = "glm-4.6v-flash"
 # 默认文本模型
 DEFAULT_TEXT_MODEL = "glm-4.5-flash"
 # 默认 max_tokens（各模型上限不同，这里取保守值）
-DEFAULT_TEXT_MAX_TOKENS = 4096
-DEFAULT_VISION_MAX_TOKENS = 1024
+DEFAULT_TEXT_MAX_TOKENS = 10240
+DEFAULT_VISION_MAX_TOKENS = 10240
 # API 基础地址
 BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
@@ -201,6 +203,100 @@ class ZhipuAI:
         logger.info("✅ [Zhipu] chat_with_image done | tokens=%s", data.get("usage", {}))
         return text
 
+    def chat_with_video(
+        self,
+        prompt: str,
+        video_path: str,
+        model: str = DEFAULT_VISION_MODEL,
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.8,
+        max_tokens: Optional[int] = None,
+        audio_model: Optional[Any] = None,
+        use_parallel: bool = False,
+        max_concurrency: int = 3,
+        batch_max_frames: int = 10,
+        retry_times: int = 3,
+        segment_duration: int = 60,
+        min_segment_duration: int = 20,
+    ) -> dict:
+        started_at = time.perf_counter()
+        logger.info(
+            "🎬 [Zhipu] chat_with_video | video=%s | parallel=%s | batch_max_frames=%s | retry_times=%s",
+            video_path,
+            use_parallel,
+            batch_max_frames,
+            retry_times,
+        )
+
+        if not callable(audio_model) and audio_model is not None:
+            raise TypeError("audio_model 必须是可调用对象或 None")
+
+        def multimodal_model(*, prompt: str, image_paths: list[str], batch_index: int, total_batches: int, **_: Any) -> str:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+
+            content = [
+                {"type": "image_url", "image_url": {"url": self._resolve_image(image_path)}}
+                for image_path in image_paths
+            ]
+            content.append({"type": "text", "text": prompt})
+            messages.append({"role": "user", "content": content})
+
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens or DEFAULT_VISION_MAX_TOKENS,
+                "stream": False,
+                "thinking": {"type": "disabled"},
+            }
+
+            logger.info(
+                "🧠 [Zhipu] batch %s/%s request | images=%s | prompt_len=%s",
+                batch_index,
+                total_batches,
+                len(image_paths),
+                len(prompt),
+            )
+            request_started_at = time.perf_counter()
+            data = self._request(payload)
+            elapsed = time.perf_counter() - request_started_at
+            finish_reason = self._extract_finish_reason(data)
+            logger.info(
+                "🧠 [Zhipu] batch %s/%s response | finish_reason=%s | elapsed=%.2fs | usage=%s",
+                batch_index,
+                total_batches,
+                finish_reason,
+                elapsed,
+                data.get("usage", {}),
+            )
+            if finish_reason == "length":
+                logger.warning("🧠 [Zhipu] batch %s/%s reached length limit", batch_index, total_batches)
+            return self._extract_text(data)
+
+        analyzer = BatchVideoAnalyzer(
+            multimodal_model=multimodal_model,
+            audio_model=audio_model,
+            segment_duration=segment_duration,
+            min_segment_duration=min_segment_duration,
+        )
+        result = analyzer.analyze(
+            video_path=video_path,
+            prompt=prompt,
+            use_parallel=use_parallel,
+            max_concurrency=max_concurrency,
+            batch_max_frames=batch_max_frames,
+            retry_times=retry_times,
+        )
+        logger.info(
+            "🎬 [Zhipu] chat_with_video done | batches=%s | audio_used=%s | elapsed=%.2fs",
+            result["metadata"]["total_batches"],
+            result["metadata"]["audio_used"],
+            time.perf_counter() - started_at,
+        )
+        return result
+
     # ----------------------------------------------------------------
     # 会话管理（最小化 API）
     # ----------------------------------------------------------------
@@ -301,9 +397,17 @@ class ZhipuAI:
                 client.close()
 
     @staticmethod
+    def _extract_finish_reason(data: dict) -> str:
+        try:
+            return data["choices"][0].get("finish_reason", "unknown")
+        except (KeyError, IndexError, AttributeError):
+            return "unknown"
+
+    @staticmethod
     def _extract_text(data: dict) -> str:
         """从 API 响应中提取回复文本。"""
         try:
+            print(f"大模型原始响应：{data}")
             choice = data["choices"][0]
             msg = choice["message"]
             content = msg.get("content")

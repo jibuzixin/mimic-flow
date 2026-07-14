@@ -9,6 +9,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "httpx>=0.28.1",
     "numpy>=2.5.1",
+    "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
     "pyautogui>=0.9.54",
     "pydantic>=2.13.4",
