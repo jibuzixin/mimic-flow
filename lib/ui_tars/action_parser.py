@@ -15,20 +15,47 @@ MAX_RATIO = 200
 
 
 def convert_point_to_coordinates(text, is_answer=False):
-    # 匹配 <bbox> 后面的四个数字
-    pattern = r"<point>(\d+)\s+(\d+)</point>"
+    pattern = r"<point>(\d+)\s*[ ,]\s*(\d+)</point>"
 
     def replace_match(match):
         x1, y1 = map(int, match.groups())
-        x = (x1 + x1) // 2  # 使用截断取整
-        y = (y1 + y1) // 2  # 使用截断取整
+        x = (x1 + x1) // 2
+        y = (y1 + y1) // 2
         if is_answer:
-            return f"({x},{y})"  # 只返回 (x, y) 格式
-        return f"({x},{y})"  # 返回带标签的格式
+            return f"({x},{y})"
+        return f"({x},{y})"
 
-    # 去掉 [EOS] 并替换 <bbox> 坐标
     text = re.sub(r"\[EOS\]", "", text)
     return re.sub(pattern, replace_match, text).strip()
+
+
+CODE_BLOCK_PATTERN = re.compile(r"^```(?:[a-zA-Z0-9_-]+)?\s*|\s*```$", re.MULTILINE)
+POINT_ONLY_ACTION_PATTERN = re.compile(r"^\(?\d+\s*,\s*\d+\)?$")
+
+
+def _normalize_action_response(text: str) -> str:
+    text = CODE_BLOCK_PATTERN.sub("", text).strip()
+    if "<point>" in text:
+        text = convert_point_to_coordinates(text)
+    if "start_point=" in text:
+        text = text.replace("start_point=", "start_box=")
+    if "end_point=" in text:
+        text = text.replace("end_point=", "end_box=")
+    if "point=" in text:
+        text = text.replace("point=", "start_box=")
+    if "Action:" not in text:
+        return text
+    prefix, action_str = text.rsplit("Action:", 1)
+    normalized_action = _normalize_action_string(action_str.strip())
+    return f"{prefix}Action: {normalized_action}".strip()
+
+
+def _normalize_action_string(action_str: str) -> str:
+    action_str = CODE_BLOCK_PATTERN.sub("", action_str).strip()
+    if POINT_ONLY_ACTION_PATTERN.fullmatch(action_str):
+        point = action_str if action_str.startswith("(") else f"({action_str})"
+        return f"click(start_box='{point}')"
+    return action_str
 
 
 # 定义一个函数来解析每个 action
@@ -176,16 +203,7 @@ def parse_action_to_structure_output(text,
                                      model_type="qwen25vl",
                                      max_pixels=16384 * 28 * 28,
                                      min_pixels=100 * 28 * 28):
-    text = text.strip()
-
-    if "<point>" in text:
-        text = convert_point_to_coordinates(text)
-    if "start_point=" in text:
-        text = text.replace("start_point=", "start_box=")
-    if "end_point=" in text:
-        text = text.replace("end_point=", "end_box=")
-    if "point=" in text:
-        text = text.replace("point=", "start_box=")
+    text = _normalize_action_response(text.strip())
 
     if model_type == "qwen25vl":
         smart_resize_height, smart_resize_width = smart_resize(
@@ -225,21 +243,28 @@ def parse_action_to_structure_output(text,
         if "type(content" in action_str:
             if not action_str.strip().endswith(")"):
                 action_str = action_str.strip() + ")"
-            # 正则表达式匹配 content 中的字符串并转义单引号
-            def escape_quotes(match):
-                content = match.group(1)  # 获取 content 的值
-                return content
-
-            # 使用正则表达式进行替换，支持多行和转义字符
-            pattern = r"type\(content='(.*?)'\)"  # 匹配 type(content='...')
-            if re.search(pattern, action_str, re.DOTALL):  # 检查是否有匹配项，支持多行
-                content = re.sub(pattern, escape_quotes, action_str, flags=re.DOTALL)
-            else:
-                raise ValueError("Pattern not found in the input string.")
-
+            # 提取 content 参数值（仅取第一个参数，忽略 element_type 等多余参数）
+            prefix = "content='"
+            content_start = action_str.find(prefix)
+            if content_start == -1:
+                raise ValueError("content parameter not found in type action")
+            content_start += len(prefix)
+            rest = action_str[content_start:]
+            content_end = -1
+            i = 0
+            while i < len(rest):
+                if rest[i] == "'":
+                    if i + 1 >= len(rest) or rest[i + 1] in ",)":
+                        content_end = i
+                        break
+                i += 1
+            if content_end == -1:
+                raise ValueError("Cannot find closing quote for content value")
+            content = rest[:content_end]
             # 处理字符串
-            action_str = escape_single_quotes(content)
-            action_str = "type(content='" + action_str + "')"
+            content = escape_single_quotes(content)
+            action_str = "type(content='" + content + "')"
+        action_str = _normalize_action_string(action_str)
         if not action_str.strip().endswith(")"):
             action_str = action_str.strip() + ")"
         all_action.append(action_str)
@@ -525,6 +550,8 @@ def parsing_response_to_pyautogui_code(responses,
                 elif action_type == "hover":
                     pyautogui_code += f"\npyautogui.moveTo({x}, {y})"
 
+        elif action_type == "wait":
+            pyautogui_code += f"\ntime.sleep(5)"
         elif action_type in ["finished"]:
             pyautogui_code = f"DONE"
 
