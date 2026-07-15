@@ -48,6 +48,7 @@ class VideoProcessor:
         video_path: str,
         work_dir: str,
         batch_max_frames: int = 10,
+        extract_audio: bool = True,
         segment_duration: int = 60,
         min_segment_duration: int = 20,
         static_interval: int = 8,
@@ -61,6 +62,7 @@ class VideoProcessor:
             video_path: 本地视频文件路径。
             work_dir: 临时工作目录，用于保存抽出的帧和音频。
             batch_max_frames: 单个请求批次允许的最大图片数；如果候选帧总数超过该值，会切成多个带重叠的请求批次，不代表整段视频最终只保留这么多张图。
+            extract_audio: 是否提取视频音频；为 False 时即使有音轨也按无音频处理。
             segment_duration: 智能抽帧扫描阶段的时间桶上限，用来控制多久重置一次“上一张已保存帧”的节奏。
             min_segment_duration: 智能抽帧扫描阶段的时间桶下限，避免短视频被切得过碎。
             static_interval: 静态画面最小抽帧间隔，单位秒。
@@ -115,11 +117,12 @@ class VideoProcessor:
             scene_threshold,
         )
 
-        audio_path = self.extract_audio(video_path=video_path, output_dir=str(work_path))
+        audio_path = self.extract_audio(video_path=video_path, output_dir=str(work_path)) if extract_audio else None
         has_audio_track = audio_path is not None
         sampling_mode = "smart" if has_audio_track else "uniform"
         logger.info(
-            "抽帧模式 | has_audio_track=%s | sampling_mode=%s",
+            "抽帧模式 | extract_audio=%s | has_audio_track=%s | sampling_mode=%s",
+            extract_audio,
             has_audio_track,
             sampling_mode,
         )

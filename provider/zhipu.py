@@ -28,8 +28,8 @@ DEFAULT_VISION_MODEL = "glm-4.6v-flash"
 # 默认文本模型
 DEFAULT_TEXT_MODEL = "glm-4.5-flash"
 # 默认 max_tokens（各模型上限不同，这里取保守值）
-DEFAULT_TEXT_MAX_TOKENS = 10240
-DEFAULT_VISION_MAX_TOKENS = 10240
+DEFAULT_TEXT_MAX_TOKENS = 30000
+DEFAULT_VISION_MAX_TOKENS = 30000
 # API 基础地址
 BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
@@ -134,8 +134,8 @@ class ZhipuAI:
         }
 
         logger.info(
-            "📝 [Zhipu] chat | sid=%s | model=%s | history=%d | prompt_len=%d",
-            session_id or "-", model, history_len, len(prompt),
+            "📝 [Zhipu] chat | sid=%s | model=%s | history=%d | prompt_len=%d | max_tokens=%d",
+            session_id or "-", model, history_len, len(prompt), max_tokens or DEFAULT_TEXT_MAX_TOKENS,
         )
 
         data = self._request(payload)
@@ -157,8 +157,13 @@ class ZhipuAI:
         system_prompt: Optional[str] = None,
         temperature: float = 0.8,
         max_tokens: Optional[int] = None,
+        session_id: Optional[str] = None,
     ) -> str:
         """发送图片 + 文本提示词，进行多模态对话。
+
+        - ``session_id=None``（默认）：单轮对话，不保留历史。
+        - ``session_id`` 给定：自动维护该会话的历史，图片和文本都会存入记忆中。
+          后续轮次再次传入同一 ``session_id`` 时，会携带完整历史一起发送。
 
         Args:
             prompt: 文本提示词
@@ -170,25 +175,40 @@ class ZhipuAI:
             system_prompt: 系统提示词
             temperature: 采样温度 [0, 1]
             max_tokens: 最大输出 token 数
+            session_id: 会话标识；为 None 时走单轮模式，给定后自动维护多轮历史
 
         Returns:
             模型回复文本
         """
-        logger.info("🖼️ [Zhipu] chat_with_image | model=%s | prompt_len=%d", model, len(prompt))
+        logger.info("🖼️ [Zhipu] chat_with_image | model=%s | prompt_len=%d | sid=%s",
+                     model, len(prompt), session_id or "-")
 
         image_url = self._resolve_image(image)
 
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        user_content = [
+            {"type": "image_url", "image_url": {"url": image_url}},
+            {"type": "text", "text": prompt},
+        ]
 
-        messages.append({
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": image_url}},
-                {"type": "text", "text": prompt},
-            ],
-        })
+        if session_id is None:
+            # 单轮：临时组装，不写入 memory
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": user_content})
+        else:
+            # 多轮：经由 memory 取历史 + 写回本轮
+            mem = self._ensure_memory()
+            messages = mem.get_messages(session_id)
+
+            if system_prompt and not any(m.get("role") == "system" for m in messages):
+                sys_msg = {"role": "system", "content": system_prompt}
+                mem.add_message(session_id, sys_msg)
+                messages.append(sys_msg)
+
+            user_msg = {"role": "user", "content": user_content}
+            mem.add_message(session_id, user_msg)
+            messages.append(user_msg)
 
         payload = {
             "model": model,
@@ -197,10 +217,18 @@ class ZhipuAI:
             "max_tokens": max_tokens or DEFAULT_VISION_MAX_TOKENS,
             "stream": False,
         }
+        print(f"before messages: {len(messages)}")
 
         data = self._request(payload)
         text = self._extract_text(data)
-        logger.info("✅ [Zhipu] chat_with_image done | tokens=%s", data.get("usage", {}))
+
+        # 多轮模式下回写 assistant 回复
+        if session_id is not None:
+            mem.add_message(session_id, {"role": "assistant", "content": text})
+        print(f"after messages: {len(messages)}")
+
+        logger.info("✅ [Zhipu] chat_with_image done | sid=%s | tokens=%s",
+                    session_id or "-", data.get("usage", {}))
         return text
 
     def chat_with_video(
@@ -212,6 +240,7 @@ class ZhipuAI:
         temperature: float = 0.8,
         max_tokens: Optional[int] = None,
         audio_model: Optional[Any] = None,
+        extract_audio: bool = True,
         use_parallel: bool = False,
         max_concurrency: int = 3,
         batch_max_frames: int = 15,
@@ -229,6 +258,7 @@ class ZhipuAI:
             temperature: 多模态模型采样温度。
             max_tokens: 单次多模态请求的最大输出 token。
             audio_model: 可选音频转文本回调，签名应为 ``Callable[[str], Any]``。
+            extract_audio: 是否提取并转写视频音频；为 False 时即使视频有音轨也按无音频处理。
             use_parallel: 是否并行请求多个批次；单批次时该参数无效果。
             max_concurrency: 并行模式下最多同时请求的批次数。
             batch_max_frames: 单次多模态请求最多发送多少张图片；当候选帧总数超过该值时，会继续切成多个带重叠的请求批次，而不是把整段视频压到这个总数以内。
@@ -241,8 +271,9 @@ class ZhipuAI:
         """
         started_at = time.perf_counter()
         logger.info(
-            "🎬 [Zhipu] chat_with_video | video=%s | parallel=%s | batch_max_frames=%s | retry_times=%s",
+            "🎬 [Zhipu] chat_with_video | video=%s | extract_audio=%s | parallel=%s | batch_max_frames=%s | retry_times=%s",
             video_path,
+            extract_audio,
             use_parallel,
             batch_max_frames,
             retry_times,
@@ -298,6 +329,7 @@ class ZhipuAI:
         analyzer = BatchVideoAnalyzer(
             multimodal_model=multimodal_model,
             audio_model=audio_model,
+            extract_audio=extract_audio,
             segment_duration=segment_duration,
             min_segment_duration=min_segment_duration,
         )

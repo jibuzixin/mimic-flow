@@ -148,6 +148,7 @@ def main() -> None:
         video_path=video_path,
         model=VISION_MODEL,
         audio_model=transcribe_with_glm_asr,
+        extract_audio=True,
         use_parallel=False,
         max_concurrency=3,
         batch_max_frames=10,
