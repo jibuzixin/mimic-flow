@@ -31,11 +31,13 @@ class BatchVideoAnalyzer:
         self,
         multimodal_model: MultimodalModel,
         audio_model: Optional[AudioModel] = None,
+        extract_audio: bool = True,
         segment_duration: int = 60,
         min_segment_duration: int = 20,
     ):
         self.multimodal_model = multimodal_model
         self.audio_model = audio_model
+        self.extract_audio = extract_audio
         self.segment_duration = segment_duration
         self.min_segment_duration = min_segment_duration
         self.video_processor = VideoProcessor()
@@ -45,12 +47,14 @@ class BatchVideoAnalyzer:
         cls,
         multimodal_model: MultimodalModel,
         audio_model: Optional[AudioModel] = None,
+        extract_audio: bool = True,
         segment_duration: int = 60,
         min_segment_duration: int = 20,
     ) -> "BatchVideoAnalyzer":
         return cls(
             multimodal_model=multimodal_model,
             audio_model=audio_model,
+            extract_audio=extract_audio,
             segment_duration=segment_duration,
             min_segment_duration=min_segment_duration,
         )
@@ -94,6 +98,7 @@ class BatchVideoAnalyzer:
                 video_path=video_path,
                 work_dir=work_dir,
                 batch_max_frames=batch_max_frames,
+                extract_audio=self.extract_audio,
                 segment_duration=self.segment_duration,
                 min_segment_duration=self.min_segment_duration,
             )
@@ -142,6 +147,7 @@ class BatchVideoAnalyzer:
                 "use_parallel": use_parallel,
                 "max_concurrency": parallel_workers if use_parallel else 1,
                 "batch_max_frames": batch_max_frames,
+                "extract_audio": self.extract_audio,
                 "has_audio_track": material.has_audio_track,
                 "frame_sampling_mode": material.sampling_mode,
                 "audio_used": bool(transcript_segments),
