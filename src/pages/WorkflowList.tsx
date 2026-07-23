@@ -488,14 +488,14 @@ export default function WorkflowList() {
       {renameDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/20"
             onClick={() => setRenameDialog(null)}
           />
-          <div className="relative w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
-            <div className="p-5 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800">重命名工作流</h3>
+          <div className="relative w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="p-4 pb-0">
+              <h3 className="text-sm font-semibold text-gray-800">重命名工作流</h3>
             </div>
-            <div className="p-5">
+            <div className="p-4">
               <input
                 type="text"
                 value={renameDialog.name}
@@ -504,18 +504,19 @@ export default function WorkflowList() {
                   if (e.key === 'Enter') confirmRename();
                 }}
                 autoFocus
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                 placeholder="请输入工作流名称"
               />
             </div>
-            <div className="p-5 border-t border-gray-100 flex justify-end gap-2">
+            <div className="p-4 pt-0 flex justify-end gap-2">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setRenameDialog(null)}
               >
                 取消
               </Button>
-              <Button onClick={confirmRename}>
+              <Button size="sm" onClick={confirmRename}>
                 确定
               </Button>
             </div>

@@ -116,13 +116,11 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="absolute -top-2 -right-2 z-10 cursor-help">
-                  <div className="relative">
-                    <AlertCircle className="h-5 w-5 text-red-500 fill-white" />
-                  </div>
+                <div className="absolute -top-2 -right-2 z-20 cursor-help">
+                  <AlertCircle className="h-5 w-5 text-red-500 fill-white" />
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs text-xs">
+              <TooltipContent side="top" align="end" sideOffset={8} className="max-w-xs text-xs z-[9999]">
                 <p className="font-medium text-red-600">执行失败</p>
                 <p className="text-gray-600 mt-1">{errorMessage}</p>
               </TooltipContent>

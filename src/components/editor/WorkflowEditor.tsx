@@ -148,8 +148,13 @@ function WorkflowEditorInner() {
     }
   }, [currentWorkflow?.flowMeta?.name]);
 
+  const workflowKey = currentWorkflow?.flowMeta?.name || null;
+  const nodeIdsKey = currentWorkflow?.nodes.map(n => n.id).join(',') || '';
+
   useEffect(() => {
     if (!currentWorkflow || !initialized) {
+      setNodes([]);
+      setEdges([]);
       return;
     }
 
@@ -182,7 +187,32 @@ function WorkflowEditorInner() {
       : [];
 
     setEdges(normalizedEdges);
-  }, [currentWorkflow, initialized, nodePositions, storeEdges, nodeExecutionStatus, nodeErrors, setNodes, setEdges]);
+  }, [workflowKey, nodeIdsKey, initialized, storeEdges, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (!currentWorkflow || !initialized) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        const status = nodeExecutionStatus[node.id] || 'idle';
+        const errorMsg = nodeErrors[node.id];
+        if (
+          node.data.executionStatus === status &&
+          node.data.errorMessage === errorMsg
+        ) {
+          return node;
+        }
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            executionStatus: status,
+            errorMessage: errorMsg,
+          },
+        };
+      })
+    );
+  }, [nodeExecutionStatus, nodeErrors, currentWorkflow, initialized, setNodes]);
 
   const handleNodesChange: OnNodesChange<CustomNodeType> = useCallback(
     (changes) => {
@@ -262,6 +292,29 @@ function WorkflowEditorInner() {
           );
         }
         newEdges = addEdge(newEdge, newEdges);
+        setStoreEdges(newEdges);
+        return newEdges;
+      });
+      syncNextNodesFromEdges();
+    },
+    [setEdges, setStoreEdges, syncNextNodesFromEdges],
+  );
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      setEdges((eds) => {
+        const newEdges = eds.map((e) => {
+          if (e.id === oldEdge.id) {
+            return {
+              ...e,
+              source: newConnection.source || e.source,
+              target: newConnection.target || e.target,
+              sourceHandle: newConnection.sourceHandle || e.sourceHandle || 'out',
+              targetHandle: newConnection.targetHandle || e.targetHandle || 'in',
+            };
+          }
+          return e;
+        });
         setStoreEdges(newEdges);
         return newEdges;
       });
@@ -694,6 +747,7 @@ function WorkflowEditorInner() {
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
+            onReconnect={onReconnect}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
             onPaneContextMenu={onPaneContextMenu}
@@ -703,6 +757,7 @@ function WorkflowEditorInner() {
             fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{
               type: 'custom',
+              reconnectable: true,
             }}
             proOptions={{ hideAttribution: true }}
             isValidConnection={isValidConnection}

@@ -532,7 +532,13 @@ export class FlowScheduler extends EventEmitter {
       : falseBranch?.nodeId;
 
     if (nextNodeId) {
-      await this.executeNode(nextNodeId);
+      try {
+        await this.executeNode(nextNodeId);
+      } catch (e) {
+        if (this.status === 'running') {
+          this.status = 'failed';
+        }
+      }
     }
   }
 
@@ -561,7 +567,14 @@ export class FlowScheduler extends EventEmitter {
         }
         (this.variablePool as any).loop[iterVar] = i;
         this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `for 循环第 ${iteration + 1} 次: ${iterVar} = ${i}` });
-        await this.executeNode(loopBodyNodeId);
+        try {
+          await this.executeNode(loopBodyNodeId);
+        } catch (e) {
+          if (this.status === 'running') {
+            this.status = 'failed';
+          }
+          break;
+        }
         iteration++;
       }
     } else if (type === 'while') {
@@ -573,7 +586,14 @@ export class FlowScheduler extends EventEmitter {
           break;
         }
         this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `while 循环第 ${iteration + 1} 次` });
-        await this.executeNode(loopBodyNodeId);
+        try {
+          await this.executeNode(loopBodyNodeId);
+        } catch (e) {
+          if (this.status === 'running') {
+            this.status = 'failed';
+          }
+          break;
+        }
         iteration++;
       }
     } else if (type === 'forEach') {
@@ -583,7 +603,14 @@ export class FlowScheduler extends EventEmitter {
         if (this.status !== 'running') break;
         (this.variablePool as any).loop = { ...((this.variablePool as any).loop || {}), [iteratorVar]: item };
         this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `forEach 循环: ${iteratorVar} = ${JSON.stringify(item)}` });
-        await this.executeNode(loopBodyNodeId);
+        try {
+          await this.executeNode(loopBodyNodeId);
+        } catch (e) {
+          if (this.status === 'running') {
+            this.status = 'failed';
+          }
+          break;
+        }
         iteration++;
       }
     }
@@ -768,7 +795,14 @@ export class FlowScheduler extends EventEmitter {
     const unconditionalNext = node.nextNodes.filter((n) => !n.condition);
     for (const next of unconditionalNext) {
       if (this.status !== 'running') break;
-      await this.executeNode(next.nodeId);
+      try {
+        await this.executeNode(next.nodeId);
+      } catch (e) {
+        if (this.status === 'running') {
+          this.status = 'failed';
+        }
+        break;
+      }
     }
   }
 
