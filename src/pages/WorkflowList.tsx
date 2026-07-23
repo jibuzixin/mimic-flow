@@ -45,6 +45,7 @@ export default function WorkflowList() {
   } = useWorkflowStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
   const [hideSensitive, setHideSensitive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -266,18 +267,37 @@ export default function WorkflowList() {
                       className="h-8 w-8"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveMenu(activeMenu === wf.id ? null : wf.id);
+                        if (activeMenu === wf.id) {
+                          setActiveMenu(null);
+                          setMenuPosition(null);
+                        } else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setMenuPosition({
+                            top: rect.bottom + 4,
+                            right: window.innerWidth - rect.right,
+                          });
+                          setActiveMenu(wf.id);
+                        }
                       }}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
-                    {activeMenu === wf.id && (
+                    {activeMenu === wf.id && menuPosition && (
                       <>
                         <div
                           className="fixed inset-0 z-40"
-                          onClick={() => setActiveMenu(null)}
+                          onClick={() => {
+                            setActiveMenu(null);
+                            setMenuPosition(null);
+                          }}
                         />
-                        <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1">
+                        <div
+                          className="fixed w-36 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1"
+                          style={{
+                            top: `${menuPosition.top}px`,
+                            right: `${menuPosition.right}px`,
+                          }}
+                        >
                           <button
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
                             onClick={(e) => {

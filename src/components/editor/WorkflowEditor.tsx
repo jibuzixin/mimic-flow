@@ -65,6 +65,7 @@ function WorkflowEditorInner() {
   const [isVariablePanelOpen, setIsVariablePanelOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isModifierPressed, setIsModifierPressed] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [hideSensitive, setHideSensitive] = useState(false);
@@ -75,6 +76,7 @@ function WorkflowEditorInner() {
     setSelectedNode,
     addNode,
     deleteNode,
+    removeEdge,
     nodePositions,
     setNodePosition,
     edges: storeEdges,
@@ -267,26 +269,19 @@ function WorkflowEditorInner() {
   );
 
   const onDelete = useCallback(() => {
-    const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id);
-    let newEdges = edges;
-    if (selectedEdgeIds.length > 0) {
-      newEdges = edges.filter((e) => !selectedEdgeIds.includes(e.id));
-      setEdges(newEdges);
-      setStoreEdges(newEdges);
-      syncNextNodesFromEdges();
-    }
     const selectedNodeIds = nodes.filter((n) => n.selected).map((n) => n.id);
+    const selectedEdgeIds = edges.filter((e) => e.selected).map((e) => e.id);
+
+    if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) return;
+
     if (selectedNodeIds.length > 0) {
       selectedNodeIds.forEach((id) => deleteNode(id));
-      setTimeout(() => {
-        const remainingEdges = newEdges.filter(
-          e => !selectedNodeIds.includes(e.source) && !selectedNodeIds.includes(e.target)
-        );
-        setStoreEdges(remainingEdges);
-        syncNextNodesFromEdges();
-      }, 0);
     }
-  }, [nodes, edges, deleteNode, setEdges, setStoreEdges, syncNextNodesFromEdges]);
+
+    if (selectedEdgeIds.length > 0) {
+      selectedEdgeIds.forEach((id) => removeEdge(id));
+    }
+  }, [nodes, edges, deleteNode, removeEdge]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -295,6 +290,7 @@ function WorkflowEditorInner() {
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
           return;
         }
+        e.preventDefault();
         onDelete();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
@@ -315,8 +311,26 @@ function WorkflowEditorInner() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleModifierDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsModifierPressed(true);
+      }
+    };
+
+    const handleModifierUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsModifierPressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('keydown', handleModifierDown);
+    window.addEventListener('keyup', handleModifierUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keydown', handleModifierDown);
+      window.removeEventListener('keyup', handleModifierUp);
+    };
   }, [onDelete, undo, redo]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -690,9 +704,9 @@ function WorkflowEditorInner() {
             }}
             proOptions={{ hideAttribution: true }}
             isValidConnection={isValidConnection}
-            selectionOnDrag={isSelectionMode}
-            panOnDrag={!isSelectionMode}
-            selectNodesOnDrag={isSelectionMode}
+            selectionOnDrag={isSelectionMode || isModifierPressed}
+            panOnDrag={!isSelectionMode && !isModifierPressed}
+            selectNodesOnDrag={isSelectionMode || isModifierPressed}
           >
             <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="#e5e7eb" />
           </ReactFlow>
