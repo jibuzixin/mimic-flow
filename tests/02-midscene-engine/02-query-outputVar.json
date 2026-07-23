@@ -1,0 +1,96 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试05: Midscene 查询与变量传递",
+    "desc": "验证 midscene.query 的 outputVar 和 control.log 打印变量"
+  },
+  "globalVars": {},
+  "runtime": {
+    "defaultTimeout": 180000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 180000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "midscene.act",
+      "nodeName": "打开 Chrome",
+      "nodeParams": {
+        "prompt": "按 Cmd+Space 打开 Spotlight，输入 Chrome 并按回车打开谷歌浏览器"
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "midscene.sleep",
+      "nodeName": "等待浏览器启动",
+      "nodeParams": {
+        "duration": 3000
+      },
+      "nextNodes": [{ "nodeId": "node-3" }]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "midscene.act",
+      "nodeName": "访问 Bilibili",
+      "nodeParams": {
+        "prompt": "点击地址栏，输入 bilibili.com 并按回车访问"
+      },
+      "nextNodes": [{ "nodeId": "node-4" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "midscene.sleep",
+      "nodeName": "等待页面加载",
+      "nodeParams": {
+        "duration": 5000
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "midscene.query",
+      "nodeName": "获取视频标题",
+      "nodeParams": {
+        "prompt": "页面上展示的视频标题有哪些？列出前5个视频的标题",
+        "outputVar": "videoTitles"
+      },
+      "nextNodes": [{ "nodeId": "node-6" }]
+    },
+    {
+      "id": "node-6",
+      "nodeType": "control.log",
+      "nodeName": "打印视频标题",
+      "nodeParams": {
+        "var": "videoTitles"
+      },
+      "nextNodes": [{ "nodeId": "node-7" }]
+    },
+    {
+      "id": "node-7",
+      "nodeType": "control.log",
+      "nodeName": "打印插值消息",
+      "nodeParams": {
+        "message": "查询结果: {{globalVars.videoTitles}}"
+      },
+      "nextNodes": []
+    }
+  ]
+}

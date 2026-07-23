@@ -1,0 +1,85 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试06: 错误处理与失败策略",
+    "desc": "验证节点失败后的重试和 onError: continue 策略"
+  },
+  "globalVars": {},
+  "runtime": {
+    "defaultTimeout": 30000,
+    "defaultRetry": 2,
+    "onError": "continue"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 30000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "control.log",
+      "nodeName": "开始测试",
+      "nodeParams": {
+        "message": "开始错误处理测试，onError=continue，defaultRetry=2"
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "midscene.act",
+      "nodeName": "执行一个会失败的操作",
+      "nodeParams": {
+        "prompt": "点击一个根本不存在的按钮，这个按钮的名字叫 不存在的按钮12345"
+      },
+      "runtime": {
+        "retry": 1,
+        "onError": "continue"
+      },
+      "nextNodes": [{ "nodeId": "node-3" }]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.log",
+      "nodeName": "失败后继续执行",
+      "nodeParams": {
+        "message": "✅ 上一个节点失败后，继续执行到了这里（onError: continue 生效）"
+      },
+      "nextNodes": [{ "nodeId": "node-4" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "midscene.act",
+      "nodeName": "另一个会失败的操作",
+      "nodeParams": {
+        "prompt": "点击另一个不存在的按钮 不存在的按钮67890"
+      },
+      "runtime": {
+        "retry": 0,
+        "onError": "continue"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "control.log",
+      "nodeName": "第二次失败后继续",
+      "nodeParams": {
+        "message": "✅ 第二个节点失败后也继续执行了"
+      },
+      "nextNodes": []
+    }
+  ]
+}

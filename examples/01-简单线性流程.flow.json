@@ -1,0 +1,80 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "简单线性流程",
+    "desc": "一个基础的线性工作流示例，包含开始、AI操作和结束节点",
+    "source": "manual",
+    "createdAt": 1753180800000,
+    "updatedAt": 1753180800000
+  },
+  "globalVars": {
+    "greeting": "Hello, World!"
+  },
+  "runtime": {
+    "defaultTimeout": 30000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "defaultModelId": "default"
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "nodeType": "control.start",
+      "nodeName": "开始",
+      "nodeParams": {},
+      "nextNodes": [
+        { "nodeId": "node-1" }
+      ]
+    },
+    {
+      "id": "node-1",
+      "nodeType": "control.log",
+      "nodeName": "打印欢迎语",
+      "nodeParams": {
+        "message": "{{greeting}}",
+        "level": "info"
+      },
+      "nextNodes": [
+        { "nodeId": "node-2" }
+      ]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "midscene.sleep",
+      "nodeName": "等待2秒",
+      "nodeParams": {
+        "duration": 2000
+      },
+      "nextNodes": [
+        { "nodeId": "node-3" }
+      ]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "midscene.act",
+      "nodeName": "AI 操作",
+      "nodeParams": {
+        "prompt": "打开浏览器并访问百度首页",
+        "deepThink": false,
+        "cacheable": true
+      },
+      "nextNodes": [
+        { "nodeId": "end" }
+      ]
+    },
+    {
+      "id": "end",
+      "nodeType": "control.end",
+      "nodeName": "结束",
+      "nodeParams": {},
+      "nextNodes": []
+    }
+  ]
+}

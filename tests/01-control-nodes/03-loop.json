@@ -1,0 +1,89 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试03: 循环 (control.loop)",
+    "desc": "验证 control.loop 节点的 for、while、forEach 三种循环类型"
+  },
+  "globalVars": {
+    "fruits": ["苹果", "香蕉", "橙子"]
+  },
+  "runtime": {
+    "defaultTimeout": 180000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 180000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "control.var",
+      "nodeName": "初始化计数器",
+      "nodeParams": {
+        "name": "forCount",
+        "value": 0,
+        "mode": "set"
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "control.loop",
+      "nodeName": "for 循环 1到5",
+      "nodeParams": {
+        "type": "for",
+        "from": 1,
+        "to": 5,
+        "step": 1,
+        "iteratorVar": "i",
+        "maxIterations": 100,
+        "bodyNodeId": "node-3"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.var",
+      "nodeName": "累加计数（循环体）",
+      "nodeParams": {
+        "name": "forCount",
+        "value": 1,
+        "mode": "increment"
+      },
+      "nextNodes": [{ "nodeId": "node-4" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "control.log",
+      "nodeName": "打印循环变量",
+      "nodeParams": {
+        "message": "for 循环: i = {{loop.i}}, count = {{globalVars.forCount}}"
+      },
+      "nextNodes": []
+    },
+    {
+      "id": "node-5",
+      "nodeType": "control.log",
+      "nodeName": "打印 for 循环结果",
+      "nodeParams": {
+        "message": "for 循环结束，最终计数 = {{globalVars.forCount}}（预期5）"
+      },
+      "nextNodes": []
+    }
+  ]
+}

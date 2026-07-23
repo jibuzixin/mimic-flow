@@ -1,0 +1,99 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "循环计数器",
+    "desc": "演示循环节点的使用，计数从1加到5",
+    "source": "manual",
+    "createdAt": 1753180800000,
+    "updatedAt": 1753180800000
+  },
+  "globalVars": {
+    "count": 0,
+    "maxCount": 5
+  },
+  "runtime": {
+    "defaultTimeout": 30000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "defaultModelId": "default"
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "nodeType": "control.start",
+      "nodeName": "开始",
+      "nodeParams": {},
+      "nextNodes": [
+        { "nodeId": "node-1" }
+      ]
+    },
+    {
+      "id": "node-1",
+      "nodeType": "control.var",
+      "nodeName": "初始化计数器",
+      "nodeParams": {
+        "varName": "count",
+        "operation": "set",
+        "valueType": "number",
+        "value": "1"
+      },
+      "nextNodes": [
+        { "nodeId": "node-2" }
+      ]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "control.loop",
+      "nodeName": "循环",
+      "nodeParams": {
+        "loopType": "while",
+        "leftVar": "count",
+        "operator": "<=",
+        "rightValue": "5"
+      },
+      "nextNodes": [
+        { "nodeId": "node-3", "condition": "body" }
+      ]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.log",
+      "nodeName": "打印当前计数",
+      "nodeParams": {
+        "message": "当前计数: {{count}}",
+        "level": "info"
+      },
+      "nextNodes": [
+        { "nodeId": "node-4" }
+      ]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "control.var",
+      "nodeName": "计数器+1",
+      "nodeParams": {
+        "varName": "count",
+        "operation": "increment",
+        "valueType": "number",
+        "value": "1"
+      },
+      "nextNodes": [
+        { "nodeId": "node-2" }
+      ]
+    },
+    {
+      "id": "end",
+      "nodeType": "control.end",
+      "nodeName": "结束",
+      "nodeParams": {},
+      "nextNodes": []
+    }
+  ]
+}

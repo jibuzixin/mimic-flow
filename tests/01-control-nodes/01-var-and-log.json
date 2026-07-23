@@ -1,0 +1,103 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试01: 变量赋值与日志打印",
+    "desc": "验证 control.var 和 control.log 节点的基本功能"
+  },
+  "globalVars": {
+    "initialValue": "hello world"
+  },
+  "runtime": {
+    "defaultTimeout": 180000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 180000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "control.var",
+      "nodeName": "设置字符串变量",
+      "nodeParams": {
+        "name": "strVar",
+        "value": "这是一个测试字符串",
+        "mode": "set"
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "control.var",
+      "nodeName": "设置数字变量",
+      "nodeParams": {
+        "name": "numVar",
+        "value": 42,
+        "mode": "set"
+      },
+      "nextNodes": [{ "nodeId": "node-3" }]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.var",
+      "nodeName": "数字递增",
+      "nodeParams": {
+        "name": "numVar",
+        "value": 8,
+        "mode": "increment"
+      },
+      "nextNodes": [{ "nodeId": "node-4" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "control.log",
+      "nodeName": "打印字符串变量",
+      "nodeParams": {
+        "var": "strVar"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "control.log",
+      "nodeName": "打印数字变量（预期50）",
+      "nodeParams": {
+        "var": "numVar"
+      },
+      "nextNodes": [{ "nodeId": "node-6" }]
+    },
+    {
+      "id": "node-6",
+      "nodeType": "control.log",
+      "nodeName": "打印全局初始变量",
+      "nodeParams": {
+        "var": "initialValue"
+      },
+      "nextNodes": [{ "nodeId": "node-7" }]
+    },
+    {
+      "id": "node-7",
+      "nodeType": "control.log",
+      "nodeName": "打印插值消息",
+      "nodeParams": {
+        "message": "字符串: {{globalVars.strVar}}, 数字: {{globalVars.numVar}}"
+      },
+      "nextNodes": []
+    }
+  ]
+}

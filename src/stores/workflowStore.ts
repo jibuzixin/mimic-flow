@@ -1,0 +1,1074 @@
+import { create } from 'zustand';
+import type { Edge } from '@xyflow/react';
+import type { FlowSchema, RuntimeEvent, FlowNode, FlowNodeType } from '../../types/flow-v2';
+import { getNodeConfig } from '../components/editor/nodeConfigs';
+
+const STORAGE_KEY = 'mimic-flow-workflow-state';
+const WORKFLOWS_KEY = 'mimic-flow-workflows';
+const CURRENT_WF_KEY = 'mimic-flow-current-workflow-id';
+const RECENT_NODES_KEY = 'mimic-flow-recent-nodes';
+const PINNED_NODES_KEY = 'mimic-flow-pinned-nodes';
+
+const MAX_RECENT_NODES = 3;
+const MAX_PINNED_NODES = 10;
+
+let eventUnsubscribe: (() => void) | null = null;
+
+export interface WorkflowRecord {
+  id: string;
+  workflow: FlowSchema;
+  nodePositions: Record<string, { x: number; y: number }>;
+  edges: Edge[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface WorkflowState {
+  workflows: WorkflowRecord[];
+  currentWorkflowId: string | null;
+  currentWorkflow: FlowSchema | null;
+  selectedNodeId: string | null;
+  isRunning: boolean;
+  isPaused: boolean;
+  currentRunningNodeId: string | null;
+  nodeExecutionStatus: Record<string, 'idle' | 'running' | 'success' | 'error'>;
+  executionLogs: Array<{
+    id: string;
+    timestamp: number;
+    type: 'info' | 'success' | 'error' | 'node-start' | 'node-success' | 'node-error';
+    nodeId?: string;
+    nodeName?: string;
+    message: string;
+  }>;
+  nodePositions: Record<string, { x: number; y: number }>;
+  edges: Edge[];
+  initialized: boolean;
+  recentNodeTypes: string[];
+  pinnedNodeTypes: string[];
+
+  setWorkflow: (wf: FlowSchema) => void;
+  setSelectedNode: (id: string | null) => void;
+  addNode: (type: string, position?: { x: number; y: number }) => void;
+  updateNode: (nodeId: string, updates: Partial<FlowNode>) => void;
+  updateNodeParams: (nodeId: string, params: Record<string, unknown>) => void;
+  deleteNode: (nodeId: string) => void;
+  updateWorkflowMeta: (updates: Partial<{ name: string; desc: string }>) => void;
+  addGlobalVar: (name: string, value: unknown) => void;
+  updateGlobalVar: (name: string, value: unknown) => void;
+  deleteGlobalVar: (name: string) => void;
+  setRunning: (running: boolean) => void;
+  startExecution: () => void;
+  stopExecution: () => void;
+  pauseExecution: () => void;
+  resumeExecution: () => void;
+  clearExecutionState: () => void;
+  addExecutionLog: (log: Omit<{ id: string; timestamp: number; type: string; nodeId?: string; nodeName?: string; message: string }, 'id' | 'timestamp'>) => void;
+
+  setNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
+  setEdges: (edges: Edge[]) => void;
+  addEdge: (edge: Edge) => void;
+  removeEdge: (edgeId: string) => void;
+  syncNextNodesFromEdges: () => void;
+
+  pinNode: (nodeType: string) => void;
+  unpinNode: (nodeType: string) => void;
+  isNodePinned: (nodeType: string) => boolean;
+
+  // 多工作流管理
+  createWorkflow: (name?: string) => string;
+  openWorkflow: (id: string) => void;
+  saveCurrentWorkflow: () => void;
+  deleteWorkflow: (id: string) => void;
+  duplicateWorkflow: (id: string) => string;
+  renameWorkflow: (id: string, name: string) => void;
+
+  // 导入导出
+  exportWorkflow: (id: string) => FlowSchema;
+  importWorkflow: (workflow: FlowSchema) => string;
+
+  saveWorkflowsToStorage: () => void;
+
+  loadFromStorage: () => void;
+  saveToStorage: () => void;
+
+  createEmptyWorkflow: (name?: string) => FlowSchema;
+}
+
+let nodeCounter = 0;
+const genNodeId = () => `node-${++nodeCounter}`;
+
+const generateEdgesFromWorkflow = (wf: FlowSchema): Edge[] => {
+  const edges: Edge[] = [];
+  wf.nodes.forEach((node) => {
+    node.nextNodes?.forEach((next, idx) => {
+      edges.push({
+        id: `${node.id}-${next.nodeId}-${idx}`,
+        source: node.id,
+        target: next.nodeId,
+        sourceHandle: 'out',
+        targetHandle: 'in',
+        type: 'custom',
+      });
+    });
+  });
+  return edges;
+};
+
+const generateDefaultPositions = (wf: FlowSchema): Record<string, { x: number; y: number }> => {
+  const positions: Record<string, { x: number; y: number }> = {};
+  wf.nodes.forEach((node, index) => {
+    positions[node.id] = { x: 100, y: index * 120 };
+  });
+  return positions;
+};
+
+export const useWorkflowStore = create<WorkflowState>((set, get) => ({
+  workflows: [],
+  currentWorkflowId: null,
+  currentWorkflow: null,
+  selectedNodeId: null,
+  isRunning: false,
+  isPaused: false,
+  currentRunningNodeId: null,
+  nodeExecutionStatus: {},
+  executionLogs: [],
+  nodePositions: {},
+  edges: [],
+  initialized: false,
+  recentNodeTypes: [],
+  pinnedNodeTypes: [],
+
+  setWorkflow: (wf) => {
+    set({ currentWorkflow: wf });
+
+    let maxNum = 0;
+    wf.nodes.forEach((n) => {
+      const match = n.id.match(/node-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    if (maxNum > nodeCounter) nodeCounter = maxNum;
+
+    const state = get();
+    if (state.edges.length === 0) {
+      set({ edges: generateEdgesFromWorkflow(wf) });
+    }
+    if (Object.keys(state.nodePositions).length === 0) {
+      set({ nodePositions: generateDefaultPositions(wf) });
+    }
+  },
+
+  setSelectedNode: (id) => set({ selectedNodeId: id }),
+
+  addNode: (type, position) => {
+    const config = getNodeConfig(type);
+    if (!config) return;
+
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    const newNode: FlowNode = {
+      id: genNodeId(),
+      nodeType: type as FlowNodeType,
+      nodeName: config.name,
+      nodeParams: { ...config.defaultParams },
+      nextNodes: [],
+    };
+
+    const nodeCount = wf.nodes.length;
+    const newPosition = position || { x: 100, y: nodeCount * 120 };
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        nodes: [...wf.nodes, newNode],
+      },
+      selectedNodeId: newNode.id,
+      nodePositions: {
+        ...get().nodePositions,
+        [newNode.id]: newPosition,
+      },
+    });
+
+    // 更新最近使用的节点
+    const recent = get().recentNodeTypes.filter((t) => t !== type);
+    recent.unshift(type);
+    const trimmed = recent.slice(0, MAX_RECENT_NODES);
+    set({ recentNodeTypes: trimmed });
+    try {
+      localStorage.setItem(RECENT_NODES_KEY, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn('Failed to save recent nodes:', e);
+    }
+  },
+
+  updateNode: (nodeId, updates) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        nodes: wf.nodes.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
+      },
+    });
+  },
+
+  updateNodeParams: (nodeId, params) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        nodes: wf.nodes.map((n) =>
+          n.id === nodeId ? { ...n, nodeParams: { ...n.nodeParams, ...params } } : n,
+        ),
+      },
+    });
+  },
+
+  deleteNode: (nodeId) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    const { [nodeId]: _, ...restPositions } = get().nodePositions;
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        nodes: wf.nodes.filter((n) => n.id !== nodeId),
+      },
+      selectedNodeId: get().selectedNodeId === nodeId ? null : get().selectedNodeId,
+      nodePositions: restPositions,
+      edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+    });
+  },
+
+  updateWorkflowMeta: (updates) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        flowMeta: {
+          ...wf.flowMeta,
+          ...updates,
+        },
+      },
+    });
+  },
+
+  addGlobalVar: (name, value) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    set({
+      currentWorkflow: {
+        ...wf,
+        globalVars: { ...wf.globalVars, [name]: value },
+      },
+    });
+  },
+
+  updateGlobalVar: (name, value) => {
+    get().addGlobalVar(name, value);
+  },
+
+  deleteGlobalVar: (name) => {
+    const wf = get().currentWorkflow;
+    if (!wf) return;
+
+    const { [name]: _, ...rest } = wf.globalVars;
+    set({
+      currentWorkflow: {
+        ...wf,
+        globalVars: rest,
+      },
+    });
+  },
+
+  setRunning: (running) => set({ isRunning: running }),
+
+  clearExecutionState: () => {
+    set({
+      isRunning: false,
+      isPaused: false,
+      currentRunningNodeId: null,
+      nodeExecutionStatus: {},
+      executionLogs: [],
+    });
+  },
+
+  addExecutionLog: (log) => {
+    const newLog = {
+      ...log,
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: Date.now(),
+    } as WorkflowState['executionLogs'][0];
+    set({
+      executionLogs: [...get().executionLogs, newLog],
+    });
+  },
+
+  startExecution: async () => {
+    const state = get();
+    if (!state.currentWorkflow || state.isRunning) return;
+
+    const initialStatus: Record<string, 'idle' | 'running' | 'success' | 'error'> = {};
+    state.currentWorkflow.nodes.forEach((n) => {
+      initialStatus[n.id] = 'idle';
+    });
+
+    set({
+      isRunning: true,
+      isPaused: false,
+      currentRunningNodeId: null,
+      nodeExecutionStatus: initialStatus,
+      executionLogs: [],
+    });
+
+    get().addExecutionLog({
+      type: 'info',
+      message: '🚀 工作流开始执行',
+    });
+
+    const startNode = state.currentWorkflow.nodes.find((n) => n.nodeType === 'control.start');
+    if (!startNode) {
+      get().addExecutionLog({
+        type: 'error',
+        message: '❌ 找不到开始节点',
+      });
+      set({ isRunning: false });
+      return;
+    }
+
+    if (!window.mimic) {
+      get().addExecutionLog({
+        type: 'error',
+        message: '❌ 调度层不可用（浏览器模式）',
+      });
+      set({ isRunning: false });
+      return;
+    }
+
+    if (eventUnsubscribe) {
+      eventUnsubscribe();
+    }
+
+    eventUnsubscribe = window.mimic.on('flow-v2:event', (event) => {
+      const runtimeEvent = event as RuntimeEvent;
+      switch (runtimeEvent.type) {
+        case 'node:start': {
+          const { nodeId, nodeType, nodeName } = runtimeEvent;
+          set({
+            currentRunningNodeId: nodeId,
+            nodeExecutionStatus: {
+              ...get().nodeExecutionStatus,
+              [nodeId]: 'running',
+            },
+          });
+          get().addExecutionLog({
+            type: 'node-start',
+            nodeId,
+            nodeName: nodeName || nodeType,
+            message: `▶️ 开始执行: ${nodeName || nodeType}`,
+          });
+          break;
+        }
+        case 'node:complete': {
+          const { nodeId, duration, output } = runtimeEvent;
+          set({
+            nodeExecutionStatus: {
+              ...get().nodeExecutionStatus,
+              [nodeId]: 'success',
+            },
+          });
+          const status = get();
+          const node = status.currentWorkflow?.nodes.find((n: FlowNode) => n.id === nodeId);
+          const nodeName = node?.nodeName || node?.nodeType || nodeId;
+          const durationStr = duration ? ` (${(duration / 1000).toFixed(2)}s)` : '';
+          get().addExecutionLog({
+            type: 'node-success',
+            nodeId,
+            nodeName,
+            message: `✅ 执行成功: ${nodeName}${durationStr}`,
+          });
+          if (output) {
+            get().addExecutionLog({
+              type: 'info',
+              message: `📤 输出: ${JSON.stringify(output)}`,
+            });
+          }
+          break;
+        }
+        case 'node:error': {
+          const { nodeId, error, willRetry } = runtimeEvent;
+          set({
+            nodeExecutionStatus: {
+              ...get().nodeExecutionStatus,
+              [nodeId]: 'error',
+            },
+          });
+          const status = get();
+          const node = status.currentWorkflow?.nodes.find((n: FlowNode) => n.id === nodeId);
+          const nodeName = node?.nodeName || node?.nodeType || nodeId;
+          get().addExecutionLog({
+            type: 'node-error',
+            nodeId,
+            nodeName,
+            message: `❌ 执行失败: ${nodeName} - ${error}${willRetry ? ' (将重试)' : ''}`,
+          });
+          break;
+        }
+        case 'flow:complete': {
+          const { status: flowStatus, duration, reportPath } = runtimeEvent;
+          set({
+            isRunning: false,
+            currentRunningNodeId: null,
+          });
+          const durationStr = duration ? ` (${(duration / 1000).toFixed(2)}s)` : '';
+          if (flowStatus === 'success') {
+            get().addExecutionLog({
+              type: 'success',
+              message: `🎉 工作流执行完成${durationStr}`,
+            });
+          } else if (flowStatus === 'failed') {
+            get().addExecutionLog({
+              type: 'error',
+              message: `💥 工作流执行失败${durationStr}`,
+            });
+          } else if (flowStatus === 'stopped') {
+            get().addExecutionLog({
+              type: 'info',
+              message: `⏹️ 工作流已停止${durationStr}`,
+            });
+          }
+          if (reportPath) {
+            get().addExecutionLog({
+              type: 'info',
+              message: `📄 报告路径: ${reportPath}`,
+            });
+          }
+          if (eventUnsubscribe) {
+            eventUnsubscribe();
+            eventUnsubscribe = null;
+          }
+          break;
+        }
+        case 'flow:start': {
+          get().addExecutionLog({
+            type: 'info',
+            message: `🚀 工作流 ${runtimeEvent.flowId} 开始执行`,
+          });
+          break;
+        }
+        case 'log': {
+          const { entry } = runtimeEvent;
+          const levelMap: Record<string, string> = {
+            debug: 'info',
+            info: 'info',
+            warn: 'info',
+            error: 'error',
+          };
+          get().addExecutionLog({
+            type: levelMap[entry.level] || 'info',
+            nodeId: entry.nodeId,
+            message: `[${entry.source}] ${entry.message}${entry.data ? ` - ${JSON.stringify(entry.data)}` : ''}`,
+          });
+          break;
+        }
+        case 'screenshot': {
+          const { nodeId, dataUrl } = runtimeEvent;
+          get().addExecutionLog({
+            type: 'info',
+            nodeId,
+            message: `📷 截图已保存${nodeId ? ` (节点: ${nodeId})` : ''}`,
+          });
+          break;
+        }
+        default:
+          console.log('[RuntimeEvent] Unhandled event:', runtimeEvent);
+      }
+    });
+
+    try {
+      const result = await window.mimic.invoke('flow-v2:run', state.currentWorkflow);
+      if (!result || !(result as any).success) {
+        const errorMessage = (result as any)?.error || '启动工作流失败';
+        get().addExecutionLog({
+          type: 'error',
+          message: `❌ ${errorMessage}`,
+        });
+        set({ isRunning: false });
+        if (eventUnsubscribe) {
+          eventUnsubscribe();
+          eventUnsubscribe = null;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      get().addExecutionLog({
+        type: 'error',
+        message: `❌ 启动工作流出错: ${message}`,
+      });
+      set({ isRunning: false });
+      if (eventUnsubscribe) {
+        eventUnsubscribe();
+        eventUnsubscribe = null;
+      }
+    }
+  },
+
+  stopExecution: async () => {
+    if (!window.mimic) {
+      set({
+        isRunning: false,
+        isPaused: false,
+        currentRunningNodeId: null,
+      });
+      get().addExecutionLog({
+        type: 'info',
+        message: '⏹️ 工作流已停止（浏览器模式）',
+      });
+      return;
+    }
+
+    try {
+      await window.mimic.invoke('flow-v2:stop');
+    } catch (error) {
+      console.error('[IPC] stopExecution error:', error);
+    }
+
+    if (eventUnsubscribe) {
+      eventUnsubscribe();
+      eventUnsubscribe = null;
+    }
+  },
+
+  pauseExecution: () => {
+    set({ isPaused: true });
+    get().addExecutionLog({
+      type: 'info',
+      message: '⏸️ 工作流已暂停',
+    });
+  },
+
+  resumeExecution: () => {
+    set({ isPaused: false });
+    get().addExecutionLog({
+      type: 'info',
+      message: '▶️ 工作流继续执行',
+    });
+  },
+
+  setNodePosition: (nodeId, position) => {
+    set({
+      nodePositions: {
+        ...get().nodePositions,
+        [nodeId]: position,
+      },
+    });
+  },
+
+  setEdges: (edges) => {
+    set({ edges });
+  },
+
+  addEdge: (edge) => {
+    set({
+      edges: [...get().edges, edge],
+    });
+  },
+
+  removeEdge: (edgeId) => {
+    set({
+      edges: get().edges.filter((e) => e.id !== edgeId),
+    });
+  },
+
+  syncNextNodesFromEdges: () => {
+    const state = get();
+    if (!state.currentWorkflow) return;
+
+    const nextNodesMap: Record<string, { nodeId: string; condition?: string }[]> = {};
+    state.edges.forEach((e) => {
+      if (!nextNodesMap[e.source]) {
+        nextNodesMap[e.source] = [];
+      }
+      const condition = e.sourceHandle && e.sourceHandle !== 'out' ? e.sourceHandle : undefined;
+      nextNodesMap[e.source].push({
+        nodeId: e.target,
+        condition,
+      });
+    });
+
+    const updatedNodes = state.currentWorkflow.nodes.map((node) => ({
+      ...node,
+      nextNodes: nextNodesMap[node.id] || [],
+    }));
+
+    set({
+      currentWorkflow: {
+        ...state.currentWorkflow,
+        nodes: updatedNodes,
+      },
+    });
+  },
+
+  loadFromStorage: () => {
+    let workflows: WorkflowRecord[] = [];
+    let currentId: string | null = null;
+
+    try {
+      const saved = localStorage.getItem(WORKFLOWS_KEY);
+      if (saved) {
+        workflows = JSON.parse(saved);
+      }
+      currentId = localStorage.getItem(CURRENT_WF_KEY);
+    } catch (e) {
+      console.warn('Failed to load workflows from storage:', e);
+    }
+
+    // 向后兼容：如果旧版单工作流数据存在，迁移过来
+    if (workflows.length === 0) {
+      try {
+        const oldSaved = localStorage.getItem(STORAGE_KEY);
+        if (oldSaved) {
+          const data = JSON.parse(oldSaved);
+          if (data.workflow) {
+            const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const now = Date.now();
+            const savedEdges = data.edges || [];
+            const edgesWithType = savedEdges.map((e: Edge) => ({
+              ...e,
+              type: e.type || 'custom',
+              sourceHandle: e.sourceHandle || 'out',
+              targetHandle: e.targetHandle || 'in',
+            }));
+
+            workflows = [
+              {
+                id,
+                workflow: data.workflow,
+                nodePositions: data.nodePositions || generateDefaultPositions(data.workflow),
+                edges: edgesWithType.length > 0 ? edgesWithType : generateEdgesFromWorkflow(data.workflow),
+                createdAt: now,
+                updatedAt: now,
+              },
+            ];
+            currentId = id;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to migrate old workflow data:', e);
+      }
+    }
+
+    // 如果还是没有工作流，创建一个默认的
+    if (workflows.length === 0) {
+      const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const now = Date.now();
+      const wf = get().createEmptyWorkflow('我的工作流');
+      workflows = [
+        {
+          id,
+          workflow: wf,
+          nodePositions: generateDefaultPositions(wf),
+          edges: generateEdgesFromWorkflow(wf),
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+      currentId = id;
+    }
+
+    // 确保 currentId 有效
+    if (!currentId || !workflows.find((w) => w.id === currentId)) {
+      currentId = workflows[0]?.id || null;
+    }
+
+    // 设置 nodeCounter
+    const currentWf = workflows.find((w) => w.id === currentId);
+    if (currentWf) {
+      nodeCounter = 0;
+      currentWf.workflow.nodes.forEach((n) => {
+        const match = n.id.match(/node-(\d+)/);
+        if (match) {
+          const num = parseInt(match[1]);
+          if (num > nodeCounter) nodeCounter = num;
+        }
+      });
+
+      const edgesWithType = currentWf.edges.map((e) => ({
+        ...e,
+        type: e.type || 'custom',
+        sourceHandle: e.sourceHandle || 'out',
+        targetHandle: e.targetHandle || 'in',
+      }));
+
+      set({
+        workflows,
+        currentWorkflowId: currentId,
+        currentWorkflow: currentWf.workflow,
+        nodePositions: currentWf.nodePositions,
+        edges: edgesWithType,
+        initialized: true,
+      });
+    } else {
+      set({
+        workflows,
+        currentWorkflowId: null,
+        currentWorkflow: null,
+        nodePositions: {},
+        edges: [],
+        initialized: true,
+      });
+    }
+
+    // 加载最近使用和固定的节点
+    try {
+      const recentSaved = localStorage.getItem(RECENT_NODES_KEY);
+      if (recentSaved) {
+        set({ recentNodeTypes: JSON.parse(recentSaved) });
+      }
+      const pinnedSaved = localStorage.getItem(PINNED_NODES_KEY);
+      if (pinnedSaved) {
+        set({ pinnedNodeTypes: JSON.parse(pinnedSaved) });
+      }
+    } catch (e) {
+      console.warn('Failed to load node preferences:', e);
+    }
+  },
+
+  saveToStorage: () => {
+    const state = get();
+    if (!state.currentWorkflow || !state.initialized) return;
+
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          workflow: state.currentWorkflow,
+          nodePositions: state.nodePositions,
+          edges: state.edges,
+        })
+      );
+    } catch (e) {
+      console.warn('Failed to save workflow to storage:', e);
+    }
+
+    // 同时更新到工作流列表中
+    get().saveCurrentWorkflow();
+  },
+
+  pinNode: (nodeType) => {
+    const pinned = get().pinnedNodeTypes;
+    if (pinned.includes(nodeType)) return;
+    if (pinned.length >= MAX_PINNED_NODES) {
+      console.warn('已达到最大固定节点数');
+      return;
+    }
+    const next = [...pinned, nodeType];
+    set({ pinnedNodeTypes: next });
+    try {
+      localStorage.setItem(PINNED_NODES_KEY, JSON.stringify(next));
+    } catch (e) {
+      console.warn('Failed to save pinned nodes:', e);
+    }
+  },
+
+  unpinNode: (nodeType) => {
+    const next = get().pinnedNodeTypes.filter((t) => t !== nodeType);
+    set({ pinnedNodeTypes: next });
+    try {
+      localStorage.setItem(PINNED_NODES_KEY, JSON.stringify(next));
+    } catch (e) {
+      console.warn('Failed to save pinned nodes:', e);
+    }
+  },
+
+  isNodePinned: (nodeType) => {
+    return get().pinnedNodeTypes.includes(nodeType);
+  },
+
+  // ==================== 多工作流管理 ====================
+
+  createWorkflow: (name = '新建工作流') => {
+    const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+    const workflow = get().createEmptyWorkflow(name);
+    const nodePositions = generateDefaultPositions(workflow);
+    const edges = generateEdgesFromWorkflow(workflow);
+
+    const record: WorkflowRecord = {
+      id,
+      workflow,
+      nodePositions,
+      edges,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    set({
+      workflows: [...get().workflows, record],
+      currentWorkflowId: id,
+      currentWorkflow: workflow,
+      nodePositions,
+      edges,
+      selectedNodeId: null,
+    });
+
+    get().saveWorkflowsToStorage();
+    return id;
+  },
+
+  openWorkflow: (id) => {
+    const record = get().workflows.find((w) => w.id === id);
+    if (!record) return;
+
+    nodeCounter = 0;
+    record.workflow.nodes.forEach((n) => {
+      const match = n.id.match(/node-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > nodeCounter) nodeCounter = num;
+      }
+    });
+
+    const edgesWithType = record.edges.map((e) => ({
+      ...e,
+      type: e.type || 'custom',
+      sourceHandle: e.sourceHandle || 'out',
+      targetHandle: e.targetHandle || 'in',
+    }));
+
+    set({
+      currentWorkflowId: id,
+      currentWorkflow: record.workflow,
+      nodePositions: record.nodePositions,
+      edges: edgesWithType,
+      selectedNodeId: null,
+    });
+
+    try {
+      localStorage.setItem(CURRENT_WF_KEY, id);
+    } catch (e) {
+      console.warn('Failed to save current workflow id:', e);
+    }
+  },
+
+  saveCurrentWorkflow: () => {
+    const state = get();
+    if (!state.currentWorkflowId || !state.currentWorkflow) return;
+
+    const now = Date.now();
+    const updatedWorkflow = {
+      ...state.currentWorkflow,
+      flowMeta: {
+        ...state.currentWorkflow.flowMeta,
+        updatedAt: now,
+      },
+    };
+
+    set({
+      workflows: state.workflows.map((w) =>
+        w.id === state.currentWorkflowId
+          ? {
+              ...w,
+              workflow: updatedWorkflow,
+              nodePositions: state.nodePositions,
+              edges: state.edges,
+              updatedAt: now,
+            }
+          : w
+      ),
+    });
+
+    get().saveWorkflowsToStorage();
+  },
+
+  deleteWorkflow: (id) => {
+    const state = get();
+    const remaining = state.workflows.filter((w) => w.id !== id);
+
+    let newCurrentId = state.currentWorkflowId;
+    let newCurrentWf = state.currentWorkflow;
+    let newPositions = state.nodePositions;
+    let newEdges = state.edges;
+
+    if (state.currentWorkflowId === id) {
+      if (remaining.length > 0) {
+        const first = remaining[0];
+        newCurrentId = first.id;
+        newCurrentWf = first.workflow;
+        newPositions = first.nodePositions;
+        newEdges = first.edges;
+      } else {
+        newCurrentId = null;
+        newCurrentWf = null;
+        newPositions = {};
+        newEdges = [];
+      }
+    }
+
+    set({
+      workflows: remaining,
+      currentWorkflowId: newCurrentId,
+      currentWorkflow: newCurrentWf,
+      nodePositions: newPositions,
+      edges: newEdges,
+      selectedNodeId: null,
+    });
+
+    get().saveWorkflowsToStorage();
+  },
+
+  duplicateWorkflow: (id) => {
+    const record = get().workflows.find((w) => w.id === id);
+    if (!record) return '';
+
+    const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+    const newRecord: WorkflowRecord = {
+      id: newId,
+      workflow: JSON.parse(JSON.stringify(record.workflow)),
+      nodePositions: { ...record.nodePositions },
+      edges: [...record.edges],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    newRecord.workflow.flowMeta = {
+      ...newRecord.workflow.flowMeta,
+      name: `${record.workflow.flowMeta.name} (副本)`,
+    };
+
+    set({
+      workflows: [...get().workflows, newRecord],
+    });
+
+    get().saveWorkflowsToStorage();
+    return newId;
+  },
+
+  renameWorkflow: (id, name) => {
+    const state = get();
+    const now = Date.now();
+
+    set({
+      workflows: state.workflows.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              workflow: {
+                ...w.workflow,
+                flowMeta: { ...w.workflow.flowMeta, name },
+              },
+              updatedAt: now,
+            }
+          : w
+      ),
+      currentWorkflow:
+        state.currentWorkflowId === id && state.currentWorkflow
+          ? {
+              ...state.currentWorkflow,
+              flowMeta: { ...state.currentWorkflow.flowMeta, name },
+            }
+          : state.currentWorkflow,
+    });
+
+    get().saveWorkflowsToStorage();
+  },
+
+  // ==================== 导入导出 ====================
+
+  exportWorkflow: (id) => {
+    const record = get().workflows.find((w) => w.id === id);
+    if (record) return record.workflow;
+    if (get().currentWorkflow) return get().currentWorkflow!;
+    return get().createEmptyWorkflow();
+  },
+
+  importWorkflow: (workflow) => {
+    const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+
+    const nodePositions = generateDefaultPositions(workflow);
+    const edges = generateEdgesFromWorkflow(workflow);
+
+    const record: WorkflowRecord = {
+      id,
+      workflow: {
+        ...workflow,
+        flowMeta: {
+          ...workflow.flowMeta,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      nodePositions,
+      edges,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    set({
+      workflows: [...get().workflows, record],
+    });
+
+    get().saveWorkflowsToStorage();
+    return id;
+  },
+
+  saveWorkflowsToStorage: () => {
+    try {
+      localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(get().workflows));
+      if (get().currentWorkflowId) {
+        localStorage.setItem(CURRENT_WF_KEY, get().currentWorkflowId!);
+      }
+    } catch (e) {
+      console.warn('Failed to save workflows to storage:', e);
+    }
+  },
+
+  createEmptyWorkflow: (name = '新建工作流') => {
+    nodeCounter = 0;
+    const startNode: FlowNode = {
+      id: 'start',
+      nodeType: 'control.start',
+      nodeName: '开始',
+      nodeParams: {},
+      nextNodes: [{ nodeId: 'end' }],
+    };
+
+    const endNode: FlowNode = {
+      id: 'end',
+      nodeType: 'control.end',
+      nodeName: '结束',
+      nodeParams: {},
+      nextNodes: [],
+    };
+
+    const wf: FlowSchema = {
+      version: '2.0',
+      flowMeta: { name, desc: '' },
+      globalVars: {},
+      runtime: {
+        defaultTimeout: 30000,
+        defaultRetry: 1,
+        onError: 'stop',
+      },
+      modelConfig: {
+        midscene: { defaultModelId: 'default' },
+      },
+      target: { type: 'computer' },
+      nodes: [startNode, endNode],
+    };
+
+    return wf;
+  },
+}));

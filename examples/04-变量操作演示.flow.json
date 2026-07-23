@@ -1,0 +1,126 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "变量操作演示",
+    "desc": "演示变量赋值的各种操作：递增、递减、转大写、trim等",
+    "source": "manual",
+    "createdAt": 1753180800000,
+    "updatedAt": 1753180800000
+  },
+  "globalVars": {
+    "counter": 0,
+    "message": "  Hello World  ",
+    "price": 99.9
+  },
+  "runtime": {
+    "defaultTimeout": 30000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "defaultModelId": "default"
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "nodeType": "control.start",
+      "nodeName": "开始",
+      "nodeParams": {},
+      "nextNodes": [
+        { "nodeId": "node-1" }
+      ]
+    },
+    {
+      "id": "node-1",
+      "nodeType": "control.log",
+      "nodeName": "初始值",
+      "nodeParams": {
+        "message": "初始值: counter={{counter}}, message='{{message}}', price={{price}}",
+        "level": "info"
+      },
+      "nextNodes": [
+        { "nodeId": "node-2" }
+      ]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "control.var",
+      "nodeName": "计数器+10",
+      "nodeParams": {
+        "varName": "counter",
+        "operation": "increment",
+        "valueType": "number",
+        "value": "10"
+      },
+      "nextNodes": [
+        { "nodeId": "node-3" }
+      ]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.var",
+      "nodeName": "去除首尾空格",
+      "nodeParams": {
+        "varName": "message",
+        "operation": "trim",
+        "valueType": "string",
+        "value": ""
+      },
+      "nextNodes": [
+        { "nodeId": "node-4" }
+      ]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "control.var",
+      "nodeName": "转大写",
+      "nodeParams": {
+        "varName": "message",
+        "operation": "toUpperCase",
+        "valueType": "string",
+        "value": ""
+      },
+      "nextNodes": [
+        { "nodeId": "node-5" }
+      ]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "control.var",
+      "nodeName": "价格打8折",
+      "nodeParams": {
+        "varName": "price",
+        "operation": "multiply",
+        "valueType": "number",
+        "value": "0.8"
+      },
+      "nextNodes": [
+        { "nodeId": "node-6" }
+      ]
+    },
+    {
+      "id": "node-6",
+      "nodeType": "control.log",
+      "nodeName": "操作后的值",
+      "nodeParams": {
+        "message": "操作后: counter={{counter}}, message='{{message}}', price={{price}}",
+        "level": "info"
+      },
+      "nextNodes": [
+        { "nodeId": "end" }
+      ]
+    },
+    {
+      "id": "end",
+      "nodeType": "control.end",
+      "nodeName": "结束",
+      "nodeParams": {},
+      "nextNodes": []
+    }
+  ]
+}

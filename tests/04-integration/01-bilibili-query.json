@@ -1,0 +1,148 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试08: 综合场景 - B站视频查询与统计",
+    "desc": "综合测试：浏览器操作 + 查询 + 变量 + 循环 + 条件判断 + 日志"
+  },
+  "globalVars": {
+    "videoCount": 0
+  },
+  "runtime": {
+    "defaultTimeout": 180000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 180000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "control.log",
+      "nodeName": "开始测试",
+      "nodeParams": {
+        "message": "===== 综合测试开始 ====="
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "midscene.act",
+      "nodeName": "打开 Chrome",
+      "nodeParams": {
+        "prompt": "按 Cmd+Space 打开 Spotlight，输入 Chrome 并按回车打开谷歌浏览器"
+      },
+      "nextNodes": [{ "nodeId": "node-3" }]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "midscene.sleep",
+      "nodeName": "等待浏览器启动",
+      "nodeParams": {
+        "duration": 3000
+      },
+      "nextNodes": [{ "nodeId": "node-4" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "midscene.act",
+      "nodeName": "访问 Bilibili",
+      "nodeParams": {
+        "prompt": "点击地址栏，输入 bilibili.com 并按回车访问"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "midscene.sleep",
+      "nodeName": "等待页面加载",
+      "nodeParams": {
+        "duration": 5000
+      },
+      "nextNodes": [{ "nodeId": "node-6" }]
+    },
+    {
+      "id": "node-6",
+      "nodeType": "midscene.query",
+      "nodeName": "获取热门视频标题",
+      "nodeParams": {
+        "prompt": "页面上展示的热门视频标题有哪些？列出前3个视频的标题",
+        "outputVar": "hotVideos"
+      },
+      "nextNodes": [{ "nodeId": "node-7" }]
+    },
+    {
+      "id": "node-7",
+      "nodeType": "control.log",
+      "nodeName": "打印查询结果",
+      "nodeParams": {
+        "var": "hotVideos"
+      },
+      "nextNodes": [{ "nodeId": "node-8" }]
+    },
+    {
+      "id": "node-8",
+      "nodeType": "control.var",
+      "nodeName": "设置视频数量",
+      "nodeParams": {
+        "name": "videoCount",
+        "value": 3,
+        "mode": "set"
+      },
+      "nextNodes": [{ "nodeId": "node-9" }]
+    },
+    {
+      "id": "node-9",
+      "nodeType": "control.if",
+      "nodeName": "判断视频数量是否足够",
+      "nodeParams": {
+        "expression": "{{globalVars.videoCount}} >= 3"
+      },
+      "nextNodes": [
+        { "nodeId": "node-10", "condition": "true" },
+        { "nodeId": "node-11", "condition": "false" }
+      ]
+    },
+    {
+      "id": "node-10",
+      "nodeType": "control.log",
+      "nodeName": "数量足够",
+      "nodeParams": {
+        "message": "✅ 视频数量充足（>=3），测试通过"
+      },
+      "nextNodes": [{ "nodeId": "node-12" }]
+    },
+    {
+      "id": "node-11",
+      "nodeType": "control.log",
+      "nodeName": "数量不足",
+      "nodeParams": {
+        "message": "⚠️ 视频数量不足（<3）"
+      },
+      "nextNodes": [{ "nodeId": "node-12" }]
+    },
+    {
+      "id": "node-12",
+      "nodeType": "control.log",
+      "nodeName": "测试结束",
+      "nodeParams": {
+        "message": "===== 综合测试结束 ====="
+      },
+      "nextNodes": []
+    }
+  ]
+}

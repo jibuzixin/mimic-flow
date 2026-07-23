@@ -1,0 +1,104 @@
+{
+  "version": "2.0",
+  "flowMeta": {
+    "name": "测试02: 条件分支 (control.if)",
+    "desc": "验证 control.if 节点的条件判断和分支执行"
+  },
+  "globalVars": {
+    "score": 85,
+    "username": "testuser"
+  },
+  "runtime": {
+    "defaultTimeout": 180000,
+    "defaultRetry": 1,
+    "onError": "stop"
+  },
+  "modelConfig": {
+    "midscene": {
+      "inline": {
+        "modelId": "doubao-seed-2-0-lite-260428",
+        "apiKey": "YOUR_API_KEY_HERE",
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+        "modelFamily": "doubao-seed",
+        "timeout": 180000,
+        "retryCount": 1,
+        "reasoningEnabled": false,
+        "preferredLanguage": "zh"
+      }
+    }
+  },
+  "target": {
+    "type": "computer"
+  },
+  "nodes": [
+    {
+      "id": "node-1",
+      "nodeType": "control.log",
+      "nodeName": "开始测试",
+      "nodeParams": {
+        "message": "开始条件分支测试，分数: {{globalVars.score}}"
+      },
+      "nextNodes": [{ "nodeId": "node-2" }]
+    },
+    {
+      "id": "node-2",
+      "nodeType": "control.if",
+      "nodeName": "判断分数 >= 60",
+      "nodeParams": {
+        "expression": "{{globalVars.score}} >= 60"
+      },
+      "nextNodes": [
+        { "nodeId": "node-3", "condition": "true" },
+        { "nodeId": "node-4", "condition": "false" }
+      ]
+    },
+    {
+      "id": "node-3",
+      "nodeType": "control.log",
+      "nodeName": "及格分支",
+      "nodeParams": {
+        "message": "✅ 分数及格！走 true 分支"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-4",
+      "nodeType": "control.log",
+      "nodeName": "不及格分支",
+      "nodeParams": {
+        "message": "❌ 分数不及格！走 false 分支"
+      },
+      "nextNodes": [{ "nodeId": "node-5" }]
+    },
+    {
+      "id": "node-5",
+      "nodeType": "control.if",
+      "nodeName": "判断分数 >= 90",
+      "nodeParams": {
+        "expression": "{{globalVars.score}} >= 90"
+      },
+      "nextNodes": [
+        { "nodeId": "node-6", "condition": "true" },
+        { "nodeId": "node-7", "condition": "false" }
+      ]
+    },
+    {
+      "id": "node-6",
+      "nodeType": "control.log",
+      "nodeName": "优秀分支",
+      "nodeParams": {
+        "message": "🏆 分数优秀！走 true 分支"
+      },
+      "nextNodes": []
+    },
+    {
+      "id": "node-7",
+      "nodeType": "control.log",
+      "nodeName": "非优秀分支",
+      "nodeParams": {
+        "message": "📚 继续努力！走 false 分支（预期）"
+      },
+      "nextNodes": []
+    }
+  ]
+}
