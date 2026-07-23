@@ -407,7 +407,6 @@ export const nodeConfigs: NodeConfig[] = [
     },
     propertyFields: [
       { key: 'prompt', label: '查询描述', type: 'textarea', placeholder: '例如：获取页面上所有的标题' },
-      { key: 'outputVar', label: '输出变量名', type: 'text', description: '查询结果保存到这个变量' },
     ],
   },
   {

@@ -6,13 +6,15 @@ interface VariableInputProps {
   onChange: (value: string) => void;
   placeholder?: string;
   variables: string[];
+  multiline?: boolean;
 }
 
-export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, placeholder, variables }) => {
+export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, placeholder, variables, multiline }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredVariables = variables.filter((v) =>
@@ -20,7 +22,22 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
   );
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (e.key === 'Backspace') {
+        const input = e.currentTarget;
+        const cursorPos = input.selectionStart;
+        if (cursorPos !== null && cursorPos > 0) {
+          const textBeforeCursor = value.slice(0, cursorPos);
+          const varMatch = textBeforeCursor.match(/\{\{([\w.]+)\}\}$/);
+          if (varMatch) {
+            e.preventDefault();
+            const varStart = cursorPos - varMatch[0].length;
+            onChange(value.slice(0, varStart) + value.slice(cursorPos));
+            return;
+          }
+        }
+      }
+
       if (!showDropdown || filteredVariables.length === 0) {
         if (e.key === '#') {
           e.preventDefault();
@@ -63,7 +80,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
   );
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const newValue = e.target.value;
       const lastHashIndex = newValue.lastIndexOf('#');
       if (lastHashIndex !== -1 && lastHashIndex === newValue.length - 1) {
@@ -110,17 +127,93 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const renderHighlightedValue = () => {
+    if (!value) return null;
+    
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let key = 0;
+    
+    const regex = /\{\{([\w.]+)\}\}/g;
+    let match;
+    
+    while ((match = regex.exec(value)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={`text-${key++}`} className="text-gray-800">
+            {value.slice(lastIndex, match.index)}
+          </span>
+        );
+      }
+      parts.push(
+        <span
+          key={`var-${key++}`}
+          className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-mono text-xs border border-indigo-200 mx-0.5"
+        >
+          {match[1]}
+        </span>
+      );
+      lastIndex = regex.lastIndex;
+    }
+    
+    if (lastIndex < value.length) {
+      parts.push(
+        <span key={`text-${key++}`} className="text-gray-800">
+          {value.slice(lastIndex)}
+        </span>
+      );
+    }
+    
+    return parts;
+  };
+
+  const hasVariables = /\{\{[\w.]+\}\}/.test(value);
+  const showHighlighted = hasVariables && !isFocused && !showDropdown;
+
   return (
     <div className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
-      />
+      {showHighlighted ? (
+        <div
+          className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white ${
+            multiline ? 'min-h-[80px] whitespace-pre-wrap' : ''
+          }`}
+          onClick={() => inputRef.current?.focus()}
+        >
+          {renderHighlightedValue()}
+          {!value && placeholder && (
+            <span className="text-gray-400">{placeholder}</span>
+          )}
+        </div>
+      ) : null}
+      {multiline ? (
+        <textarea
+          ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder={placeholder}
+          rows={4}
+          className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white resize-none ${
+            showHighlighted ? 'absolute inset-0 opacity-0 cursor-text' : ''
+          }`}
+        />
+      ) : (
+        <input
+          ref={inputRef as React.RefObject<HTMLInputElement>}
+          type="text"
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder={placeholder}
+          className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white ${
+            showHighlighted ? 'absolute inset-0 opacity-0 cursor-text' : ''
+          }`}
+        />
+      )}
       {showDropdown && filteredVariables.length > 0 &&
         createPortal(
           <div

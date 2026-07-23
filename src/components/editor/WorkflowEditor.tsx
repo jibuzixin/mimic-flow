@@ -69,6 +69,7 @@ function WorkflowEditorInner() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [editingName, setEditingName] = useState('');
+  const isSyncingFromStore = useRef(false);
 
   const {
     currentWorkflow,
@@ -76,6 +77,7 @@ function WorkflowEditorInner() {
     addNode,
     deleteNode,
     removeEdge,
+    addEdgeToStore,
     nodePositions,
     setNodePosition,
     edges: storeEdges,
@@ -186,7 +188,11 @@ function WorkflowEditorInner() {
         }))
       : [];
 
+    isSyncingFromStore.current = true;
     setEdges(normalizedEdges);
+    requestAnimationFrame(() => {
+      isSyncingFromStore.current = false;
+    });
   }, [workflowKey, nodeIdsKey, initialized, storeEdges, setNodes, setEdges]);
 
   useEffect(() => {
@@ -230,14 +236,14 @@ function WorkflowEditorInner() {
   const handleEdgesChange: OnEdgesChange<Edge> = useCallback(
     (changes) => {
       onEdgesChange(changes);
+      if (isSyncingFromStore.current) return;
       const hasRemove = changes.some(c => c.type === 'remove');
       if (hasRemove) {
         const deletedIds = changes.filter(c => c.type === 'remove').map(c => c.id);
         deletedIds.forEach(id => removeEdge(id));
-        syncNextNodesFromEdges();
       }
     },
-    [onEdgesChange, removeEdge, syncNextNodesFromEdges],
+    [onEdgesChange, removeEdge],
   );
 
   useEffect(() => {
@@ -279,27 +285,10 @@ function WorkflowEditorInner() {
         targetHandle: params.targetHandle || 'in',
         id: `edge-${Date.now()}`,
       } as Edge;
-      setEdges((eds) => {
-        let newEdges = eds;
-        const sourceHandle = newEdge.sourceHandle || 'out';
-        if (sourceHandle === 'out') {
-          newEdges = newEdges.filter(
-            e => !(e.source === newEdge.source && (e.sourceHandle || 'out') === 'out')
-          );
-        }
-        const targetHandle = newEdge.targetHandle || 'in';
-        if (targetHandle === 'in') {
-          newEdges = newEdges.filter(
-            e => !(e.target === newEdge.target && (e.targetHandle || 'in') === 'in')
-          );
-        }
-        newEdges = addEdge(newEdge, newEdges);
-        setStoreEdges(newEdges);
-        return newEdges;
-      });
+      addEdgeToStore(newEdge);
       syncNextNodesFromEdges();
     },
-    [setEdges, setStoreEdges, syncNextNodesFromEdges],
+    [addEdgeToStore, syncNextNodesFromEdges],
   );
 
   const onReconnect = useCallback(

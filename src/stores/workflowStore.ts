@@ -93,7 +93,7 @@ interface WorkflowState {
 
   setNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   setEdges: (edges: Edge[]) => void;
-  addEdge: (edge: Edge) => void;
+  addEdgeToStore: (edge: Edge) => void;
   removeEdge: (edgeId: string) => void;
   syncNextNodesFromEdges: () => void;
 
@@ -736,17 +736,60 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({ edges });
   },
 
-  addEdge: (edge) => {
+  addEdgeToStore: (edge) => {
+    const state = get();
+    let newEdges = [...state.edges, edge];
+    
+    const sourceHandle = edge.sourceHandle || 'out';
+    if (sourceHandle === 'out') {
+      newEdges = newEdges.filter(
+        e => !(e.source === edge.source && (e.sourceHandle || 'out') === 'out')
+      );
+    }
+    
+    const targetHandle = edge.targetHandle || 'in';
+    if (targetHandle === 'in') {
+      newEdges = newEdges.filter(
+        e => !(e.target === edge.target && (e.targetHandle || 'in') === 'in')
+      );
+    }
+    
+    newEdges.push(edge);
+    
     set({
-      edges: [...get().edges, edge],
+      edges: newEdges,
       isDirty: true,
     });
     get().pushHistory();
   },
 
   removeEdge: (edgeId) => {
+    const state = get();
+    const newEdges = state.edges.filter((e) => e.id !== edgeId);
+    
+    const nextNodesMap: Record<string, { nodeId: string; condition?: string }[]> = {};
+    newEdges.forEach((e) => {
+      if (!nextNodesMap[e.source]) {
+        nextNodesMap[e.source] = [];
+      }
+      const condition = e.sourceHandle && e.sourceHandle !== 'out' ? e.sourceHandle : undefined;
+      nextNodesMap[e.source].push({
+        nodeId: e.target,
+        condition,
+      });
+    });
+
+    const updatedNodes = state.currentWorkflow?.nodes.map((node) => ({
+      ...node,
+      nextNodes: nextNodesMap[node.id] || [],
+    })) || [];
+
     set({
-      edges: get().edges.filter((e) => e.id !== edgeId),
+      edges: newEdges,
+      currentWorkflow: state.currentWorkflow ? {
+        ...state.currentWorkflow,
+        nodes: updatedNodes,
+      } : null,
       isDirty: true,
     });
     get().pushHistory();

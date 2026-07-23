@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -76,9 +76,57 @@ export const PropertyPanel: React.FC = () => {
   const selectedNode = currentWorkflow?.nodes.find((n) => n.id === selectedNodeId);
   const config = selectedNode ? getNodeConfig(selectedNode.nodeType) : null;
 
-  const variables = currentWorkflow?.nodes
-    .map((n) => (n.nodeParams as any)?.outputVar)
-    .filter((v): v is string => !!v) || [];
+  const getPrecedingNodeVars = useCallback((): string[] => {
+    if (!currentWorkflow || !selectedNodeId) return [];
+
+    const startNode = currentWorkflow.nodes.find((n) => n.nodeType === 'control.start');
+    if (!startNode) return [];
+
+    const visited = new Set<string>();
+    const precedingNodes: string[] = [];
+    const queue: string[] = [startNode.id];
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
+      if (nodeId === selectedNodeId) continue;
+
+      visited.add(nodeId);
+      precedingNodes.push(nodeId);
+
+      const node = currentWorkflow.nodes.find((n) => n.id === nodeId);
+      if (node?.nextNodes) {
+        node.nextNodes.forEach((next) => {
+          if (!visited.has(next.nodeId) && next.nodeId !== selectedNodeId) {
+            queue.push(next.nodeId);
+          }
+        });
+      }
+    }
+
+    const nodeVars = precedingNodes
+      .map((id) => {
+        const node = currentWorkflow.nodes.find((n) => n.id === id);
+        return (node?.nodeParams as any)?.outputVar;
+      })
+      .filter((v): v is string => !!v);
+
+    return nodeVars;
+  }, [currentWorkflow, selectedNodeId]);
+
+  const globalVarNames = useMemo(() => {
+    if (!currentWorkflow?.globalVars) return [];
+    return Object.keys(currentWorkflow.globalVars);
+  }, [currentWorkflow?.globalVars]);
+
+  const nodeOutputVars = useMemo(() => getPrecedingNodeVars(), [getPrecedingNodeVars]);
+
+  const variables = useMemo(() => {
+    const allVars: string[] = [];
+    globalVarNames.forEach((v) => allVars.push(v));
+    nodeOutputVars.forEach((v) => allVars.push(v));
+    return allVars;
+  }, [globalVarNames, nodeOutputVars]);
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -112,12 +160,12 @@ export const PropertyPanel: React.FC = () => {
 
       case 'textarea':
         return (
-          <textarea
+          <VariableInput
             value={String(value ?? '')}
-            onChange={(e) => handleParamChange(field.key, e.target.value)}
+            onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
-            rows={4}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white resize-none"
+            variables={variables}
+            multiline
           />
         );
 

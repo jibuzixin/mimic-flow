@@ -390,6 +390,7 @@ function ModelSelect({
   tagFilter,
   placeholder,
   allowClear,
+  clearLabel,
 }: {
   value?: string;
   onChange: (id: string | undefined) => void;
@@ -397,6 +398,7 @@ function ModelSelect({
   tagFilter?: ModelTag;
   placeholder?: string;
   allowClear?: boolean;
+  clearLabel?: string;
 }) {
   const filtered = tagFilter
     ? models.filter((m) => m.tags.includes(tagFilter) && m.enabled)
@@ -414,7 +416,7 @@ function ModelSelect({
       <SelectContent>
         {allowClear && value && (
           <SelectItem value="">
-            <span className="text-muted-foreground">不使用</span>
+            <span className="text-muted-foreground">{clearLabel || '不使用'}</span>
           </SelectItem>
         )}
         {filtered.map((m) => (
@@ -462,13 +464,6 @@ export default function SettingsPage() {
       }
     };
     loadDefaults();
-    setOriginalState({
-      models: models.length ? models : [],
-      defaultModelIds: defaultModelIds,
-      logSavePath: logSavePath,
-      workflowSavePath: workflowSavePath,
-      runtimeOption: { defaultTimeout: 300000, defaultRetry: 0 },
-    });
   }, []);
   const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0 });
   const [saving, setSaving] = useState(false);
@@ -477,62 +472,27 @@ export default function SettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
-  const [originalState, setOriginalState] = useState<{
-    models: ModelProfile[];
-    defaultModelIds: DefaultModelSelection;
-    logSavePath: string;
-    workflowSavePath: string;
-    runtimeOption: { defaultTimeout: number; defaultRetry: number };
-  } | null>(null);
 
   useEffect(() => {
     setLocalModels(models.length ? models : []);
-    if (!originalState) {
-      setOriginalState({
-        models: models.length ? models : [],
-        defaultModelIds: defaultModelIds,
-        logSavePath: logSavePath,
-        workflowSavePath: workflowSavePath,
-        runtimeOption: { defaultTimeout: 300000, defaultRetry: 0 },
-      });
-    }
   }, [models]);
 
   useEffect(() => {
     setLocalDefaultIds(defaultModelIds);
-    if (!originalState) {
-      setOriginalState((prev) => prev ? { ...prev, defaultModelIds } : null);
-    }
   }, [defaultModelIds]);
 
   useEffect(() => {
     setLocalLogPath(logSavePath);
-    if (!originalState) {
-      setOriginalState((prev) => prev ? { ...prev, logSavePath } : null);
-    }
   }, [logSavePath]);
 
   useEffect(() => {
     setLocalWorkflowPath(workflowSavePath);
-    if (!originalState) {
-      setOriginalState((prev) => prev ? { ...prev, workflowSavePath } : null);
-    }
   }, [workflowSavePath]);
 
   useEffect(() => {
     invoke<IpcResponse<{ globalRuntimeOption: { defaultTimeout: number; defaultRetry: number } }>>('config:get').then((res) => {
       if (res.success && res.data?.globalRuntimeOption) {
         setLocalRuntimeOption(res.data.globalRuntimeOption);
-        if (!originalState) {
-          setOriginalState({
-            models: localModels,
-            defaultModelIds: localDefaultIds,
-            logSavePath: localLogPath,
-            workflowSavePath: localWorkflowPath,
-            runtimeOption: res.data.globalRuntimeOption,
-          });
-        }
       }
       setInitialLoaded(true);
     }).catch(() => {
@@ -541,19 +501,13 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!initialLoaded || !originalState) return;
-    if (justSaved) {
-      setJustSaved(false);
-      return;
-    }
-    const hasChanged =
-      JSON.stringify(localModels) !== JSON.stringify(originalState.models) ||
-      JSON.stringify(localDefaultIds) !== JSON.stringify(originalState.defaultModelIds) ||
-      localLogPath !== originalState.logSavePath ||
-      localWorkflowPath !== originalState.workflowSavePath ||
-      JSON.stringify(localRuntimeOption) !== JSON.stringify(originalState.runtimeOption);
-    setHasChanges(hasChanged);
-  }, [localModels, localDefaultIds, localLogPath, localWorkflowPath, localRuntimeOption, initialLoaded, originalState, justSaved]);
+    if (!initialLoaded) return;
+    const modelsChanged = JSON.stringify(localModels) !== JSON.stringify(models);
+    const defaultIdsChanged = JSON.stringify(localDefaultIds) !== JSON.stringify(defaultModelIds);
+    const logPathChanged = localLogPath !== logSavePath;
+    const workflowPathChanged = localWorkflowPath !== workflowSavePath;
+    setHasChanges(modelsChanged || defaultIdsChanged || logPathChanged || workflowPathChanged);
+  }, [localModels, localDefaultIds, localLogPath, localWorkflowPath, models, defaultModelIds, logSavePath, workflowSavePath, initialLoaded]);
 
   const handleAddModel = () => {
     const newModel: ModelProfile = {
@@ -622,14 +576,6 @@ export default function SettingsPage() {
       await setWorkflowSavePath(localWorkflowPath);
       await invoke('config:set', { globalRuntimeOption: localRuntimeOption });
       setLocalDefaultIds(nextDefaultIds);
-      setOriginalState({
-        models: localModels,
-        defaultModelIds: nextDefaultIds,
-        logSavePath: localLogPath,
-        workflowSavePath: localWorkflowPath,
-        runtimeOption: localRuntimeOption,
-      });
-      setJustSaved(true);
       setHasChanges(false);
       setStatus({ type: 'success', message: '设置已保存' });
     } catch (e) {
@@ -919,6 +865,7 @@ export default function SettingsPage() {
                       tagFilter="multimodal"
                       placeholder="使用默认模型"
                       allowClear
+                      clearLabel="使用默认模型"
                     />
                     <p className="text-xs text-muted-foreground">不选则使用默认模型</p>
                   </div>
@@ -944,6 +891,7 @@ export default function SettingsPage() {
                       tagFilter="text"
                       placeholder="使用默认模型"
                       allowClear
+                      clearLabel="使用默认模型"
                     />
                     <p className="text-xs text-muted-foreground">不选则使用默认模型</p>
                   </div>
