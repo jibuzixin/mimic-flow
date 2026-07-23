@@ -45,7 +45,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
         case 'Enter':
           e.preventDefault();
           if (filteredVariables[selectedIndex]) {
-            onChange(value + filteredVariables[selectedIndex]);
+            onChange(value + `{{${filteredVariables[selectedIndex]}}}`);
             setShowDropdown(false);
             setFilter('');
           }
@@ -87,9 +87,9 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     (variable: string) => {
       const lastHashIndex = value.lastIndexOf('#');
       if (lastHashIndex !== -1) {
-        onChange(value.slice(0, lastHashIndex) + variable);
+        onChange(value.slice(0, lastHashIndex) + `{{${variable}}}`);
       } else {
-        onChange(value + variable);
+        onChange(value + `{{${variable}}}`);
       }
       setShowDropdown(false);
       setFilter('');

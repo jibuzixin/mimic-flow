@@ -232,16 +232,12 @@ function WorkflowEditorInner() {
       onEdgesChange(changes);
       const hasRemove = changes.some(c => c.type === 'remove');
       if (hasRemove) {
-        setTimeout(() => {
-          const currentEdges = useWorkflowStore.getState().edges;
-          const deletedIds = changes.filter(c => c.type === 'remove').map(c => c.id);
-          const remaining = currentEdges.filter(e => !deletedIds.includes(e.id));
-          setStoreEdges(remaining);
-          syncNextNodesFromEdges();
-        }, 0);
+        const deletedIds = changes.filter(c => c.type === 'remove').map(c => c.id);
+        deletedIds.forEach(id => removeEdge(id));
+        syncNextNodesFromEdges();
       }
     },
-    [onEdgesChange, setStoreEdges, syncNextNodesFromEdges],
+    [onEdgesChange, removeEdge, syncNextNodesFromEdges],
   );
 
   useEffect(() => {
@@ -289,6 +285,12 @@ function WorkflowEditorInner() {
         if (sourceHandle === 'out') {
           newEdges = newEdges.filter(
             e => !(e.source === newEdge.source && (e.sourceHandle || 'out') === 'out')
+          );
+        }
+        const targetHandle = newEdge.targetHandle || 'in';
+        if (targetHandle === 'in') {
+          newEdges = newEdges.filter(
+            e => !(e.target === newEdge.target && (e.targetHandle || 'in') === 'in')
           );
         }
         newEdges = addEdge(newEdge, newEdges);

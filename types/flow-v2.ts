@@ -208,4 +208,5 @@ export type RuntimeEvent =
   | { type: 'node:complete'; nodeId: string; duration: number; output?: unknown }
   | { type: 'node:error'; nodeId: string; error: string; willRetry: boolean }
   | { type: 'log'; entry: LogEntry }
-  | { type: 'screenshot'; nodeId?: string; dataUrl: string };
+  | { type: 'screenshot'; nodeId?: string; dataUrl: string }
+  | { type: 'nodes:reset' };

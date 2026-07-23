@@ -20,6 +20,7 @@ export class MidsceneEngine implements FlowEngine {
   private log = getLogger();
   private currentOnEvent: ((event: EngineEvent) => void) | null = null;
   private currentSegment: FlowNode[] = [];
+  private isStopping = false;
 
   async initialize(config: EngineInitConfig): Promise<void> {
     this.initConfig = config;
@@ -76,6 +77,10 @@ export class MidsceneEngine implements FlowEngine {
         generateReport: true,
         aiActionContext: config.actionContext || '',
         onTaskStartTip: (tip: string) => {
+          if (this.isStopping) {
+            this.log.info('[MidsceneEngine] Task started but engine is stopping, ignoring', { tip });
+            return;
+          }
           this.log.info('[MidsceneEngine] Task started', { tip });
           if (this.currentOnEvent && this.currentSegment.length > 0) {
             const currentIndex = this.currentSegment.findIndex(
@@ -132,6 +137,7 @@ export class MidsceneEngine implements FlowEngine {
     const startTime = Date.now();
 
     const abortHandler = () => {
+      this.isStopping = true;
       this.log.warn('[MidsceneEngine] Abort signal received, destroying agent...');
       if (this.agent?.destroy) {
         this.agent.destroy().catch((e: Error) => {
@@ -234,6 +240,9 @@ export class MidsceneEngine implements FlowEngine {
     this.agent = null;
     this.reportMerger = null;
     this.initConfig = null;
+    this.isStopping = false;
+    this.currentSegment = [];
+    this.currentOnEvent = null;
     this.log.info('[MidsceneEngine] Disposed');
   }
 }

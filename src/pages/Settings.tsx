@@ -477,6 +477,7 @@ export default function SettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [originalState, setOriginalState] = useState<{
     models: ModelProfile[];
     defaultModelIds: DefaultModelSelection;
@@ -541,6 +542,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!initialLoaded || !originalState) return;
+    if (justSaved) {
+      setJustSaved(false);
+      return;
+    }
     const hasChanged =
       JSON.stringify(localModels) !== JSON.stringify(originalState.models) ||
       JSON.stringify(localDefaultIds) !== JSON.stringify(originalState.defaultModelIds) ||
@@ -548,7 +553,7 @@ export default function SettingsPage() {
       localWorkflowPath !== originalState.workflowSavePath ||
       JSON.stringify(localRuntimeOption) !== JSON.stringify(originalState.runtimeOption);
     setHasChanges(hasChanged);
-  }, [localModels, localDefaultIds, localLogPath, localWorkflowPath, localRuntimeOption, initialLoaded, originalState]);
+  }, [localModels, localDefaultIds, localLogPath, localWorkflowPath, localRuntimeOption, initialLoaded, originalState, justSaved]);
 
   const handleAddModel = () => {
     const newModel: ModelProfile = {
@@ -624,6 +629,7 @@ export default function SettingsPage() {
         workflowSavePath: localWorkflowPath,
         runtimeOption: localRuntimeOption,
       });
+      setJustSaved(true);
       setHasChanges(false);
       setStatus({ type: 'success', message: '设置已保存' });
     } catch (e) {

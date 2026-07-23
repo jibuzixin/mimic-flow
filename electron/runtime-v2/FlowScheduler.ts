@@ -116,6 +116,18 @@ export class FlowScheduler extends EventEmitter {
     return this.nodeStates;
   }
 
+  resetNodeStates(): void {
+    for (const [nodeId, state] of this.nodeStates) {
+      state.status = 'pending';
+      state.startTime = undefined;
+      state.endTime = undefined;
+      state.output = undefined;
+      state.error = undefined;
+      state.retryCount = 0;
+    }
+    this.emit('event', { type: 'nodes:reset' } as RuntimeEvent);
+  }
+
   getLogs(): LogEntry[] {
     return this.logEntries;
   }
@@ -271,6 +283,10 @@ export class FlowScheduler extends EventEmitter {
         duration: Date.now() - this.startTime,
         reportPath,
       } as RuntimeEvent);
+
+      if ((this.status as FlowStatus) === 'stopped') {
+        this.resetNodeStates();
+      }
 
       await this.engineRegistry.disposeAll();
     }
