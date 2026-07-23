@@ -65,60 +65,28 @@ const defaultModels: ModelProfile[] = [
     id: 'default-multimodal',
     name: '豆包多模态',
     provider: 'doubao',
-    capability: 'multimodal',
+    tags: ['multimodal', 'text'],
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     apiKey: '',
     modelId: '',
+    modelFamily: 'doubao-seed',
     enabled: true,
     pricing: { ...defaultPricing },
     timeout: 60000,
-    maxImagesPerRequest: 10,
-  },
-  {
-    id: 'default-text',
-    name: '豆包文本',
-    provider: 'doubao',
-    capability: 'text',
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    apiKey: '',
-    modelId: '',
-    enabled: false,
-    pricing: { ...defaultPricing },
-    timeout: 60000,
-  },
-  {
-    id: 'default-asr',
-    name: '豆包 ASR',
-    provider: 'doubao',
-    capability: 'asr',
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    apiKey: '',
-    modelId: '',
-    enabled: false,
-    pricing: { ...defaultPricing },
-    timeout: 60000,
-  },
-  {
-    id: 'default-midscene',
-    name: '豆包 Midscene',
-    provider: 'doubao',
-    capability: 'midscene',
-    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-    apiKey: '',
-    modelId: 'doubao-vision-4k',
-    enabled: true,
-    pricing: { ...defaultPricing },
-    timeout: 60000,
-    defaultDeepThink: false,
+    retryCount: 1,
+    reasoningEnabled: false,
     cacheable: true,
+    maxImagesPerRequest: 10,
   },
 ];
 
 const defaultModelIds: DefaultModelSelection = {
-  multimodal: 'default-multimodal',
-  text: 'default-text',
-  asr: 'default-asr',
-  midscene: 'default-midscene',
+  defaultMultimodal: 'default-multimodal',
+  executionEngines: {
+    midscene: {
+      defaultModelId: 'default-multimodal',
+    },
+  },
 };
 
 const defaultGlobalRuntimeOption: AppStore['globalRuntimeOption'] = {
@@ -172,12 +140,57 @@ export function getStore(): Store<AppStore> {
 
 function migrateLegacyModelsIfNeeded(store: Store<AppStore>) {
   const existing = store.get('models');
-  if (existing && existing.length > 0) return;
+  if (existing && existing.length > 0) {
+    const needsMigration = existing.some((m: any) => m.capability && !m.tags);
+    if (!needsMigration) return;
+
+    const migrated: ModelProfile[] = existing.map((m: any) => {
+      const tags: string[] = [];
+      if (m.capability === 'multimodal') tags.push('multimodal', 'text');
+      else if (m.capability === 'text') tags.push('text');
+      else if (m.capability === 'asr') tags.push('asr');
+      else if (m.capability === 'midscene') tags.push('multimodal', 'text');
+
+      return {
+        id: m.id,
+        name: m.name,
+        provider: m.provider,
+        tags,
+        baseUrl: m.baseUrl,
+        apiKey: m.apiKey,
+        modelId: m.modelId,
+        modelFamily: m.modelFamily || 'doubao-seed',
+        enabled: m.enabled,
+        pricing: m.pricing,
+        timeout: m.timeout,
+        retryCount: m.retryCount ?? 1,
+        reasoningEnabled: m.reasoningEnabled ?? m.defaultDeepThink ?? false,
+        cacheable: m.cacheable ?? true,
+        maxImagesPerRequest: m.maxImagesPerRequest,
+        extraModelParams: m.extraModelParams,
+      } as ModelProfile;
+    });
+
+    const oldDefaultIds = store.get('defaultModelIds') as any;
+    const newDefaultIds: DefaultModelSelection = {
+      defaultMultimodal: oldDefaultIds?.multimodal || oldDefaultIds?.midscene,
+      executionEngines: {
+        midscene: {
+          defaultModelId: oldDefaultIds?.midscene || oldDefaultIds?.multimodal,
+        },
+      },
+    };
+
+    store.set('models', migrated);
+    store.set('defaultModelIds', newDefaultIds);
+    return;
+  }
 
   const legacyProvider = store.get('modelProvider');
   const legacyMidscene = store.get('midsceneModel');
   const migrated: ModelProfile[] = [];
-  const defaultIds: DefaultModelSelection = {};
+  let defaultMultimodalId: string | undefined;
+  let midsceneDefaultId: string | undefined;
 
   if (legacyProvider?.multimodalModel?.model) {
     const id = 'migrated-multimodal';
@@ -185,16 +198,21 @@ function migrateLegacyModelsIfNeeded(store: Store<AppStore>) {
       id,
       name: `${legacyProvider.label || legacyProvider.name} 多模态`,
       provider: legacyProvider.name,
-      capability: 'multimodal',
+      tags: ['multimodal', 'text'],
       baseUrl: legacyProvider.baseUrl,
       apiKey: legacyProvider.apiKey,
       modelId: legacyProvider.multimodalModel.model,
+      modelFamily: 'doubao-seed',
       enabled: true,
       pricing: legacyProvider.multimodalModel.pricing,
       timeout: 60000,
+      retryCount: 1,
+      reasoningEnabled: false,
+      cacheable: true,
       maxImagesPerRequest: legacyProvider.multimodalModel.maxImagesPerRequest ?? 10,
     });
-    defaultIds.multimodal = id;
+    defaultMultimodalId = id;
+    midsceneDefaultId = id;
   }
 
   if (legacyProvider?.textModel?.enabled && legacyProvider.textModel.model) {
@@ -203,15 +221,18 @@ function migrateLegacyModelsIfNeeded(store: Store<AppStore>) {
       id,
       name: `${legacyProvider.label || legacyProvider.name} 文本`,
       provider: legacyProvider.name,
-      capability: 'text',
+      tags: ['text'],
       baseUrl: legacyProvider.baseUrl,
       apiKey: legacyProvider.apiKey,
       modelId: legacyProvider.textModel.model,
+      modelFamily: 'doubao-seed',
       enabled: true,
       pricing: legacyProvider.textModel.pricing,
       timeout: 60000,
+      retryCount: 1,
+      reasoningEnabled: false,
+      cacheable: true,
     });
-    defaultIds.text = id;
   }
 
   if (legacyProvider?.asrModel?.enabled && legacyProvider.asrModel.model) {
@@ -220,15 +241,18 @@ function migrateLegacyModelsIfNeeded(store: Store<AppStore>) {
       id,
       name: `${legacyProvider.label || legacyProvider.name} ASR`,
       provider: legacyProvider.name,
-      capability: 'asr',
+      tags: ['asr'],
       baseUrl: legacyProvider.baseUrl,
       apiKey: legacyProvider.apiKey,
       modelId: legacyProvider.asrModel.model,
+      modelFamily: 'doubao-seed',
       enabled: true,
       pricing: legacyProvider.asrModel.pricing,
       timeout: 60000,
+      retryCount: 1,
+      reasoningEnabled: false,
+      cacheable: true,
     });
-    defaultIds.asr = id;
   }
 
   if (legacyMidscene?.modelName) {
@@ -237,21 +261,32 @@ function migrateLegacyModelsIfNeeded(store: Store<AppStore>) {
       id,
       name: `${legacyMidscene.modelName}`,
       provider: 'doubao',
-      capability: 'midscene',
+      tags: ['multimodal', 'text'],
       baseUrl: legacyMidscene.baseUrl,
       apiKey: legacyMidscene.apiKey,
       modelId: legacyMidscene.modelName,
+      modelFamily: 'doubao-seed',
       enabled: true,
       pricing: { ...defaultPricing },
       timeout: legacyMidscene.timeout ?? 60000,
-      defaultDeepThink: legacyMidscene.defaultDeepThink,
-      cacheable: legacyMidscene.cacheable,
+      retryCount: 1,
+      reasoningEnabled: legacyMidscene.defaultDeepThink ?? false,
+      cacheable: legacyMidscene.cacheable ?? true,
     });
-    defaultIds.midscene = id;
+    midsceneDefaultId = id;
+    if (!defaultMultimodalId) defaultMultimodalId = id;
   }
 
   if (migrated.length > 0) {
+    const newDefaultIds: DefaultModelSelection = {
+      defaultMultimodal: defaultMultimodalId,
+      executionEngines: {
+        midscene: {
+          defaultModelId: midsceneDefaultId,
+        },
+      },
+    };
     store.set('models', migrated);
-    store.set('defaultModelIds', { ...defaultModelIds, ...defaultIds });
+    store.set('defaultModelIds', newDefaultIds);
   }
 }

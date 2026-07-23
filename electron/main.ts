@@ -13,7 +13,21 @@ import type { FlowSchema, FlowFileWrapper } from '../types/flow.js';
 import type { FlowSchema as FlowSchemaV2, RuntimeEvent as RuntimeEventV2 } from '../types/flow-v2.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
-type StoreKey = 'modelProvider' | 'midsceneModel' | 'videoSavePath' | 'videoParseConcurrency' | 'globalRuntimeOption' | 'shortcutKeys' | 'ui' | 'workflows' | 'usageStatistics';
+type StoreKey =
+  | 'modelProvider'
+  | 'midsceneModel'
+  | 'videoSavePath'
+  | 'videoParseConcurrency'
+  | 'globalRuntimeOption'
+  | 'shortcutKeys'
+  | 'ui'
+  | 'workflows'
+  | 'usageStatistics'
+  | 'models'
+  | 'defaultModelIds'
+  | 'logSavePath'
+  | 'workflowSavePath'
+  | 'ui.sidebarCollapsed';
 
 const midsceneAdapter = new MidsceneAdapter();
 const flowRuntimeService = new FlowRuntimeService(midsceneAdapter);
@@ -109,6 +123,11 @@ ipcMain.handle('store:delete', (_event, key: string) => {
   return true;
 });
 
+ipcMain.handle('store:clear', () => {
+  getStore().clear();
+  return true;
+});
+
 ipcMain.handle('log:write', (_event, level: string, message: string, meta?: Record<string, unknown>) => {
   const log = getLogger();
   const logMethod = log[level as 'debug' | 'info' | 'warn' | 'error'];
@@ -168,6 +187,30 @@ ipcMain.handle('dialog:select-folder', async () => {
     properties: ['openDirectory', 'createDirectory'],
   });
   return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('shell:open-path', async (_event, path: string) => {
+  if (!path) return false;
+  try {
+    const fs = await import('fs');
+    if (!fs.existsSync(path)) {
+      fs.mkdirSync(path, { recursive: true });
+    }
+    await shell.openPath(path);
+    return true;
+  } catch (e) {
+    console.error('[shell:open-path] error:', e);
+    return false;
+  }
+});
+
+ipcMain.handle('app:get-default-paths', async () => {
+  const userDataPath = app.getPath('userData');
+  return {
+    log: `${userDataPath}/logs`,
+    workflow: `${userDataPath}/workflows`,
+    userData: userDataPath,
+  };
 });
 
 ipcMain.handle('workflow:list', async () => {

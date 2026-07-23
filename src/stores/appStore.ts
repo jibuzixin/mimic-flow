@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ModelProviderConfig, ModelProfile, DefaultModelSelection } from '../../types';
+import type { ModelProviderConfig, ModelProfile, DefaultModelSelection, ExecutionEngineConfig } from '../../types';
 import type { ModelConfig } from '../../types/flow';
 import { invoke } from '../lib/api';
 
@@ -10,8 +10,8 @@ interface AppState {
   midsceneModel: ModelConfig | null;
   models: ModelProfile[];
   defaultModelIds: DefaultModelSelection;
-  videoSavePath: string;
-  videoParseConcurrency: number;
+  logSavePath: string;
+  workflowSavePath: string;
   isLoading: boolean;
 
   init: () => Promise<void>;
@@ -20,9 +20,17 @@ interface AppState {
   setMidsceneModel: (config: ModelConfig) => Promise<void>;
   setModels: (models: ModelProfile[]) => Promise<void>;
   setDefaultModelIds: (ids: DefaultModelSelection) => Promise<void>;
-  setVideoSavePath: (path: string) => Promise<void>;
-  setVideoParseConcurrency: (count: number) => Promise<void>;
+  setLogSavePath: (path: string) => Promise<void>;
+  setWorkflowSavePath: (path: string) => Promise<void>;
+  resetSettings: () => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
+
+const getDefaultModelIds = (): DefaultModelSelection => ({
+  executionEngines: {
+    midscene: {},
+  },
+});
 
 export const useAppStore = create<AppState>((set, get) => ({
   platform: window.mimic?.platform || 'unknown',
@@ -30,9 +38,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   modelProvider: null,
   midsceneModel: null,
   models: [],
-  defaultModelIds: {},
-  videoSavePath: '',
-  videoParseConcurrency: 3,
+  defaultModelIds: getDefaultModelIds(),
+  logSavePath: '',
+  workflowSavePath: '',
   isLoading: true,
 
   init: async () => {
@@ -42,25 +50,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       midsceneModel,
       models,
       defaultModelIds,
-      videoSavePath,
-      videoParseConcurrency,
+      logSavePath,
+      workflowSavePath,
     ] = await Promise.all([
       invoke<boolean>('store:get', 'ui.sidebarCollapsed'),
       invoke<ModelProviderConfig>('store:get', 'modelProvider'),
       invoke<ModelConfig>('store:get', 'midsceneModel'),
       invoke<ModelProfile[]>('store:get', 'models'),
       invoke<DefaultModelSelection>('store:get', 'defaultModelIds'),
-      invoke<string>('store:get', 'videoSavePath'),
-      invoke<number>('store:get', 'videoParseConcurrency'),
+      invoke<string>('store:get', 'logSavePath'),
+      invoke<string>('store:get', 'workflowSavePath'),
     ]);
     set({
       sidebarCollapsed,
       modelProvider,
       midsceneModel,
       models: models || [],
-      defaultModelIds: defaultModelIds || {},
-      videoSavePath,
-      videoParseConcurrency,
+      defaultModelIds: defaultModelIds || getDefaultModelIds(),
+      logSavePath: logSavePath || '',
+      workflowSavePath: workflowSavePath || '',
       isLoading: false,
     });
   },
@@ -91,14 +99,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ defaultModelIds: ids });
   },
 
-  setVideoSavePath: async (path) => {
-    await invoke('store:set', 'videoSavePath', path);
-    set({ videoSavePath: path });
+  setLogSavePath: async (path) => {
+    await invoke('store:set', 'logSavePath', path);
+    set({ logSavePath: path });
   },
 
-  setVideoParseConcurrency: async (count) => {
-    const valid = Math.max(1, Math.min(10, count));
-    await invoke('store:set', 'videoParseConcurrency', valid);
-    set({ videoParseConcurrency: valid });
+  setWorkflowSavePath: async (path) => {
+    await invoke('store:set', 'workflowSavePath', path);
+    set({ workflowSavePath: path });
+  },
+
+  resetSettings: async () => {
+    const keys = [
+      'ui.sidebarCollapsed',
+      'defaultModelIds',
+      'logSavePath',
+      'workflowSavePath',
+    ];
+    for (const key of keys) {
+      await invoke('store:delete', key);
+    }
+    set({
+      sidebarCollapsed: false,
+      defaultModelIds: getDefaultModelIds(),
+      logSavePath: '',
+      workflowSavePath: '',
+    });
+  },
+
+  clearAllData: async () => {
+    await invoke('store:clear');
+    set({
+      sidebarCollapsed: false,
+      modelProvider: null,
+      midsceneModel: null,
+      models: [],
+      defaultModelIds: getDefaultModelIds(),
+      logSavePath: '',
+      workflowSavePath: '',
+    });
   },
 }));

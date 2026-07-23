@@ -39,7 +39,9 @@ type MimicIpcChannel =
   | 'usage:reset'
   | 'flow-v2:run'
   | 'flow-v2:stop'
-  | 'flow-v2:status';
+  | 'flow-v2:status'
+  | 'shell:open-path'
+  | 'app:get-default-paths';
 
 declare global {
   interface Window {

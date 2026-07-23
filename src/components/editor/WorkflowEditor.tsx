@@ -816,7 +816,7 @@ function WorkflowEditorInner() {
               className="fixed z-50 w-56 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl overflow-hidden"
               style={{ left: contextMenu.x, top: contextMenu.y }}
             >
-              <div className="max-h-80 overflow-y-auto p-1.5">
+              <div className="max-h-80 overflow-y-auto scrollbar-hide p-1.5">
                 {contextMenuNodes.length === 0 ? (
                   <div className="px-4 py-6 text-center">
                     <p className="text-xs text-gray-400">暂无固定节点</p>

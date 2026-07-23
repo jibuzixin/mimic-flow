@@ -683,8 +683,22 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     try {
       await window.mimic.invoke('flow-v2:stop');
+      set({
+        isRunning: false,
+        isPaused: false,
+        currentRunningNodeId: null,
+      });
+      get().addExecutionLog({
+        type: 'info',
+        message: '⏹️ 工作流已停止',
+      });
     } catch (error) {
       console.error('[IPC] stopExecution error:', error);
+      set({
+        isRunning: false,
+        isPaused: false,
+        currentRunningNodeId: null,
+      });
     }
 
     if (eventUnsubscribe) {
@@ -1423,7 +1437,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         onError: 'stop',
       },
       modelConfig: {
-        midscene: { defaultModelId: 'default' },
+        midscene: {},
       },
       target: { type: 'computer' },
       nodes: [],

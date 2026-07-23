@@ -129,9 +129,10 @@ export class FlowRuntimeService {
   private resolveFlowModelConfig(flow: FlowSchema): FlowSchema {
     const models = getStore().get('models') || [];
     const defaultIds = getStore().get('defaultModelIds') || {};
-    const modelId = flow.aiGlobalConfig.modelId || defaultIds.midscene;
+    const midsceneConfig = (defaultIds as any).executionEngines?.midscene || {};
+    const modelId = flow.aiGlobalConfig.modelId || midsceneConfig.defaultModelId;
     const model = modelId
-      ? (models as ModelProfile[]).find((m) => m.id === modelId && m.enabled && m.capability === 'midscene')
+      ? (models as ModelProfile[]).find((m) => m.id === modelId && m.enabled && m.tags.includes('multimodal'))
       : undefined;
 
     if (!model) return flow;
@@ -144,7 +145,7 @@ export class FlowRuntimeService {
         apiKey: model.apiKey,
         baseUrl: model.baseUrl,
         timeout: model.timeout ?? flow.aiGlobalConfig.timeout,
-        defaultDeepThink: model.defaultDeepThink ?? flow.aiGlobalConfig.defaultDeepThink,
+        defaultDeepThink: model.reasoningEnabled ?? flow.aiGlobalConfig.defaultDeepThink,
         cacheable: model.cacheable ?? flow.aiGlobalConfig.cacheable,
       },
     };

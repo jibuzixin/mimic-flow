@@ -148,8 +148,12 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
     }
 
     case 'midscene.waitFor': {
-      const condition = String(params.condition ?? '');
-      lines.push(`      - aiWaitFor: ${yamlEscape(condition)}`);
+      const prompt = String(params.prompt ?? '');
+      if (prompt) {
+        lines.push(`      - aiWaitFor: ${yamlEscape(prompt)}`);
+      } else {
+        lines.push(`      - aiWaitFor: 等待页面稳定`);
+      }
       if (params.timeout !== undefined) lines.push(`        timeout: ${params.timeout}`);
       break;
     }
@@ -172,25 +176,21 @@ export function generateMidsceneYaml(
   variablePool: Record<string, unknown>,
   options?: { displayId?: string },
 ): string {
-  const tasks: string[] = [];
-
-  for (const node of nodes) {
-    const params = interpolateParams(node.nodeParams ?? {}, variablePool);
-    const taskName = node.nodeName || node.id;
-    const flowLines = buildTaskFlow(node, params);
-
-    tasks.push(`  - name: ${yamlEscape(taskName)}`);
-    tasks.push(`    flow:`);
-    tasks.push(...flowLines);
-  }
-
   let yaml = 'computer:\n';
   if (options?.displayId) {
     yaml += `  displayId: ${options.displayId}\n`;
   }
   yaml += '\n';
   yaml += 'tasks:\n';
-  yaml += tasks.join('\n') + '\n';
+
+  for (const node of nodes) {
+    const params = interpolateParams(node.nodeParams ?? {}, variablePool);
+    const nodeFlowLines = buildTaskFlow(node, params);
+    
+    yaml += `  - name: ${node.nodeName || node.nodeType}\n`;
+    yaml += `    flow:\n`;
+    yaml += nodeFlowLines.join('\n') + '\n';
+  }
 
   return yaml;
 }

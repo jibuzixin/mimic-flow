@@ -224,12 +224,26 @@ async function summarizeWithTextModel(
   return { content: response.content, usage: response.usage, skipped: false };
 }
 
-function getDefaultModel(capability: ModelProfile['capability']): ModelProfile | undefined {
+function getDefaultModel(tag: string): ModelProfile | undefined {
   const store = getStore();
-  const models = store.get('models') || [];
-  const defaultIds = store.get('defaultModelIds') || {};
-  const id = defaultIds[capability];
-  return id ? models.find((m) => m.id === id && m.enabled) : models.find((m) => m.capability === capability && m.enabled);
+  const models: ModelProfile[] = store.get('models') || [];
+  const defaultIds: any = store.get('defaultModelIds') || {};
+
+  let id: string | undefined;
+  if (tag === 'midscene' || tag === 'multimodal') {
+    id = defaultIds.executionEngines?.midscene?.defaultModelId || defaultIds.defaultMultimodal;
+  } else if (tag === 'asr') {
+    id = undefined;
+  } else if (tag === 'text') {
+    id = undefined;
+  }
+
+  if (id) {
+    const model = models.find((m) => m.id === id && m.enabled);
+    if (model) return model;
+  }
+
+  return models.find((m) => m.tags.includes(tag as any) && m.enabled);
 }
 
 async function transcribeAudioIfEnabled(videoPath: string, hasAudio: boolean): Promise<string | null> {
@@ -487,7 +501,7 @@ function buildFlowSchemaFromSteps(
       apiKey: midsceneModel?.apiKey ?? '',
       baseUrl: midsceneModel?.baseUrl ?? 'https://ark.cn-beijing.volces.com/api/v3',
       actionContext: '请根据任务描述在网页上完成对应操作。',
-      defaultDeepThink: midsceneModel?.defaultDeepThink ?? false,
+      defaultDeepThink: midsceneModel?.reasoningEnabled ?? false,
       cacheable: midsceneModel?.cacheable ?? true,
       timeout: midsceneModel?.timeout ?? 60000,
     },

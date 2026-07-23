@@ -158,55 +158,19 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private async initMidsceneEngine(): Promise<void> {
-    const midsceneModelConfig = this.flow.modelConfig.midscene;
-
-    if (midsceneModelConfig?.inline) {
-      const inline = midsceneModelConfig.inline;
-
-      if (!inline.apiKey) {
-        throw new Error('Midscene 模型配置缺少 apiKey');
-      }
-
-      const toLite = (m: any): any => ({
-        id: 'inline-default',
-        name: m.modelId,
-        provider: 'inline',
-        baseUrl: m.baseUrl,
-        apiKey: m.apiKey,
-        modelId: m.modelId,
-        modelFamily: m.modelFamily || 'doubao-seed',
-        advanced: {
-          timeout: m.timeout ?? 180000,
-          retryCount: m.retryCount ?? 1,
-          reasoningEnabled: m.reasoningEnabled ?? false,
-          preferredLanguage: m.preferredLanguage ?? 'zh',
-        },
-      });
-
-      const initConfig: any = {
-        displayId: this.flow.target.displayId,
-        models: {
-          default: toLite(inline),
-          insight: inline.insightModelId ? toLite({ ...inline, modelId: inline.insightModelId }) : undefined,
-          planning: inline.planningModelId ? toLite({ ...inline, modelId: inline.planningModelId }) : undefined,
-        },
-      };
-
-      this.engineRegistry.setInitConfig('midscene', initConfig);
-      this.addLog({ level: 'info', source: 'scheduler', message: `Midscene 引擎（内联配置）: ${inline.modelId}` });
-      return;
-    }
-
     const store = getStore();
-    const models = store.get('models') || [];
-    const defaultIds = store.get('defaultModelIds') || {};
+    const models: any[] = store.get('models') || [];
+    const defaultIds: any = store.get('defaultModelIds') || {};
 
-    const defaultModelId = midsceneModelConfig?.defaultModelId || defaultIds.midscene;
+    const midsceneEngineConfig = defaultIds.executionEngines?.midscene || {};
+    const globalDefaultMultimodal = defaultIds.defaultMultimodal;
+
+    const defaultModelId = midsceneEngineConfig.defaultModelId || globalDefaultMultimodal;
     if (!defaultModelId) {
-      throw new Error('未配置 Midscene 默认模型，请在设置页面配置模型');
+      throw new Error('未配置 Midscene 默认模型，请在设置页面的"高级设置"或"简单设置"中配置模型');
     }
 
-    const defaultModel = models.find((m: any) => m.id === defaultModelId && m.enabled);
+    const defaultModel = models.find((m) => m.id === defaultModelId && m.enabled);
     if (!defaultModel) {
       throw new Error(`未找到 Midscene 默认模型: ${defaultModelId}（请在设置中确认模型已启用）`);
     }
@@ -215,12 +179,15 @@ export class FlowScheduler extends EventEmitter {
       throw new Error(`模型 ${defaultModel.name} 的 API Key 为空，请在设置页面配置`);
     }
 
-    const insightModel = midsceneModelConfig?.insightModelId
-      ? models.find((m: any) => m.id === midsceneModelConfig.insightModelId && m.enabled)
+    const insightModelId = midsceneEngineConfig.insightModelId;
+    const planningModelId = midsceneEngineConfig.planningModelId;
+
+    const insightModel = insightModelId
+      ? models.find((m) => m.id === insightModelId && m.enabled)
       : undefined;
 
-    const planningModel = midsceneModelConfig?.planningModelId
-      ? models.find((m: any) => m.id === midsceneModelConfig.planningModelId && m.enabled)
+    const planningModel = planningModelId
+      ? models.find((m) => m.id === planningModelId && m.enabled)
       : undefined;
 
     const toLite = (m: any): any => ({
@@ -235,7 +202,7 @@ export class FlowScheduler extends EventEmitter {
         timeout: m.timeout,
         retryCount: m.retryCount,
         reasoningEnabled: m.reasoningEnabled,
-        preferredLanguage: m.preferredLanguage,
+        preferredLanguage: m.preferredLanguage || 'zh',
         cacheable: m.cacheable,
         extraBodyJson: m.extraModelParams,
       },
@@ -314,6 +281,7 @@ export class FlowScheduler extends EventEmitter {
     this.status = 'stopped';
     this.abortController?.abort();
     this.addLog({ level: 'warn', source: 'scheduler', message: '工作流被用户停止' });
+    this.engineRegistry.disposeAll().catch(console.error);
   }
 
   private async executeNode(nodeId: string): Promise<void> {

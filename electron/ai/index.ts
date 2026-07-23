@@ -24,20 +24,23 @@ function createProvider(profile: ModelProfile): AIProvider {
 
 function findModelByIdOrDefault(
   models: ModelProfile[],
-  defaultIds: { multimodal?: string; text?: string; asr?: string; midscene?: string },
+  defaultIds: any,
   modelType: ChatOptions['modelType'],
   requestedModelId?: string
 ): ModelProfile {
   let id = requestedModelId;
   if (!id) {
-    id = defaultIds[modelType];
+    if (modelType === 'multimodal') {
+      id = defaultIds.defaultMultimodal;
+    } else {
+      id = undefined;
+    }
   }
 
   const model = id ? models.find((m) => m.id === id && m.enabled) : undefined;
   if (model) return model;
 
-  // 按能力匹配兜底
-  const fallback = models.find((m) => m.capability === modelType && m.enabled);
+  const fallback = models.find((m) => m.tags.includes(modelType) && m.enabled);
   if (fallback) return fallback;
 
   throw new Error(`未找到可用的 ${modelType} 模型，请先在设置中配置并启用`);

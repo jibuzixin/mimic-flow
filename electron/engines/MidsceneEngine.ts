@@ -18,6 +18,8 @@ export class MidsceneEngine implements FlowEngine {
   private segmentCount = 0;
   private initConfig: EngineInitConfig | null = null;
   private log = getLogger();
+  private currentOnEvent: ((event: EngineEvent) => void) | null = null;
+  private currentSegment: FlowNode[] = [];
 
   async initialize(config: EngineInitConfig): Promise<void> {
     this.initConfig = config;
@@ -73,6 +75,20 @@ export class MidsceneEngine implements FlowEngine {
         displayId: config.displayId,
         generateReport: true,
         aiActionContext: config.actionContext || '',
+        onTaskStartTip: (tip: string) => {
+          this.log.info('[MidsceneEngine] Task started', { tip });
+          if (this.currentOnEvent && this.currentSegment.length > 0) {
+            const currentIndex = this.currentSegment.findIndex(
+              (n) => tip.includes(n.nodeName || n.nodeType)
+            );
+            if (currentIndex >= 0) {
+              this.currentOnEvent({
+                type: 'node:start',
+                nodeId: this.currentSegment[currentIndex].id,
+              });
+            }
+          }
+        },
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -98,6 +114,9 @@ export class MidsceneEngine implements FlowEngine {
     if (!this.agent) {
       return { success: false, outputs: {}, error: 'Midscene agent not initialized' };
     }
+
+    this.currentSegment = segment;
+    this.currentOnEvent = onEvent;
 
     const yaml = generateMidsceneYaml(segment, variablePool, {
       displayId: this.initConfig?.displayId,

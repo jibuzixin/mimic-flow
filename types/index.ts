@@ -33,8 +33,16 @@ export interface ModelProviderConfig {
   asrModel?: SubModelConfig;
 }
 
-/** 模型能力类型 */
-export type ModelCapability = 'multimodal' | 'text' | 'asr' | 'midscene';
+/** 模型标签（能力类型），系统预置 */
+export type ModelTag = 'multimodal' | 'text' | 'asr' | 'tts';
+
+/** 模型标签元数据 */
+export const MODEL_TAG_META: Record<ModelTag, { label: string; description: string }> = {
+  multimodal: { label: '多模态/视觉', description: '支持图片理解、视频解析、视觉定位等' },
+  text: { label: '文本', description: '文本推理、对话、汇总、规划等' },
+  asr: { label: 'ASR/语音识别', description: '语音转文字' },
+  tts: { label: 'TTS/语音合成', description: '文字转语音' },
+};
 
 /** 统一的模型配置项，支持配置多个模型并在使用时选择 */
 export interface ModelProfile {
@@ -43,36 +51,57 @@ export interface ModelProfile {
   name: string;
   /** Provider 标识，如 doubao、openai */
   provider: string;
-  /** 模型能力 */
-  capability: ModelCapability;
+  /** 模型标签（能力），可多选 */
+  tags: ModelTag[];
   /** 请求 Base URL */
   baseUrl: string;
   /** API Key */
   apiKey: string;
   /** 模型 ID，如 doubao-vision-4k */
   modelId: string;
+  /** 模型系列，如 doubao-seed */
+  modelFamily?: string;
   /** 是否启用 */
   enabled: boolean;
   /** 价格配置 */
   pricing: ModelPricing;
   /** 请求超时（毫秒） */
   timeout?: number;
+  /** 重试次数 */
+  retryCount?: number;
+  /** 是否启用推理（Deep Think） */
+  reasoningEnabled?: boolean;
+  /** 首选语言 */
+  preferredLanguage?: string;
+  /** 是否启用缓存 */
+  cacheable?: boolean;
   /** 多模态专用：单次请求最大图片数 */
   maxImagesPerRequest?: number;
-  /** Midscene 专用：是否默认启用 Deep Think */
-  defaultDeepThink?: boolean;
-  /** Midscene 专用：是否启用缓存 */
-  cacheable?: boolean;
   /** 额外模型参数 */
   extraModelParams?: Record<string, unknown>;
 }
 
-/** 各场景默认选用的模型 ID */
+/** 执行引擎模型角色配置 */
+export interface EngineModelConfig {
+  /** 默认模型（必选） */
+  defaultModelId?: string;
+  /** 视觉定位模型（可选，不选则用 default） */
+  insightModelId?: string;
+  /** 规划模型（可选，不选则用 default） */
+  planningModelId?: string;
+}
+
+/** 各执行引擎的模型配置 */
+export interface ExecutionEngineConfig {
+  midscene: EngineModelConfig;
+}
+
+/** 全局默认模型选择 */
 export interface DefaultModelSelection {
-  multimodal?: string;
-  text?: string;
-  asr?: string;
-  midscene?: string;
+  /** 默认多模态模型（简单设置） */
+  defaultMultimodal?: string;
+  /** 执行引擎模型配置 */
+  executionEngines: ExecutionEngineConfig;
 }
 
 export type OperationType =

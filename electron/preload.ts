@@ -39,7 +39,9 @@ export type IpcChannel =
   | 'usage:reset'
   | 'flow-v2:run'
   | 'flow-v2:stop'
-  | 'flow-v2:status';
+  | 'flow-v2:status'
+  | 'shell:open-path'
+  | 'app:get-default-paths';
 
 const api = {
   platform: process.platform,

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
+import { VariableInput } from './VariableInput';
 
 interface HelpTooltipProps {
   text: string;
@@ -75,6 +76,10 @@ export const PropertyPanel: React.FC = () => {
   const selectedNode = currentWorkflow?.nodes.find((n) => n.id === selectedNodeId);
   const config = selectedNode ? getNodeConfig(selectedNode.nodeType) : null;
 
+  const variables = currentWorkflow?.nodes
+    .map((n) => (n.nodeParams as any)?.outputVar)
+    .filter((v): v is string => !!v) || [];
+
   useEffect(() => {
     if (selectedNodeId) {
       setIsCollapsed(false);
@@ -97,12 +102,11 @@ export const PropertyPanel: React.FC = () => {
     switch (field.type) {
       case 'text':
         return (
-          <input
-            type="text"
+          <VariableInput
             value={String(value ?? '')}
-            onChange={(e) => handleParamChange(field.key, e.target.value)}
+            onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
+            variables={variables}
           />
         );
 
@@ -160,12 +164,11 @@ export const PropertyPanel: React.FC = () => {
 
       case 'variable':
         return (
-          <input
-            type="text"
+          <VariableInput
             value={String(value ?? '')}
-            onChange={(e) => handleParamChange(field.key, e.target.value)}
+            onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
+            variables={variables}
           />
         );
 
