@@ -88,7 +88,7 @@ interface WorkflowState {
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
-  canRedo: () => void;
+  canRedo: () => boolean;
   clearCanvas: () => void;
   pushHistory: () => void;
 
@@ -101,6 +101,7 @@ interface WorkflowState {
   renameWorkflow: (id: string, name: string) => void;
   createNewCanvas: () => void;
   loadWorkflowToCanvas: (id: string) => void;
+  importToCanvas: (workflow: FlowSchema) => void;
   hasUnsavedChanges: () => boolean;
 
   exportWorkflow: (id: string, hideSensitive?: boolean) => FlowSchema;
@@ -119,6 +120,14 @@ interface WorkflowState {
 
 let nodeCounter = 0;
 const genNodeId = () => `node-${++nodeCounter}`;
+
+const generateDefaultWorkflowName = () => {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  return `新建工作流 ${dateStr} ${timeStr}`;
+};
 
 const generateEdgesFromWorkflow = (wf: FlowSchema): Edge[] => {
   const edges: Edge[] = [];
@@ -256,8 +265,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
-    get().pushHistory();
-
     const newNode: FlowNode = {
       id: genNodeId(),
       nodeType: type as FlowNodeType,
@@ -291,13 +298,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     } catch (e) {
       console.warn('Failed to save recent nodes:', e);
     }
+
+    get().pushHistory();
   },
 
   updateNode: (nodeId, updates) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
-
-    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -306,13 +313,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   updateNodeParams: (nodeId, params) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
-
-    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -323,13 +330,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   deleteNode: (nodeId) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
-
-    get().pushHistory();
 
     const { [nodeId]: _, ...restPositions } = get().nodePositions;
 
@@ -343,13 +350,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   updateWorkflowMeta: (updates) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
-
-    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -361,13 +368,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   addGlobalVar: (name, value) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
-
-    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -376,6 +383,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   updateGlobalVar: (name, value) => {
@@ -386,8 +395,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
-    get().pushHistory();
-
     const { [name]: _, ...rest } = wf.globalVars;
     set({
       currentWorkflow: {
@@ -396,6 +403,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   setRunning: (running) => set({ isRunning: running }),
@@ -686,19 +695,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   addEdge: (edge) => {
-    get().pushHistory();
     set({
       edges: [...get().edges, edge],
       isDirty: true,
     });
+    get().pushHistory();
   },
 
   removeEdge: (edgeId) => {
-    get().pushHistory();
     set({
       edges: get().edges.filter((e) => e.id !== edgeId),
       isDirty: true,
     });
+    get().pushHistory();
   },
 
   syncNextNodesFromEdges: () => {
@@ -793,7 +802,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearCanvas: () => {
     if (!confirm('确定要清空画布吗？此操作可以撤销。')) return;
     
-    get().pushHistory();
     const emptyWf = get().createEmptyWorkflow('未命名工作流');
     const positions = generateDefaultPositions(emptyWf);
     const edges = generateEdgesFromWorkflow(emptyWf);
@@ -807,6 +815,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeId: null,
       isDirty: true,
     });
+
+    get().pushHistory();
   },
 
   loadFromStorage: () => {
@@ -1070,6 +1080,45 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     get().saveDraftToStorage();
   },
 
+  importToCanvas: (workflow: FlowSchema) => {
+    nodeCounter = 0;
+    workflow.nodes.forEach((n: FlowNode) => {
+      const match = n.id.match(/node-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > nodeCounter) nodeCounter = num;
+      }
+    });
+
+    const nodePositions = generateDefaultPositions(workflow);
+    const edges = generateEdgesFromWorkflow(workflow);
+    const edgesWithType = edges.map((e) => ({
+      ...e,
+      type: (e as any).type || 'custom',
+      sourceHandle: (e as any).sourceHandle || 'out',
+      targetHandle: (e as any).targetHandle || 'in',
+    }));
+
+    const initialHistory: HistoryState[] = [{
+      workflow: JSON.parse(JSON.stringify(workflow)),
+      nodePositions: { ...nodePositions },
+      edges: JSON.parse(JSON.stringify(edgesWithType)),
+    }];
+
+    set({
+      currentWorkflow: JSON.parse(JSON.stringify(workflow)),
+      originalWorkflowId: null,
+      isDirty: true,
+      nodePositions: nodePositions,
+      edges: edgesWithType,
+      selectedNodeId: null,
+      history: initialHistory,
+      historyIndex: 0,
+    });
+
+    get().saveDraftToStorage();
+  },
+
   openWorkflow: (id) => {
     get().loadWorkflowToCanvas(id);
   },
@@ -1288,7 +1337,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
-  createEmptyWorkflow: (name = '新建工作流') => {
+  createEmptyWorkflow: (name) => {
+    const workflowName = name || generateDefaultWorkflowName();
     nodeCounter = 0;
     const startNode: FlowNode = {
       id: 'start',
@@ -1308,7 +1358,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     const wf: FlowSchema = {
       version: '2.0',
-      flowMeta: { name, desc: '' },
+      flowMeta: { name: workflowName, desc: '' },
       globalVars: {},
       runtime: {
         defaultTimeout: 30000,

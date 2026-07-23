@@ -68,6 +68,7 @@ function WorkflowEditorInner() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [hideSensitive, setHideSensitive] = useState(false);
+  const [editingName, setEditingName] = useState('');
 
   const {
     currentWorkflow,
@@ -101,10 +102,12 @@ function WorkflowEditorInner() {
     saveAsNewWorkflow,
     createNewCanvas,
     exportCurrentWorkflow,
+    importToCanvas,
   } = useWorkflowStore();
 
   const currentWorkflowId = useRef<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const contextMenuNodes = useMemo(() => {
     const result: { config: NodeConfig; section: 'recent' | 'pinned' }[] = [];
@@ -136,16 +139,17 @@ function WorkflowEditorInner() {
   }, [initialized, loadFromStorage]);
 
   useEffect(() => {
+    if (currentWorkflow?.flowMeta?.name !== undefined) {
+      setEditingName(currentWorkflow.flowMeta.name);
+    } else {
+      setEditingName('');
+    }
+  }, [currentWorkflow?.flowMeta?.name]);
+
+  useEffect(() => {
     if (!currentWorkflow || !initialized) {
       return;
     }
-
-    const startNode = currentWorkflow.nodes.find(n => n.nodeType === 'control.start');
-    const wfKey = startNode?.id || currentWorkflow.nodes[0]?.id || 'empty';
-    if (currentWorkflowId.current === wfKey) {
-      return;
-    }
-    currentWorkflowId.current = wfKey;
 
     const flowNodes: CustomNodeType[] = currentWorkflow.nodes.map((node) => {
       const pos = nodePositions[node.id] || { x: 100, y: 0 };
@@ -175,27 +179,6 @@ function WorkflowEditorInner() {
 
     setEdges(normalizedEdges);
   }, [currentWorkflow, initialized, nodePositions, storeEdges, nodeExecutionStatus, setNodes, setEdges]);
-
-  useEffect(() => {
-    if (!initialized || !currentWorkflow) return;
-
-    const flowNodes: CustomNodeType[] = currentWorkflow.nodes.map((node) => {
-      const pos = nodePositions[node.id] || { x: 100, y: 0 };
-      const status = nodeExecutionStatus[node.id] || 'idle';
-      return {
-        id: node.id,
-        type: 'custom',
-        position: pos,
-        data: {
-          label: node.nodeName,
-          nodeType: node.nodeType,
-          executionStatus: status,
-        },
-      } as CustomNodeType;
-    });
-
-    setNodes(flowNodes);
-  }, [nodeExecutionStatus, currentWorkflow, nodePositions, setNodes]);
 
   const handleNodesChange: OnNodesChange<CustomNodeType> = useCallback(
     (changes) => {
@@ -267,7 +250,14 @@ function WorkflowEditorInner() {
         id: `edge-${Date.now()}`,
       } as Edge;
       setEdges((eds) => {
-        const newEdges = addEdge(newEdge, eds);
+        let newEdges = eds;
+        const sourceHandle = newEdge.sourceHandle || 'out';
+        if (sourceHandle === 'out') {
+          newEdges = newEdges.filter(
+            e => !(e.source === newEdge.source && (e.sourceHandle || 'out') === 'out')
+          );
+        }
+        newEdges = addEdge(newEdge, newEdges);
         setStoreEdges(newEdges);
         return newEdges;
       });
@@ -451,9 +441,54 @@ function WorkflowEditorInner() {
     createNewCanvas();
   }, [isDirty, createNewCanvas]);
 
-  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    updateWorkflowMeta({ name: e.target.value });
-  }, [updateWorkflowMeta]);
+  const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const proceed = () => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string);
+          importToCanvas(data);
+        } catch (err) {
+          alert('导入失败：文件格式不正确');
+          console.error('Import failed:', err);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    };
+
+    if (isDirty) {
+      const confirmed = confirm('当前画布有未保存的修改，导入将会覆盖当前内容。未保存的修改将会丢失。\n\n是否继续？');
+      if (!confirmed) {
+        e.target.value = '';
+        return;
+      }
+    }
+    proceed();
+  }, [isDirty, importToCanvas]);
+
+  const handleNameBlur = useCallback(() => {
+    const trimmed = editingName.trim();
+    if (trimmed === '') {
+      setEditingName(currentWorkflow?.flowMeta?.name || '未命名工作流');
+    } else if (trimmed !== currentWorkflow?.flowMeta?.name) {
+      updateWorkflowMeta({ name: trimmed });
+    }
+  }, [editingName, currentWorkflow?.flowMeta?.name, updateWorkflowMeta]);
+
+  const handleNameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleNameBlur();
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setEditingName(currentWorkflow?.flowMeta?.name || '');
+      (e.target as HTMLInputElement).blur();
+    }
+  }, [handleNameBlur, currentWorkflow?.flowMeta?.name]);
 
   const isUndoDisabled = !canUndo();
   const isRedoDisabled = !canRedo();
@@ -472,19 +507,14 @@ function WorkflowEditorInner() {
         className="h-14 px-4 bg-white/80 backdrop-blur-sm border-b border-gray-200 flex items-center justify-between z-10"
       >
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleNewCanvas}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            title="新建画布"
-          >
-            <FilePlus className="h-4 w-4 text-gray-600" />
-          </button>
-          <div className="h-5 w-px bg-gray-200" />
           <input
             type="text"
-            value={currentWorkflow?.flowMeta?.name || '未命名工作流'}
-            onChange={handleNameChange}
-            className="text-base font-semibold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors px-1 py-0.5 w-48"
+            value={editingName}
+            onChange={(e) => setEditingName(e.target.value)}
+            onBlur={handleNameBlur}
+            onKeyDown={handleNameKeyDown}
+            placeholder="未命名工作流"
+            className="text-base font-semibold text-gray-800 placeholder:text-gray-400 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors px-1 py-0.5 w-48"
           />
           <div className="flex items-center gap-1.5">
             {isDirty ? (
@@ -549,6 +579,20 @@ function WorkflowEditorInner() {
             变量
           </button>
           <div className="h-5 w-px bg-gray-200" />
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".json,.flow.json"
+            onChange={handleImport}
+            className="hidden"
+          />
+          <button
+            onClick={() => importFileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            导入
+          </button>
           <button
             onClick={() => setShowExportDialog(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -664,27 +708,6 @@ function WorkflowEditorInner() {
               title={isSelectionMode ? '选择模式（点击切换到手写模式）' : '手写模式（点击切换到选择模式）'}
             >
               {isSelectionMode ? <MousePointer2 className="h-4 w-4" /> : <Hand className="h-4 w-4" />}
-            </button>
-            <div className="h-5 w-px bg-gray-200 mx-0.5" />
-            <button
-              onClick={undo}
-              disabled={isUndoDisabled}
-              className={`p-2 rounded-xl transition-colors ${
-                isUndoDisabled ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-600'
-              }`}
-              title="撤销"
-            >
-              <Undo2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={redo}
-              disabled={isRedoDisabled}
-              className={`p-2 rounded-xl transition-colors ${
-                isRedoDisabled ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-600'
-              }`}
-              title="反撤销"
-            >
-              <Redo2 className="h-4 w-4" />
             </button>
             <div className="h-5 w-px bg-gray-200 mx-0.5" />
             <button

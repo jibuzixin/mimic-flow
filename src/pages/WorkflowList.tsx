@@ -200,15 +200,15 @@ export default function WorkflowList() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pr-2 py-2">
           {filtered.map((wf, idx) => (
             <div
               key={wf.id}
-              className="group bg-white rounded-2xl border border-gray-200/70 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
+              className="group bg-white rounded-2xl border border-gray-200/70 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
               onClick={() => handleOpen(wf)}
             >
               <div
-                className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden`}
+                className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
               >
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                   <Play className="h-10 w-10 text-white/0 group-hover:text-white/90 transition-all scale-75 group-hover:scale-100" />
