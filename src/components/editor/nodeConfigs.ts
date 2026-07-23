@@ -48,8 +48,12 @@ export const nodeConfigs: NodeConfig[] = [
     icon: StopCircle,
     description: '工作流的终点，执行到这里结束',
     color: '#ef4444',
-    defaultParams: {},
-    propertyFields: [],
+    defaultParams: {
+      message: '',
+    },
+    propertyFields: [
+      { key: 'message', label: '输出内容', type: 'textarea', description: '输入 # 选择变量插入到内容中' },
+    ],
   },
   {
     type: 'control.if',
@@ -79,7 +83,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         defaultValue: '==',
       },
-      { key: 'rightValue', label: '右侧值', type: 'text', description: '固定值或 {{变量名}}' },
+      { key: 'rightValue', label: '右侧值', type: 'text', description: '输入 # 选择变量，或直接写固定值' },
     ],
   },
   {
@@ -166,7 +170,7 @@ export const nodeConfigs: NodeConfig[] = [
         defaultValue: 'string',
         description: '赋值或运算时使用的值类型',
       },
-      { key: 'value', label: '值', type: 'textarea', description: '用 {{变量名}} 引用其他变量；转大写/小写/trim/取整操作不需要填值' },
+      { key: 'value', label: '值', type: 'textarea', description: '输入 # 选择变量；转大写/小写/trim/取整操作不需要填值' },
     ],
   },
   {
@@ -181,7 +185,7 @@ export const nodeConfigs: NodeConfig[] = [
       level: 'info',
     },
     propertyFields: [
-      { key: 'message', label: '日志内容', type: 'textarea', description: '用 {{变量名}} 引用变量' },
+      { key: 'message', label: '日志内容', type: 'textarea', description: '输入 # 选择变量插入到内容中' },
       {
         key: 'level',
         label: '日志级别',
@@ -407,6 +411,7 @@ export const nodeConfigs: NodeConfig[] = [
     },
     propertyFields: [
       { key: 'prompt', label: '查询描述', type: 'textarea', placeholder: '例如：获取页面上所有的标题' },
+      { key: 'outputVar', label: '输出变量名', type: 'text', description: '查询结果保存到这个变量，后续节点可通过 # 引用' },
     ],
   },
   {

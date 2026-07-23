@@ -37,10 +37,33 @@ function getPathValue(obj: Record<string, unknown>, path: string): unknown {
   return val;
 }
 
+function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
+  const directValue = getPathValue(pool, path);
+  if (directValue !== undefined) return directValue;
+
+  const firstDot = path.indexOf('.');
+  const topKey = firstDot === -1 ? path : path.slice(0, firstDot);
+  const restPath = firstDot === -1 ? '' : path.slice(firstDot + 1);
+
+  const globalVars = pool.globalVars as Record<string, unknown> | undefined;
+  if (globalVars && topKey in globalVars) {
+    if (!restPath) return globalVars[topKey];
+    return getPathValue(globalVars, path);
+  }
+
+  const outputs = pool.outputs as Record<string, unknown> | undefined;
+  if (outputs && topKey in outputs) {
+    if (!restPath) return outputs[topKey];
+    return getPathValue(outputs, path);
+  }
+
+  return undefined;
+}
+
 function interpolateValue(val: unknown, pool: Record<string, unknown>): unknown {
   if (typeof val === 'string') {
     return val.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
-      const value = getPathValue(pool, path);
+      const value = resolveVarPath(pool, path);
       return String(value ?? '');
     });
   }

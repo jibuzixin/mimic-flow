@@ -155,6 +155,8 @@ export const PropertyPanel: React.FC = () => {
             onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
             variables={variables}
+            globalVariables={globalVarNames}
+            nodeVariables={nodeOutputVars}
           />
         );
 
@@ -165,6 +167,8 @@ export const PropertyPanel: React.FC = () => {
             onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
             variables={variables}
+            globalVariables={globalVarNames}
+            nodeVariables={nodeOutputVars}
             multiline
           />
         );
@@ -217,6 +221,8 @@ export const PropertyPanel: React.FC = () => {
             onChange={(v) => handleParamChange(field.key, v)}
             placeholder={field.placeholder}
             variables={variables}
+            globalVariables={globalVarNames}
+            nodeVariables={nodeOutputVars}
           />
         );
 
@@ -315,29 +321,6 @@ export const PropertyPanel: React.FC = () => {
                   </div>
                 ))
               )}
-
-              <div className="pt-4 mt-4 border-t border-gray-100">
-                <h4 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                  <span className="w-1 h-3.5 bg-indigo-500 rounded-full"></span>
-                  输出到变量
-                </h4>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
-                      <input
-                        type="text"
-                        value={(selectedNode!.nodeParams as any)?.outputVar || ''}
-                        onChange={(e) => handleParamChange('outputVar', e.target.value)}
-                        placeholder="变量名，如: result"
-                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">
-                    执行该节点后，将结果保存到指定变量中。后续节点可以通过 {'{{变量名}}'} 引用
-                  </p>
-                </div>
-              </div>
 
               <div className="pt-4 mt-4 border-t border-gray-100">
                 <h4 className="text-xs font-semibold text-gray-700 mb-3 flex items-center gap-1.5">

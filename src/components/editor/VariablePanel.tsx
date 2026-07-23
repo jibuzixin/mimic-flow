@@ -86,7 +86,7 @@ export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose })
                 </div>
                 <div className="flex-1">
                   <h3 className="text-base font-semibold text-gray-800">全局变量</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">在任何节点中使用 {'{{变量名}}'} 引用变量</p>
+                  <p className="text-xs text-gray-500 mt-0.5">在节点输入框中输入 <code className="bg-white px-1 py-0.5 rounded border border-gray-200 font-mono text-indigo-600">#</code> 选择变量，或直接使用 {'{{变量名}}'} 引用</p>
                 </div>
                 <button
                   onClick={onClose}

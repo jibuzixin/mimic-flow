@@ -173,6 +173,7 @@ function WorkflowEditorInner() {
           nodeType: node.nodeType,
           executionStatus: status,
           errorMessage: errorMsg,
+          nodeParams: node.nodeParams,
         },
       } as CustomNodeType;
     });

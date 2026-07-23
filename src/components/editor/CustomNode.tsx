@@ -57,6 +57,13 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(data.label);
 
+  const isLogNode = data.nodeType === 'control.log';
+  const isEndNode = data.nodeType === 'control.end';
+  const showContent = isLogNode || isEndNode;
+
+  const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
+  const contentMessage = nodeParams?.message as string | undefined;
+
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsEditing(true);
@@ -89,7 +96,9 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-      className={`relative min-w-[200px] rounded-xl border-2 bg-white/90 backdrop-blur-sm shadow-lg transition-all ${
+      className={`relative rounded-xl border-2 bg-white/90 backdrop-blur-sm shadow-lg transition-all ${
+        showContent ? 'min-w-[280px]' : 'min-w-[200px]'
+      } ${
         selected
           ? 'border-blue-500 shadow-blue-500/30 ring-4 ring-blue-500/20'
           : status !== 'idle'
@@ -157,6 +166,24 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
             <div className="text-xs text-gray-400 mt-0.5">{config?.name || data.nodeType}</div>
           </div>
         </div>
+
+        {showContent && contentMessage && (
+          <div
+            className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-600 bg-gray-50/50 rounded-lg p-2.5 font-mono whitespace-pre-wrap break-all line-clamp-4"
+            style={{ maxHeight: '100px', overflow: 'hidden' }}
+          >
+            {contentMessage}
+          </div>
+        )}
+
+        {showContent && !contentMessage && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <div className="text-xs text-gray-400 italic flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+              {isLogNode ? '暂无日志内容' : '暂无输出内容'}
+            </div>
+          </div>
+        )}
       </div>
 
       {handles.outputs === 1 ? (
