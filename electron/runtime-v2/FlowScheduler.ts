@@ -18,7 +18,7 @@ import { getLogger } from '../logger.js';
 import { getStore } from '../store.js';
 import type { ModelProfile } from '../../types/index.js';
 
-const CONTROL_NODE_TYPES: FlowNodeType[] = ['control.if', 'control.loop', 'control.var', 'control.log'];
+const CONTROL_NODE_TYPES: FlowNodeType[] = ['control.if', 'control.loop', 'control.var', 'control.log', 'control.start', 'control.end'];
 
 function isControlNode(nodeType: FlowNodeType): boolean {
   return CONTROL_NODE_TYPES.includes(nodeType);
@@ -271,13 +271,13 @@ export class FlowScheduler extends EventEmitter {
     this.emit('event', { type: 'flow:start', flowId: this.flowId } as RuntimeEvent);
 
     try {
-      const startNodeId = this.flow.nodes[0]?.id;
-      if (!startNodeId) {
+      const startNode = this.flow.nodes.find((n) => n.nodeType === 'control.start') || this.flow.nodes[0];
+      if (!startNode) {
         throw new Error('工作流没有节点');
       }
 
-      console.log('[FlowScheduler] Executing first node:', startNodeId);
-      await this.executeNode(startNodeId);
+      console.log('[FlowScheduler] Executing first node:', startNode.id);
+      await this.executeNode(startNode.id);
 
       if (this.status === 'running') {
         this.status = 'success';
@@ -437,6 +437,12 @@ export class FlowScheduler extends EventEmitter {
 
   private async executeControlNode(node: FlowNode): Promise<boolean> {
     switch (node.nodeType) {
+      case 'control.start':
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '▶️ 工作流开始' });
+        return true;
+      case 'control.end':
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '🏁 工作流结束' });
+        return true;
       case 'control.if':
         await this.executeIfNode(node);
         return false;

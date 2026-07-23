@@ -177,11 +177,13 @@ export const PropertyPanel: React.FC = () => {
   const hasSelection = !!selectedNode && !!config;
   const Icon = config?.icon;
 
+  const shouldExpand = hasSelection && !isCollapsed;
+
   return (
     <div
-      className="absolute right-4 top-4 bottom-4 z-10 w-80 flex flex-col"
+      className={`absolute right-4 top-4 z-10 w-80 flex flex-col ${shouldExpand ? 'bottom-4' : ''}`}
     >
-      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden flex-1">
+      <div className={`bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden ${shouldExpand ? 'flex-1' : ''}`}>
         {/* 头部 - 永远显示 */}
         <div
           className="p-4 border-b border-gray-100 bg-gradient-to-l from-gray-50/50 to-white cursor-pointer select-none"

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, MoreVertical, Play, Copy, Download, Trash2, Edit2, FileJson, Upload, Eye } from 'lucide-react';
 import { useWorkflowStore, type WorkflowRecord } from '../stores/workflowStore';
@@ -42,13 +42,20 @@ export default function WorkflowList() {
     importWorkflow,
     hasUnsavedChanges,
     saveCurrentWorkflow,
+    loadFromStorage,
+    setWorkflowGradient,
   } = useWorkflowStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
   const [hideSensitive, setHideSensitive] = useState(false);
+  const [showGradientPicker, setShowGradientPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadFromStorage();
+  }, [loadFromStorage]);
 
   const filtered = workflows.filter((w) =>
     w.workflow.flowMeta.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -212,7 +219,7 @@ export default function WorkflowList() {
                 onClick={() => handleOpen(wf)}
               >
                 <div
-                  className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
+                  className={`h-28 bg-gradient-to-br ${wf.bgGradient || gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
                 >
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                     <Play className="h-10 w-10 text-white/0 group-hover:text-white/90 transition-all scale-75 group-hover:scale-100" />
@@ -325,6 +332,23 @@ export default function WorkflowList() {
               <Edit2 className="h-3.5 w-3.5" />
               重命名
             </button>
+            <div className="px-3 py-2">
+              <div className="text-xs text-gray-500 mb-2">更换背景</div>
+              <div className="grid grid-cols-6 gap-1.5">
+                {gradients.map((g) => (
+                  <button
+                    key={g}
+                    className={`w-full aspect-square rounded-md bg-gradient-to-br ${g} hover:scale-110 transition-transform`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (activeMenu) {
+                        setWorkflowGradient(activeMenu, g);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
               onClick={(e) => {

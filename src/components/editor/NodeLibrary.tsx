@@ -58,9 +58,9 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
 
   return (
     <div
-      className="absolute left-4 top-4 bottom-4 z-10 w-72 flex flex-col"
+      className={`absolute left-4 top-4 z-10 w-72 flex flex-col ${isCollapsed ? '' : 'bottom-4'}`}
     >
-      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden flex-1">
+      <div className={`bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden ${isCollapsed ? '' : 'flex-1'}`}>
         {/* 头部 - 永远显示 */}
         <div
           className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50/50 to-white cursor-pointer select-none"

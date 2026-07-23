@@ -15,6 +15,19 @@ const MAX_HISTORY_STEPS = 50;
 
 let eventUnsubscribe: (() => void) | null = null;
 
+const CARD_GRADIENTS = [
+  'from-violet-400 to-fuchsia-400',
+  'from-sky-400 to-cyan-400',
+  'from-amber-400 to-orange-400',
+  'from-emerald-400 to-teal-400',
+  'from-rose-400 to-pink-400',
+  'from-indigo-400 to-blue-400',
+];
+
+function getRandomGradient(): string {
+  return CARD_GRADIENTS[Math.floor(Math.random() * CARD_GRADIENTS.length)];
+}
+
 export interface WorkflowRecord {
   id: string;
   workflow: FlowSchema;
@@ -22,6 +35,7 @@ export interface WorkflowRecord {
   edges: Edge[];
   createdAt: number;
   updatedAt: number;
+  bgGradient: string;
 }
 
 interface HistoryState {
@@ -100,6 +114,7 @@ interface WorkflowState {
   deleteWorkflow: (id: string) => void;
   duplicateWorkflow: (id: string) => string;
   renameWorkflow: (id: string, name: string) => void;
+  setWorkflowGradient: (id: string, gradient: string) => void;
   createNewCanvas: () => void;
   loadWorkflowToCanvas: (id: string) => void;
   importToCanvas: (workflow: FlowSchema) => void;
@@ -862,6 +877,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
                 edges: edgesWithType.length > 0 ? edgesWithType : generateEdgesFromWorkflow(data.workflow),
                 createdAt: now,
                 updatedAt: now,
+                bgGradient: getRandomGradient(),
               },
             ];
           }
@@ -1010,6 +1026,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges,
       createdAt: now,
       updatedAt: now,
+      bgGradient: getRandomGradient(),
     };
 
     set({
@@ -1171,6 +1188,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         edges: state.edges,
         createdAt: now,
         updatedAt: now,
+        bgGradient: getRandomGradient(),
       };
 
       set({
@@ -1206,6 +1224,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: JSON.parse(JSON.stringify(state.edges)),
       createdAt: now,
       updatedAt: now,
+      bgGradient: getRandomGradient(),
     };
 
     set({
@@ -1249,6 +1268,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: [...record.edges],
       createdAt: now,
       updatedAt: now,
+      bgGradient: getRandomGradient(),
     };
 
     newRecord.workflow.flowMeta = {
@@ -1277,6 +1297,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
                 ...w.workflow,
                 flowMeta: { ...w.workflow.flowMeta, name },
               },
+              updatedAt: now,
+            }
+          : w
+      ),
+    });
+
+    get().saveWorkflowsToStorage();
+  },
+
+  setWorkflowGradient: (id, gradient) => {
+    const state = get();
+    const now = Date.now();
+
+    set({
+      workflows: state.workflows.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              bgGradient: gradient,
               updatedAt: now,
             }
           : w
@@ -1326,6 +1365,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges,
       createdAt: now,
       updatedAt: now,
+      bgGradient: getRandomGradient(),
     };
 
     set({
