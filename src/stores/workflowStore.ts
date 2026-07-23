@@ -36,6 +36,7 @@ export interface WorkflowRecord {
   createdAt: number;
   updatedAt: number;
   bgGradient: string;
+  bgImage?: string;
 }
 
 interface HistoryState {
@@ -115,6 +116,7 @@ interface WorkflowState {
   duplicateWorkflow: (id: string) => string;
   renameWorkflow: (id: string, name: string) => void;
   setWorkflowGradient: (id: string, gradient: string) => void;
+  setWorkflowBgImage: (id: string, imageDataUrl: string | null) => void;
   createNewCanvas: () => void;
   loadWorkflowToCanvas: (id: string) => void;
   importToCanvas: (workflow: FlowSchema) => void;
@@ -462,6 +464,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isPaused: false,
       currentRunningNodeId: null,
       nodeExecutionStatus: initialStatus,
+      nodeErrors: {},
       executionLogs: [],
     });
 
@@ -515,11 +518,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         }
         case 'node:complete': {
           const { nodeId, duration, output } = runtimeEvent;
+          const newErrors = { ...get().nodeErrors };
+          delete newErrors[nodeId];
           set({
             nodeExecutionStatus: {
               ...get().nodeExecutionStatus,
               [nodeId]: 'success',
             },
+            nodeErrors: newErrors,
           });
           const status = get();
           const node = status.currentWorkflow?.nodes.find((n: FlowNode) => n.id === nodeId);
@@ -1316,6 +1322,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           ? {
               ...w,
               bgGradient: gradient,
+              updatedAt: now,
+            }
+          : w
+      ),
+    });
+
+    get().saveWorkflowsToStorage();
+  },
+
+  setWorkflowBgImage: (id, imageDataUrl) => {
+    const state = get();
+    const now = Date.now();
+
+    set({
+      workflows: state.workflows.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              bgImage: imageDataUrl || undefined,
               updatedAt: now,
             }
           : w

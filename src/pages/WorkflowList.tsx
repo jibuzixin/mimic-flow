@@ -44,6 +44,7 @@ export default function WorkflowList() {
     saveCurrentWorkflow,
     loadFromStorage,
     setWorkflowGradient,
+    setWorkflowBgImage,
   } = useWorkflowStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -51,7 +52,9 @@ export default function WorkflowList() {
   const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [showGradientPicker, setShowGradientPicker] = useState(false);
+  const [renameDialog, setRenameDialog] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bgImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadFromStorage();
@@ -106,11 +109,29 @@ export default function WorkflowList() {
   };
 
   const handleRename = (id: string, currentName: string) => {
-    const newName = prompt('请输入新的工作流名称：', currentName);
-    if (newName && newName.trim()) {
-      renameWorkflow(id, newName.trim());
-    }
+    setRenameDialog({ id, name: currentName });
     setActiveMenu(null);
+    setMenuPosition(null);
+  };
+
+  const confirmRename = () => {
+    if (renameDialog && renameDialog.name.trim()) {
+      renameWorkflow(renameDialog.id, renameDialog.name.trim());
+    }
+    setRenameDialog(null);
+  };
+
+  const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeMenu) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setWorkflowBgImage(activeMenu, dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleExport = (id: string) => {
@@ -219,7 +240,8 @@ export default function WorkflowList() {
                 onClick={() => handleOpen(wf)}
               >
                 <div
-                  className={`h-28 bg-gradient-to-br ${wf.bgGradient || gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
+                  className={`h-28 relative overflow-hidden rounded-t-2xl ${wf.bgImage ? '' : `bg-gradient-to-br ${wf.bgGradient || gradients[idx % gradients.length]}`}`}
+                  style={wf.bgImage ? { backgroundImage: `url(${wf.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
                 >
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                     <Play className="h-10 w-10 text-white/0 group-hover:text-white/90 transition-all scale-75 group-hover:scale-100" />
@@ -334,7 +356,7 @@ export default function WorkflowList() {
             </button>
             <div className="px-3 py-2">
               <div className="text-xs text-gray-500 mb-2">更换背景</div>
-              <div className="grid grid-cols-6 gap-1.5">
+              <div className="grid grid-cols-6 gap-1.5 mb-2">
                 {gradients.map((g) => (
                   <button
                     key={g}
@@ -343,11 +365,36 @@ export default function WorkflowList() {
                       e.stopPropagation();
                       if (activeMenu) {
                         setWorkflowGradient(activeMenu, g);
+                        setWorkflowBgImage(activeMenu, null);
                       }
                     }}
                   />
                 ))}
               </div>
+              <button
+                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 rounded-md border border-dashed border-gray-200"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  bgImageInputRef.current?.click();
+                }}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                上传图片
+              </button>
+              {activeMenu && workflows.find(w => w.id === activeMenu)?.bgImage && (
+                <button
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-md mt-1.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (activeMenu) {
+                      setWorkflowBgImage(activeMenu, null);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  移除图片背景
+                </button>
+              )}
             </div>
             <button
               className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
@@ -437,6 +484,52 @@ export default function WorkflowList() {
           </div>
         </div>
       )}
+
+      {renameDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setRenameDialog(null)}
+          />
+          <div className="relative w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="p-5 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-800">重命名工作流</h3>
+            </div>
+            <div className="p-5">
+              <input
+                type="text"
+                value={renameDialog.name}
+                onChange={(e) => setRenameDialog({ ...renameDialog, name: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') confirmRename();
+                }}
+                autoFocus
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                placeholder="请输入工作流名称"
+              />
+            </div>
+            <div className="p-5 border-t border-gray-100 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setRenameDialog(null)}
+              >
+                取消
+              </Button>
+              <Button onClick={confirmRename}>
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={bgImageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleBgImageUpload}
+        className="hidden"
+      />
     </div>
   );
 }
