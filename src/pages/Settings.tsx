@@ -469,7 +469,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState('simple');
-  const [hasChanges, setHasChanges] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -499,15 +498,6 @@ export default function SettingsPage() {
       setInitialLoaded(true);
     });
   }, []);
-
-  useEffect(() => {
-    if (!initialLoaded) return;
-    const modelsChanged = JSON.stringify(localModels) !== JSON.stringify(models);
-    const defaultIdsChanged = JSON.stringify(localDefaultIds) !== JSON.stringify(defaultModelIds);
-    const logPathChanged = localLogPath !== logSavePath;
-    const workflowPathChanged = localWorkflowPath !== workflowSavePath;
-    setHasChanges(modelsChanged || defaultIdsChanged || logPathChanged || workflowPathChanged);
-  }, [localModels, localDefaultIds, localLogPath, localWorkflowPath, models, defaultModelIds, logSavePath, workflowSavePath, initialLoaded]);
 
   const handleAddModel = () => {
     const newModel: ModelProfile = {
@@ -576,8 +566,10 @@ export default function SettingsPage() {
       await setWorkflowSavePath(localWorkflowPath);
       await invoke('config:set', { globalRuntimeOption: localRuntimeOption });
       setLocalDefaultIds(nextDefaultIds);
-      setHasChanges(false);
       setStatus({ type: 'success', message: '设置已保存' });
+      setTimeout(() => {
+        setStatus(null);
+      }, 2000);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setStatus({ type: 'error', message: `保存失败：${message}` });
@@ -624,8 +616,10 @@ export default function SettingsPage() {
       setLocalDefaultIds({ executionEngines: { midscene: {} } });
       setLocalLogPath('');
       setLocalWorkflowPath('');
-      setHasChanges(false);
       setStatus({ type: 'success', message: '设置已重置' });
+      setTimeout(() => {
+        setStatus(null);
+      }, 2000);
     } catch (e) {
       setStatus({ type: 'error', message: '重置失败' });
     }
@@ -639,8 +633,10 @@ export default function SettingsPage() {
       setLocalLogPath('');
       setLocalWorkflowPath('');
       setShowClearConfirm(false);
-      setHasChanges(false);
       setStatus({ type: 'success', message: '所有数据已清理' });
+      setTimeout(() => {
+        setStatus(null);
+      }, 2000);
     } catch (e) {
       setStatus({ type: 'error', message: '清理失败' });
     }
@@ -650,20 +646,24 @@ export default function SettingsPage() {
     <div className="sticky bottom-4 z-40 mt-6">
       <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-white/90 backdrop-blur-md p-4 shadow-lg">
         <div className="flex items-center gap-2 min-w-0">
-          {status?.type === 'success' && <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
-          {status?.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />}
-          {status?.type === 'info' && <Sparkles className="w-4 h-4 text-sky-500 shrink-0" />}
-          <span
-            className={cn(
-              'text-sm truncate',
-              status?.type === 'success' && 'text-emerald-700',
-              status?.type === 'error' && 'text-rose-700',
-              status?.type === 'info' && 'text-sky-700'
-            )}
-            title={status?.message || (hasChanges ? '有未保存的更改' : '所有设置已保存')}
-          >
-            {status?.message || (hasChanges ? '有未保存的更改' : '所有设置已保存')}
-          </span>
+          {status && (
+            <>
+              {status.type === 'success' && <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
+              {status.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+              {status.type === 'info' && <Sparkles className="w-4 h-4 text-sky-500 shrink-0" />}
+              <span
+                className={cn(
+                  'text-sm truncate',
+                  status.type === 'success' && 'text-emerald-700',
+                  status.type === 'error' && 'text-rose-700',
+                  status.type === 'info' && 'text-sky-700'
+                )}
+                title={status.message}
+              >
+                {status.message}
+              </span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button onClick={handleSave} disabled={saving}>

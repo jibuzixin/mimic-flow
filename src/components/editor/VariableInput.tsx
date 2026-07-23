@@ -14,6 +14,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
   const [filter, setFilter] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
+  const [hashStartPos, setHashStartPos] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -21,18 +22,29 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     v.toLowerCase().includes(filter.toLowerCase())
   );
 
+  const setCursorPosition = useCallback((pos: number) => {
+    const input = inputRef.current;
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.setSelectionRange(pos, pos);
+    });
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const input = e.currentTarget;
+      const cursorPos = input.selectionStart ?? 0;
+
       if (e.key === 'Backspace') {
-        const input = e.currentTarget;
-        const cursorPos = input.selectionStart;
-        if (cursorPos !== null && cursorPos > 0) {
+        if (cursorPos > 0) {
           const textBeforeCursor = value.slice(0, cursorPos);
           const varMatch = textBeforeCursor.match(/\{\{([\w.]+)\}\}$/);
           if (varMatch) {
             e.preventDefault();
             const varStart = cursorPos - varMatch[0].length;
-            onChange(value.slice(0, varStart) + value.slice(cursorPos));
+            const newValue = value.slice(0, varStart) + value.slice(cursorPos);
+            onChange(newValue);
+            setCursorPosition(varStart);
             return;
           }
         }
@@ -41,9 +53,13 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
       if (!showDropdown || filteredVariables.length === 0) {
         if (e.key === '#') {
           e.preventDefault();
+          const newValue = value.slice(0, cursorPos) + '#' + value.slice(cursorPos);
+          onChange(newValue);
+          setHashStartPos(cursorPos);
           setShowDropdown(true);
           setFilter('');
           setSelectedIndex(0);
+          setCursorPosition(cursorPos + 1);
         }
         return;
       }
@@ -61,39 +77,55 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
           break;
         case 'Enter':
           e.preventDefault();
-          if (filteredVariables[selectedIndex]) {
-            onChange(value + `{{${filteredVariables[selectedIndex]}}}`);
+          if (filteredVariables[selectedIndex] && hashStartPos !== null) {
+            const varText = `{{${filteredVariables[selectedIndex]}}}`;
+            const newValue = value.slice(0, hashStartPos) + varText + value.slice(cursorPos);
+            onChange(newValue);
+            const newCursorPos = hashStartPos + varText.length;
+            setCursorPosition(newCursorPos);
             setShowDropdown(false);
             setFilter('');
+            setHashStartPos(null);
           }
           break;
         case 'Escape':
           e.preventDefault();
           setShowDropdown(false);
           setFilter('');
+          setHashStartPos(null);
           break;
         default:
           break;
       }
     },
-    [showDropdown, filteredVariables, selectedIndex, value, onChange]
+    [showDropdown, filteredVariables, selectedIndex, value, onChange, hashStartPos, setCursorPosition]
   );
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const newValue = e.target.value;
-      const lastHashIndex = newValue.lastIndexOf('#');
-      if (lastHashIndex !== -1 && lastHashIndex === newValue.length - 1) {
+      const cursorPos = e.target.selectionStart ?? 0;
+      
+      let hashIdx = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        if (newValue[i] === '#') {
+          hashIdx = i;
+          break;
+        }
+        if (newValue[i] === ' ' || newValue[i] === '\n') {
+          break;
+        }
+      }
+
+      if (hashIdx !== -1) {
+        setHashStartPos(hashIdx);
         setShowDropdown(true);
-        setFilter('');
-        setSelectedIndex(0);
-      } else if (lastHashIndex !== -1 && lastHashIndex < newValue.length - 1) {
-        setShowDropdown(true);
-        setFilter(newValue.slice(lastHashIndex + 1));
+        setFilter(newValue.slice(hashIdx + 1, cursorPos));
         setSelectedIndex(0);
       } else {
         setShowDropdown(false);
         setFilter('');
+        setHashStartPos(null);
       }
       onChange(newValue);
     },
@@ -102,16 +134,22 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
 
   const handleSelect = useCallback(
     (variable: string) => {
-      const lastHashIndex = value.lastIndexOf('#');
-      if (lastHashIndex !== -1) {
-        onChange(value.slice(0, lastHashIndex) + `{{${variable}}}`);
-      } else {
-        onChange(value + `{{${variable}}}`);
-      }
+      const input = inputRef.current;
+      const cursorPos = input?.selectionStart ?? value.length;
+      const startPos = hashStartPos ?? cursorPos - 1;
+      
+      const varText = `{{${variable}}}`;
+      const newValue = value.slice(0, startPos) + varText + value.slice(cursorPos);
+      onChange(newValue);
+      
+      const newCursorPos = startPos + varText.length;
+      setCursorPosition(newCursorPos);
+      
       setShowDropdown(false);
       setFilter('');
+      setHashStartPos(null);
     },
-    [value, onChange]
+    [value, onChange, hashStartPos, setCursorPosition]
   );
 
   useEffect(() => {

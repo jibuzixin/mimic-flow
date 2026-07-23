@@ -72,6 +72,7 @@ interface WorkflowState {
 
   history: HistoryState[];
   historyIndex: number;
+  savedSnapshot: HistoryState | null;
 
   setWorkflow: (wf: FlowSchema) => void;
   setSelectedNode: (id: string | null) => void;
@@ -181,6 +182,15 @@ const cloneHistoryState = (wf: FlowSchema | null, positions: Record<string, { x:
   };
 };
 
+const statesEqual = (a: HistoryState | null, b: HistoryState | null): boolean => {
+  if (!a || !b) return false;
+  return (
+    JSON.stringify(a.workflow) === JSON.stringify(b.workflow) &&
+    JSON.stringify(a.nodePositions) === JSON.stringify(b.nodePositions) &&
+    JSON.stringify(a.edges) === JSON.stringify(b.edges)
+  );
+};
+
 const maskSensitiveData = (workflow: FlowSchema): FlowSchema => {
   const sensitiveKeywords = ['password', 'apikey', 'api_key', 'secret', 'token'];
   const masked = JSON.parse(JSON.stringify(workflow)) as FlowSchema;
@@ -235,6 +245,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   pinnedNodeTypes: [],
   history: [],
   historyIndex: -1,
+  savedSnapshot: null,
 
   setWorkflow: (wf) => {
     set({ currentWorkflow: wf });
@@ -841,12 +852,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     });
 
+    const isEqualToSaved = statesEqual(prevState, state.savedSnapshot);
+
     set({
       currentWorkflow: prevState.workflow,
       nodePositions: prevState.nodePositions,
       edges: prevState.edges,
       historyIndex: prevIndex,
-      isDirty: true,
+      isDirty: !isEqualToSaved,
     });
   },
 
@@ -867,12 +880,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     });
 
+    const isEqualToSaved = statesEqual(nextState, state.savedSnapshot);
+
     set({
       currentWorkflow: nextState.workflow,
       nodePositions: nextState.nodePositions,
       edges: nextState.edges,
       historyIndex: nextIndex,
-      isDirty: true,
+      isDirty: !isEqualToSaved,
     });
   },
 
@@ -1122,6 +1137,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeId: null,
       history: initialHistory,
       historyIndex: 0,
+      savedSnapshot: initialHistory[0],
     });
 
     get().saveDraftToStorage();
@@ -1162,6 +1178,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeId: null,
       history: initialHistory,
       historyIndex: 0,
+      savedSnapshot: initialHistory[0],
     });
 
     get().saveDraftToStorage();
@@ -1227,6 +1244,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
     };
 
+    const snapshot = cloneHistoryState(updatedWorkflow, state.nodePositions, state.edges);
+
     if (state.originalWorkflowId) {
       set({
         workflows: state.workflows.map((w) =>
@@ -1241,6 +1260,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             : w
         ),
         isDirty: false,
+        savedSnapshot: snapshot,
       });
     } else {
       const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1258,6 +1278,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         workflows: [...state.workflows, newRecord],
         originalWorkflowId: newId,
         isDirty: false,
+        savedSnapshot: snapshot,
       });
     }
 
