@@ -27,9 +27,9 @@ import { TestReactFlow } from './components/editor/TestReactFlow';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const navItems = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard },
+  { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
   { path: '/recorder', label: '录制 / 解析', icon: Video },
-  { path: '/workflows', label: '工作流库', icon: Workflow },
+  { path: '/workflows', label: '工作流库', icon: Workflow, end: true },
   { path: '/workflows/editor', label: '流程编排', icon: Sparkles },
   { path: '/executor', label: '执行', icon: Play },
   { path: '/logs', label: '日志', icon: Terminal },
@@ -78,6 +78,7 @@ function Sidebar() {
           <NavLink
             key={item.path}
             to={item.path}
+            end={item.end}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group',

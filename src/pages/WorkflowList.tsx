@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, MoreVertical, Play, Copy, Download, Trash2, Edit2, FileJson, Upload } from 'lucide-react';
+import { Plus, Search, MoreVertical, Play, Copy, Download, Trash2, Edit2, FileJson, Upload, Eye } from 'lucide-react';
 import { useWorkflowStore, type WorkflowRecord } from '../stores/workflowStore';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -31,25 +31,58 @@ const gradients = [
 
 export default function WorkflowList() {
   const navigate = useNavigate();
-  const { workflows, createWorkflow, openWorkflow, deleteWorkflow, duplicateWorkflow, renameWorkflow, exportWorkflow, importWorkflow } =
-    useWorkflowStore();
+  const {
+    workflows,
+    createWorkflow,
+    loadWorkflowToCanvas,
+    deleteWorkflow,
+    duplicateWorkflow,
+    renameWorkflow,
+    exportWorkflow,
+    importWorkflow,
+    hasUnsavedChanges,
+    saveCurrentWorkflow,
+  } = useWorkflowStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
+  const [hideSensitive, setHideSensitive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = workflows.filter((w) =>
     w.workflow.flowMeta.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const checkUnsavedAndProceed = (callback: () => void) => {
+    if (hasUnsavedChanges()) {
+      const confirmed = confirm(
+        '当前画布有未保存的修改，继续操作将会丢失这些修改。\n\n是否继续？\n\n（点击"取消"返回保存，点击"确定"继续并丢弃修改）'
+      );
+      if (!confirmed) return false;
+    }
+    callback();
+    return true;
+  };
+
   const handleOpen = (wf: WorkflowRecord) => {
-    openWorkflow(wf.id);
-    navigate('/workflows/editor');
+    const proceed = checkUnsavedAndProceed(() => {
+      loadWorkflowToCanvas(wf.id);
+      navigate('/workflows/editor');
+    });
+    if (!proceed) {
+      setActiveMenu(null);
+    }
   };
 
   const handleCreate = () => {
-    const id = createWorkflow('新建工作流');
-    openWorkflow(id);
-    navigate('/workflows/editor');
+    const proceed = checkUnsavedAndProceed(() => {
+      const id = createWorkflow('新建工作流');
+      loadWorkflowToCanvas(id);
+      navigate('/workflows/editor');
+    });
+    if (!proceed) {
+      setActiveMenu(null);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -73,7 +106,14 @@ export default function WorkflowList() {
   };
 
   const handleExport = (id: string) => {
-    const wf = exportWorkflow(id);
+    setShowExportDialog(id);
+    setActiveMenu(null);
+  };
+
+  const confirmExport = () => {
+    if (!showExportDialog) return;
+    
+    const wf = exportWorkflow(showExportDialog, hideSensitive);
     const blob = new Blob([JSON.stringify(wf, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -81,7 +121,7 @@ export default function WorkflowList() {
     a.download = `${wf.flowMeta.name || 'workflow'}.flow.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setActiveMenu(null);
+    setShowExportDialog(null);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,7 +143,6 @@ export default function WorkflowList() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 顶部标题栏 */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">工作流库</h1>
@@ -128,7 +167,6 @@ export default function WorkflowList() {
         </div>
       </div>
 
-      {/* 搜索栏 */}
       <div className="mb-6">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -141,7 +179,6 @@ export default function WorkflowList() {
         </div>
       </div>
 
-      {/* 工作流网格 */}
       {filtered.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -170,7 +207,6 @@ export default function WorkflowList() {
               className="group bg-white rounded-2xl border border-gray-200/70 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
               onClick={() => handleOpen(wf)}
             >
-              {/* 封面 */}
               <div
                 className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden`}
               >
@@ -184,7 +220,6 @@ export default function WorkflowList() {
                 </div>
               </div>
 
-              {/* 信息 */}
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-gray-500">
@@ -200,7 +235,6 @@ export default function WorkflowList() {
                   </p>
                 )}
 
-                {/* 操作按钮 */}
                 <div className="flex items-center gap-2 mt-3">
                   <Button
                     variant="outline"
@@ -293,6 +327,54 @@ export default function WorkflowList() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {showExportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowExportDialog(null)}
+          />
+          <div className="relative w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div className="p-5 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-800">导出工作流</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                将工作流导出为 JSON 文件，可用于分享或备份
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                <input
+                  type="checkbox"
+                  id="hideSensitive"
+                  checked={hideSensitive}
+                  onChange={(e) => setHideSensitive(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded text-violet-600 focus:ring-violet-500"
+                />
+                <div>
+                  <label htmlFor="hideSensitive" className="text-sm font-medium text-gray-700 cursor-pointer">
+                    隐藏敏感信息
+                  </label>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    自动隐藏密码、API Key、Token 等敏感字段（替换为 ******）
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowExportDialog(null)}
+              >
+                取消
+              </Button>
+              <Button onClick={confirmExport}>
+                <Download className="h-4 w-4 mr-1.5" />
+                导出
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

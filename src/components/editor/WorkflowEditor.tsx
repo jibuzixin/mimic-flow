@@ -17,7 +17,27 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Save, ZoomIn, ZoomOut, Maximize2, Variable, MousePointer2, Hand, Square, Terminal } from 'lucide-react';
+import {
+  Play,
+  Save,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Variable,
+  MousePointer2,
+  Hand,
+  Square,
+  Terminal,
+  Undo2,
+  Redo2,
+  Trash2,
+  Download,
+  Upload,
+  FilePlus,
+  Copy,
+  Check,
+  AlertCircle,
+} from 'lucide-react';
 
 import { NodeLibrary } from './NodeLibrary';
 import { PropertyPanel } from './PropertyPanel';
@@ -27,6 +47,7 @@ import { CustomEdge } from './CustomEdge';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, nodeConfigs, type NodeConfig } from './nodeConfigs';
 import type { FlowSchema } from '../../../types/flow-v2';
+import { Button } from '../ui/button';
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
@@ -35,6 +56,8 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 function WorkflowEditorInner() {
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState<CustomNodeType>([]);
@@ -42,6 +65,9 @@ function WorkflowEditorInner() {
   const [isVariablePanelOpen, setIsVariablePanelOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [hideSensitive, setHideSensitive] = useState(false);
 
   const {
     currentWorkflow,
@@ -63,10 +89,22 @@ function WorkflowEditorInner() {
     stopExecution,
     executionLogs,
     nodeExecutionStatus,
-    createWorkflow,
+    isDirty,
+    originalWorkflowId,
+    updateWorkflowMeta,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    clearCanvas,
+    saveCurrentWorkflow,
+    saveAsNewWorkflow,
+    createNewCanvas,
+    exportCurrentWorkflow,
   } = useWorkflowStore();
 
   const currentWorkflowId = useRef<string | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const contextMenuNodes = useMemo(() => {
     const result: { config: NodeConfig; section: 'recent' | 'pinned' }[] = [];
@@ -96,12 +134,6 @@ function WorkflowEditorInner() {
       loadFromStorage();
     }
   }, [initialized, loadFromStorage]);
-
-  useEffect(() => {
-    if (initialized && !currentWorkflow) {
-      createWorkflow('新建工作流');
-    }
-  }, [initialized, currentWorkflow, createWorkflow]);
 
   useEffect(() => {
     if (!currentWorkflow || !initialized) {
@@ -275,11 +307,27 @@ function WorkflowEditorInner() {
         }
         onDelete();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onDelete]);
+  }, [onDelete, undo, redo]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -348,9 +396,67 @@ function WorkflowEditorInner() {
   }, [isRunning, startExecution, stopExecution]);
 
   const handleSave = useCallback(() => {
-    saveToStorage();
-    console.log('工作流已保存');
-  }, [saveToStorage]);
+    setSaveStatus('saving');
+    try {
+      saveCurrentWorkflow();
+      setSaveStatus('saved');
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    } catch (error) {
+      setSaveStatus('error');
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }
+  }, [saveCurrentWorkflow]);
+
+  const handleExport = useCallback(() => {
+    const wf = exportCurrentWorkflow(hideSensitive);
+    const blob = new Blob([JSON.stringify(wf, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${wf.flowMeta.name || 'workflow'}.flow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowExportDialog(false);
+  }, [exportCurrentWorkflow, hideSensitive]);
+
+  const handleSaveAs = useCallback(() => {
+    const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta.name || '工作流'} (副本)`);
+    if (name && name.trim()) {
+      saveAsNewWorkflow(name.trim());
+      setSaveStatus('saved');
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }
+  }, [currentWorkflow, saveAsNewWorkflow]);
+
+  const handleNewCanvas = useCallback(() => {
+    if (isDirty) {
+      const confirmed = confirm('当前画布有未保存的修改，确定要新建画布吗？未保存的修改将会丢失。');
+      if (!confirmed) return;
+    }
+    createNewCanvas();
+  }, [isDirty, createNewCanvas]);
+
+  const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    updateWorkflowMeta({ name: e.target.value });
+  }, [updateWorkflowMeta]);
+
+  const isUndoDisabled = !canUndo();
+  const isRedoDisabled = !canRedo();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -366,12 +472,33 @@ function WorkflowEditorInner() {
         className="h-14 px-4 bg-white/80 backdrop-blur-sm border-b border-gray-200 flex items-center justify-between z-10"
       >
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleNewCanvas}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            title="新建画布"
+          >
+            <FilePlus className="h-4 w-4 text-gray-600" />
+          </button>
+          <div className="h-5 w-px bg-gray-200" />
           <input
             type="text"
             value={currentWorkflow?.flowMeta?.name || '未命名工作流'}
-            onChange={(e) => console.log('rename', e.target.value)}
-            className="text-base font-semibold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors px-1 py-0.5"
+            onChange={handleNameChange}
+            className="text-base font-semibold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none transition-colors px-1 py-0.5 w-48"
           />
+          <div className="flex items-center gap-1.5">
+            {isDirty ? (
+              <span className="flex items-center gap-1 text-xs text-amber-600">
+                <AlertCircle className="h-3 w-3" />
+                未保存
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                <Check className="h-3 w-3" />
+                已保存
+              </span>
+            )}
+          </div>
           <span className="text-xs text-gray-400">
             {currentWorkflow?.nodes.length || 0} 个节点
           </span>
@@ -379,18 +506,97 @@ function WorkflowEditorInner() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleNewCanvas}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <FilePlus className="h-4 w-4" />
+            新建
+          </button>
+          <div className="h-5 w-px bg-gray-200" />
+          <button
+            onClick={undo}
+            disabled={isUndoDisabled}
+            className={`p-2 rounded-lg transition-colors ${
+              isUndoDisabled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+            title="撤销 (Ctrl+Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={redo}
+            disabled={isRedoDisabled}
+            className={`p-2 rounded-lg transition-colors ${
+              isRedoDisabled ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+            title="反撤销 (Ctrl+Shift+Z / Ctrl+Y)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+          <button
+            onClick={clearCanvas}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
+            title="清屏"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+          <div className="h-5 w-px bg-gray-200" />
+          <button
             onClick={() => setIsVariablePanelOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Variable className="h-4 w-4" />
             变量
           </button>
+          <div className="h-5 w-px bg-gray-200" />
           <button
-            onClick={handleSave}
+            onClick={() => setShowExportDialog(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <Save className="h-4 w-4" />
-            保存
+            <Download className="h-4 w-4" />
+            导出
+          </button>
+          <button
+            onClick={handleSaveAs}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <Copy className="h-4 w-4" />
+            另存为
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saveStatus === 'saving'}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm rounded-lg transition-all ${
+              saveStatus === 'saved'
+                ? 'bg-emerald-500 text-white'
+                : saveStatus === 'error'
+                ? 'bg-red-500 text-white'
+                : saveStatus === 'saving'
+                ? 'bg-gray-200 text-gray-500 cursor-wait'
+                : 'bg-violet-500 text-white hover:bg-violet-600 shadow-md hover:shadow-lg active:scale-95'
+            }`}
+          >
+            {saveStatus === 'saving' ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                保存中
+              </>
+            ) : saveStatus === 'saved' ? (
+              <>
+                <Check className="h-4 w-4" />
+                已保存
+              </>
+            ) : saveStatus === 'error' ? (
+              <>
+                <AlertCircle className="h-4 w-4" />
+                保存失败
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                保存
+              </>
+            )}
           </button>
           <button
             onClick={handleRun}
@@ -458,6 +664,27 @@ function WorkflowEditorInner() {
               title={isSelectionMode ? '选择模式（点击切换到手写模式）' : '手写模式（点击切换到选择模式）'}
             >
               {isSelectionMode ? <MousePointer2 className="h-4 w-4" /> : <Hand className="h-4 w-4" />}
+            </button>
+            <div className="h-5 w-px bg-gray-200 mx-0.5" />
+            <button
+              onClick={undo}
+              disabled={isUndoDisabled}
+              className={`p-2 rounded-xl transition-colors ${
+                isUndoDisabled ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title="撤销"
+            >
+              <Undo2 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={redo}
+              disabled={isRedoDisabled}
+              className={`p-2 rounded-xl transition-colors ${
+                isRedoDisabled ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+              title="反撤销"
+            >
+              <Redo2 className="h-4 w-4" />
             </button>
             <div className="h-5 w-px bg-gray-200 mx-0.5" />
             <button
@@ -577,7 +804,6 @@ function WorkflowEditorInner() {
           onClose={() => setIsVariablePanelOpen(false)}
         />
 
-        {/* 日志面板 */}
         <AnimatePresence>
           {executionLogs.length > 0 && (
             <motion.div
@@ -633,6 +859,65 @@ function WorkflowEditorInner() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showExportDialog && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
+              onClick={() => setShowExportDialog(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50"
+            >
+              <div className="p-5 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-800">导出工作流</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  将当前工作流导出为 JSON 文件，可用于分享或备份
+                </p>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="hideSensitive"
+                    checked={hideSensitive}
+                    onChange={(e) => setHideSensitive(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded text-violet-600 focus:ring-violet-500"
+                  />
+                  <div>
+                    <label htmlFor="hideSensitive" className="text-sm font-medium text-gray-700 cursor-pointer">
+                      隐藏敏感信息
+                    </label>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      自动隐藏密码、API Key、Token 等敏感字段（替换为 ******）
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5 border-t border-gray-100 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowExportDialog(false)}
+                >
+                  取消
+                </Button>
+                <Button onClick={handleExport}>
+                  <Download className="h-4 w-4 mr-1.5" />
+                  导出
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

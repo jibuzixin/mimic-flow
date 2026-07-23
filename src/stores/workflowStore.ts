@@ -4,13 +4,14 @@ import type { FlowSchema, RuntimeEvent, FlowNode, FlowNodeType } from '../../typ
 import { getNodeConfig } from '../components/editor/nodeConfigs';
 
 const STORAGE_KEY = 'mimic-flow-workflow-state';
+const DRAFT_KEY = 'mimic-flow-draft-workflow';
 const WORKFLOWS_KEY = 'mimic-flow-workflows';
-const CURRENT_WF_KEY = 'mimic-flow-current-workflow-id';
 const RECENT_NODES_KEY = 'mimic-flow-recent-nodes';
 const PINNED_NODES_KEY = 'mimic-flow-pinned-nodes';
 
 const MAX_RECENT_NODES = 3;
 const MAX_PINNED_NODES = 10;
+const MAX_HISTORY_STEPS = 50;
 
 let eventUnsubscribe: (() => void) | null = null;
 
@@ -23,10 +24,17 @@ export interface WorkflowRecord {
   updatedAt: number;
 }
 
+interface HistoryState {
+  workflow: FlowSchema;
+  nodePositions: Record<string, { x: number; y: number }>;
+  edges: Edge[];
+}
+
 interface WorkflowState {
   workflows: WorkflowRecord[];
-  currentWorkflowId: string | null;
   currentWorkflow: FlowSchema | null;
+  originalWorkflowId: string | null;
+  isDirty: boolean;
   selectedNodeId: string | null;
   isRunning: boolean;
   isPaused: boolean;
@@ -45,6 +53,9 @@ interface WorkflowState {
   initialized: boolean;
   recentNodeTypes: string[];
   pinnedNodeTypes: string[];
+
+  history: HistoryState[];
+  historyIndex: number;
 
   setWorkflow: (wf: FlowSchema) => void;
   setSelectedNode: (id: string | null) => void;
@@ -74,19 +85,31 @@ interface WorkflowState {
   unpinNode: (nodeType: string) => void;
   isNodePinned: (nodeType: string) => boolean;
 
-  // 多工作流管理
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => void;
+  clearCanvas: () => void;
+  pushHistory: () => void;
+
   createWorkflow: (name?: string) => string;
   openWorkflow: (id: string) => void;
   saveCurrentWorkflow: () => void;
+  saveAsNewWorkflow: (name?: string) => string;
   deleteWorkflow: (id: string) => void;
   duplicateWorkflow: (id: string) => string;
   renameWorkflow: (id: string, name: string) => void;
+  createNewCanvas: () => void;
+  loadWorkflowToCanvas: (id: string) => void;
+  hasUnsavedChanges: () => boolean;
 
-  // 导入导出
-  exportWorkflow: (id: string) => FlowSchema;
+  exportWorkflow: (id: string, hideSensitive?: boolean) => FlowSchema;
+  exportCurrentWorkflow: (hideSensitive?: boolean) => FlowSchema;
   importWorkflow: (workflow: FlowSchema) => string;
 
   saveWorkflowsToStorage: () => void;
+  saveDraftToStorage: () => void;
+  loadDraftFromStorage: () => void;
 
   loadFromStorage: () => void;
   saveToStorage: () => void;
@@ -122,10 +145,55 @@ const generateDefaultPositions = (wf: FlowSchema): Record<string, { x: number; y
   return positions;
 };
 
+const cloneHistoryState = (wf: FlowSchema | null, positions: Record<string, { x: number; y: number }>, edges: Edge[]): HistoryState | null => {
+  if (!wf) return null;
+  return {
+    workflow: JSON.parse(JSON.stringify(wf)),
+    nodePositions: { ...positions },
+    edges: JSON.parse(JSON.stringify(edges)),
+  };
+};
+
+const maskSensitiveData = (workflow: FlowSchema): FlowSchema => {
+  const sensitiveKeywords = ['password', 'apikey', 'api_key', 'secret', 'token'];
+  const masked = JSON.parse(JSON.stringify(workflow)) as FlowSchema;
+  
+  masked.nodes = masked.nodes.map((node) => {
+    const config = getNodeConfig(node.nodeType);
+    
+    const sensitiveKeys = new Set<string>();
+    if (config) {
+      config.propertyFields.forEach((field) => {
+        if (field.sensitive) {
+          sensitiveKeys.add(field.key);
+        }
+      });
+    }
+    
+    const maskedParams: Record<string, unknown> = {};
+    Object.entries(node.nodeParams).forEach(([key, value]) => {
+      const isMarkedSensitive = sensitiveKeys.has(key);
+      const isKeywordSensitive = sensitiveKeywords.some(
+        (kw) => key.toLowerCase().includes(kw.toLowerCase())
+      );
+      if ((isMarkedSensitive || isKeywordSensitive) && typeof value === 'string' && value.length > 0) {
+        maskedParams[key] = '******';
+      } else {
+        maskedParams[key] = value;
+      }
+    });
+    
+    return { ...node, nodeParams: maskedParams };
+  });
+  
+  return masked;
+};
+
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflows: [],
-  currentWorkflowId: null,
   currentWorkflow: null,
+  originalWorkflowId: null,
+  isDirty: false,
   selectedNodeId: null,
   isRunning: false,
   isPaused: false,
@@ -137,6 +205,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initialized: false,
   recentNodeTypes: [],
   pinnedNodeTypes: [],
+  history: [],
+  historyIndex: -1,
 
   setWorkflow: (wf) => {
     set({ currentWorkflow: wf });
@@ -162,12 +232,31 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setSelectedNode: (id) => set({ selectedNodeId: id }),
 
+  pushHistory: () => {
+    const state = get();
+    const snapshot = cloneHistoryState(state.currentWorkflow, state.nodePositions, state.edges);
+    if (!snapshot) return;
+
+    const newHistory = state.history.slice(0, state.historyIndex + 1);
+    newHistory.push(snapshot);
+    
+    if (newHistory.length > MAX_HISTORY_STEPS) {
+      newHistory.shift();
+    } else {
+      set({ historyIndex: state.historyIndex + 1 });
+    }
+    
+    set({ history: newHistory });
+  },
+
   addNode: (type, position) => {
     const config = getNodeConfig(type);
     if (!config) return;
 
     const wf = get().currentWorkflow;
     if (!wf) return;
+
+    get().pushHistory();
 
     const newNode: FlowNode = {
       id: genNodeId(),
@@ -190,9 +279,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ...get().nodePositions,
         [newNode.id]: newPosition,
       },
+      isDirty: true,
     });
 
-    // 更新最近使用的节点
     const recent = get().recentNodeTypes.filter((t) => t !== type);
     recent.unshift(type);
     const trimmed = recent.slice(0, MAX_RECENT_NODES);
@@ -208,17 +297,22 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
+    get().pushHistory();
+
     set({
       currentWorkflow: {
         ...wf,
         nodes: wf.nodes.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
       },
+      isDirty: true,
     });
   },
 
   updateNodeParams: (nodeId, params) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
+
+    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -227,12 +321,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           n.id === nodeId ? { ...n, nodeParams: { ...n.nodeParams, ...params } } : n,
         ),
       },
+      isDirty: true,
     });
   },
 
   deleteNode: (nodeId) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
+
+    get().pushHistory();
 
     const { [nodeId]: _, ...restPositions } = get().nodePositions;
 
@@ -244,12 +341,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeId: get().selectedNodeId === nodeId ? null : get().selectedNodeId,
       nodePositions: restPositions,
       edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      isDirty: true,
     });
   },
 
   updateWorkflowMeta: (updates) => {
     const wf = get().currentWorkflow;
     if (!wf) return;
+
+    get().pushHistory();
 
     set({
       currentWorkflow: {
@@ -259,6 +359,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           ...updates,
         },
       },
+      isDirty: true,
     });
   },
 
@@ -266,11 +367,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
+    get().pushHistory();
+
     set({
       currentWorkflow: {
         ...wf,
         globalVars: { ...wf.globalVars, [name]: value },
       },
+      isDirty: true,
     });
   },
 
@@ -282,12 +386,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
+    get().pushHistory();
+
     const { [name]: _, ...rest } = wf.globalVars;
     set({
       currentWorkflow: {
         ...wf,
         globalVars: rest,
       },
+      isDirty: true,
     });
   },
 
@@ -579,14 +686,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   addEdge: (edge) => {
+    get().pushHistory();
     set({
       edges: [...get().edges, edge],
+      isDirty: true,
     });
   },
 
   removeEdge: (edgeId) => {
+    get().pushHistory();
     set({
       edges: get().edges.filter((e) => e.id !== edgeId),
+      isDirty: true,
     });
   },
 
@@ -619,21 +730,97 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     });
   },
 
+  undo: () => {
+    const state = get();
+    if (state.historyIndex <= 0) return;
+
+    const prevIndex = state.historyIndex - 1;
+    const prevState = state.history[prevIndex];
+    if (!prevState) return;
+
+    nodeCounter = 0;
+    prevState.workflow.nodes.forEach((n) => {
+      const match = n.id.match(/node-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > nodeCounter) nodeCounter = num;
+      }
+    });
+
+    set({
+      currentWorkflow: prevState.workflow,
+      nodePositions: prevState.nodePositions,
+      edges: prevState.edges,
+      historyIndex: prevIndex,
+      isDirty: true,
+    });
+  },
+
+  redo: () => {
+    const state = get();
+    if (state.historyIndex >= state.history.length - 1) return;
+
+    const nextIndex = state.historyIndex + 1;
+    const nextState = state.history[nextIndex];
+    if (!nextState) return;
+
+    nodeCounter = 0;
+    nextState.workflow.nodes.forEach((n) => {
+      const match = n.id.match(/node-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > nodeCounter) nodeCounter = num;
+      }
+    });
+
+    set({
+      currentWorkflow: nextState.workflow,
+      nodePositions: nextState.nodePositions,
+      edges: nextState.edges,
+      historyIndex: nextIndex,
+      isDirty: true,
+    });
+  },
+
+  canUndo: () => {
+    return get().historyIndex > 0;
+  },
+
+  canRedo: () => {
+    return get().historyIndex < get().history.length - 1;
+  },
+
+  clearCanvas: () => {
+    if (!confirm('确定要清空画布吗？此操作可以撤销。')) return;
+    
+    get().pushHistory();
+    const emptyWf = get().createEmptyWorkflow('未命名工作流');
+    const positions = generateDefaultPositions(emptyWf);
+    const edges = generateEdgesFromWorkflow(emptyWf);
+
+    nodeCounter = 0;
+
+    set({
+      currentWorkflow: emptyWf,
+      nodePositions: positions,
+      edges: edges,
+      selectedNodeId: null,
+      isDirty: true,
+    });
+  },
+
   loadFromStorage: () => {
     let workflows: WorkflowRecord[] = [];
-    let currentId: string | null = null;
 
     try {
       const saved = localStorage.getItem(WORKFLOWS_KEY);
       if (saved) {
         workflows = JSON.parse(saved);
       }
-      currentId = localStorage.getItem(CURRENT_WF_KEY);
     } catch (e) {
       console.warn('Failed to load workflows from storage:', e);
     }
 
-    // 向后兼容：如果旧版单工作流数据存在，迁移过来
     if (workflows.length === 0) {
       try {
         const oldSaved = localStorage.getItem(STORAGE_KEY);
@@ -660,7 +847,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
                 updatedAt: now,
               },
             ];
-            currentId = id;
           }
         }
       } catch (e) {
@@ -668,68 +854,13 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     }
 
-    // 如果还是没有工作流，创建一个默认的
-    if (workflows.length === 0) {
-      const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const now = Date.now();
-      const wf = get().createEmptyWorkflow('我的工作流');
-      workflows = [
-        {
-          id,
-          workflow: wf,
-          nodePositions: generateDefaultPositions(wf),
-          edges: generateEdgesFromWorkflow(wf),
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
-      currentId = id;
-    }
+    set({
+      workflows,
+      initialized: true,
+    });
 
-    // 确保 currentId 有效
-    if (!currentId || !workflows.find((w) => w.id === currentId)) {
-      currentId = workflows[0]?.id || null;
-    }
+    get().loadDraftFromStorage();
 
-    // 设置 nodeCounter
-    const currentWf = workflows.find((w) => w.id === currentId);
-    if (currentWf) {
-      nodeCounter = 0;
-      currentWf.workflow.nodes.forEach((n) => {
-        const match = n.id.match(/node-(\d+)/);
-        if (match) {
-          const num = parseInt(match[1]);
-          if (num > nodeCounter) nodeCounter = num;
-        }
-      });
-
-      const edgesWithType = currentWf.edges.map((e) => ({
-        ...e,
-        type: e.type || 'custom',
-        sourceHandle: e.sourceHandle || 'out',
-        targetHandle: e.targetHandle || 'in',
-      }));
-
-      set({
-        workflows,
-        currentWorkflowId: currentId,
-        currentWorkflow: currentWf.workflow,
-        nodePositions: currentWf.nodePositions,
-        edges: edgesWithType,
-        initialized: true,
-      });
-    } else {
-      set({
-        workflows,
-        currentWorkflowId: null,
-        currentWorkflow: null,
-        nodePositions: {},
-        edges: [],
-        initialized: true,
-      });
-    }
-
-    // 加载最近使用和固定的节点
     try {
       const recentSaved = localStorage.getItem(RECENT_NODES_KEY);
       if (recentSaved) {
@@ -744,25 +875,76 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
   },
 
+  loadDraftFromStorage: () => {
+    try {
+      const draftStr = localStorage.getItem(DRAFT_KEY);
+      if (draftStr) {
+        const draft = JSON.parse(draftStr);
+        if (draft.workflow) {
+          nodeCounter = 0;
+          draft.workflow.nodes.forEach((n: FlowNode) => {
+            const match = n.id.match(/node-(\d+)/);
+            if (match) {
+              const num = parseInt(match[1]);
+              if (num > nodeCounter) nodeCounter = num;
+            }
+          });
+
+          const edgesWithType = (draft.edges || []).map((e: Edge) => ({
+            ...e,
+            type: e.type || 'custom',
+            sourceHandle: e.sourceHandle || 'out',
+            targetHandle: e.targetHandle || 'in',
+          }));
+
+          const initialHistory: HistoryState[] = [{
+            workflow: draft.workflow,
+            nodePositions: draft.nodePositions || {},
+            edges: edgesWithType,
+          }];
+
+          set({
+            currentWorkflow: draft.workflow,
+            originalWorkflowId: draft.originalWorkflowId || null,
+            isDirty: draft.isDirty || false,
+            nodePositions: draft.nodePositions || {},
+            edges: edgesWithType,
+            history: initialHistory,
+            historyIndex: 0,
+            selectedNodeId: null,
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load draft from storage:', e);
+    }
+
+    get().createNewCanvas();
+  },
+
   saveToStorage: () => {
+    get().saveDraftToStorage();
+  },
+
+  saveDraftToStorage: () => {
     const state = get();
     if (!state.currentWorkflow || !state.initialized) return;
 
     try {
       localStorage.setItem(
-        STORAGE_KEY,
+        DRAFT_KEY,
         JSON.stringify({
           workflow: state.currentWorkflow,
           nodePositions: state.nodePositions,
           edges: state.edges,
+          originalWorkflowId: state.originalWorkflowId,
+          isDirty: state.isDirty,
         })
       );
     } catch (e) {
-      console.warn('Failed to save workflow to storage:', e);
+      console.warn('Failed to save draft to storage:', e);
     }
-
-    // 同时更新到工作流列表中
-    get().saveCurrentWorkflow();
   },
 
   pinNode: (nodeType) => {
@@ -815,18 +997,40 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     set({
       workflows: [...get().workflows, record],
-      currentWorkflowId: id,
-      currentWorkflow: workflow,
-      nodePositions,
-      edges,
-      selectedNodeId: null,
     });
 
     get().saveWorkflowsToStorage();
     return id;
   },
 
-  openWorkflow: (id) => {
+  createNewCanvas: () => {
+    const wf = get().createEmptyWorkflow('未命名工作流');
+    const positions = generateDefaultPositions(wf);
+    const edges = generateEdgesFromWorkflow(wf);
+
+    nodeCounter = 0;
+
+    const initialHistory: HistoryState[] = [{
+      workflow: wf,
+      nodePositions: positions,
+      edges: edges,
+    }];
+
+    set({
+      currentWorkflow: wf,
+      originalWorkflowId: null,
+      isDirty: false,
+      nodePositions: positions,
+      edges: edges,
+      selectedNodeId: null,
+      history: initialHistory,
+      historyIndex: 0,
+    });
+
+    get().saveDraftToStorage();
+  },
+
+  loadWorkflowToCanvas: (id) => {
     const record = get().workflows.find((w) => w.id === id);
     if (!record) return;
 
@@ -846,24 +1050,37 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       targetHandle: e.targetHandle || 'in',
     }));
 
+    const initialHistory: HistoryState[] = [{
+      workflow: JSON.parse(JSON.stringify(record.workflow)),
+      nodePositions: { ...record.nodePositions },
+      edges: JSON.parse(JSON.stringify(edgesWithType)),
+    }];
+
     set({
-      currentWorkflowId: id,
-      currentWorkflow: record.workflow,
-      nodePositions: record.nodePositions,
+      currentWorkflow: JSON.parse(JSON.stringify(record.workflow)),
+      originalWorkflowId: id,
+      isDirty: false,
+      nodePositions: { ...record.nodePositions },
       edges: edgesWithType,
       selectedNodeId: null,
+      history: initialHistory,
+      historyIndex: 0,
     });
 
-    try {
-      localStorage.setItem(CURRENT_WF_KEY, id);
-    } catch (e) {
-      console.warn('Failed to save current workflow id:', e);
-    }
+    get().saveDraftToStorage();
+  },
+
+  openWorkflow: (id) => {
+    get().loadWorkflowToCanvas(id);
+  },
+
+  hasUnsavedChanges: () => {
+    return get().isDirty;
   },
 
   saveCurrentWorkflow: () => {
     const state = get();
-    if (!state.currentWorkflowId || !state.currentWorkflow) return;
+    if (!state.currentWorkflow) return;
 
     const now = Date.now();
     const updatedWorkflow = {
@@ -874,55 +1091,91 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
     };
 
+    if (state.originalWorkflowId) {
+      set({
+        workflows: state.workflows.map((w) =>
+          w.id === state.originalWorkflowId
+            ? {
+                ...w,
+                workflow: updatedWorkflow,
+                nodePositions: state.nodePositions,
+                edges: state.edges,
+                updatedAt: now,
+              }
+            : w
+        ),
+        isDirty: false,
+      });
+    } else {
+      const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const newRecord: WorkflowRecord = {
+        id: newId,
+        workflow: updatedWorkflow,
+        nodePositions: state.nodePositions,
+        edges: state.edges,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      set({
+        workflows: [...state.workflows, newRecord],
+        originalWorkflowId: newId,
+        isDirty: false,
+      });
+    }
+
+    get().saveWorkflowsToStorage();
+    get().saveDraftToStorage();
+  },
+
+  saveAsNewWorkflow: (name) => {
+    const state = get();
+    if (!state.currentWorkflow) return '';
+
+    const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
+    const wfName = name || `${state.currentWorkflow.flowMeta.name || '工作流'} (副本)`;
+
+    const newRecord: WorkflowRecord = {
+      id: newId,
+      workflow: {
+        ...JSON.parse(JSON.stringify(state.currentWorkflow)),
+        flowMeta: {
+          ...state.currentWorkflow.flowMeta,
+          name: wfName,
+          updatedAt: now,
+        },
+      },
+      nodePositions: { ...state.nodePositions },
+      edges: JSON.parse(JSON.stringify(state.edges)),
+      createdAt: now,
+      updatedAt: now,
+    };
+
     set({
-      workflows: state.workflows.map((w) =>
-        w.id === state.currentWorkflowId
-          ? {
-              ...w,
-              workflow: updatedWorkflow,
-              nodePositions: state.nodePositions,
-              edges: state.edges,
-              updatedAt: now,
-            }
-          : w
-      ),
+      workflows: [...state.workflows, newRecord],
+      originalWorkflowId: newId,
+      isDirty: false,
     });
 
     get().saveWorkflowsToStorage();
+    get().saveDraftToStorage();
+    return newId;
   },
 
   deleteWorkflow: (id) => {
     const state = get();
     const remaining = state.workflows.filter((w) => w.id !== id);
 
-    let newCurrentId = state.currentWorkflowId;
-    let newCurrentWf = state.currentWorkflow;
-    let newPositions = state.nodePositions;
-    let newEdges = state.edges;
-
-    if (state.currentWorkflowId === id) {
-      if (remaining.length > 0) {
-        const first = remaining[0];
-        newCurrentId = first.id;
-        newCurrentWf = first.workflow;
-        newPositions = first.nodePositions;
-        newEdges = first.edges;
-      } else {
-        newCurrentId = null;
-        newCurrentWf = null;
-        newPositions = {};
-        newEdges = [];
-      }
-    }
-
     set({
       workflows: remaining,
-      currentWorkflowId: newCurrentId,
-      currentWorkflow: newCurrentWf,
-      nodePositions: newPositions,
-      edges: newEdges,
-      selectedNodeId: null,
     });
+
+    if (state.originalWorkflowId === id) {
+      set({
+        originalWorkflowId: null,
+      });
+    }
 
     get().saveWorkflowsToStorage();
   },
@@ -972,13 +1225,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             }
           : w
       ),
-      currentWorkflow:
-        state.currentWorkflowId === id && state.currentWorkflow
-          ? {
-              ...state.currentWorkflow,
-              flowMeta: { ...state.currentWorkflow.flowMeta, name },
-            }
-          : state.currentWorkflow,
     });
 
     get().saveWorkflowsToStorage();
@@ -986,10 +1232,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   // ==================== 导入导出 ====================
 
-  exportWorkflow: (id) => {
+  exportWorkflow: (id, hideSensitive = false) => {
     const record = get().workflows.find((w) => w.id === id);
-    if (record) return record.workflow;
-    if (get().currentWorkflow) return get().currentWorkflow!;
+    if (record) {
+      return hideSensitive ? maskSensitiveData(record.workflow) : record.workflow;
+    }
+    return get().exportCurrentWorkflow(hideSensitive);
+  },
+
+  exportCurrentWorkflow: (hideSensitive = false) => {
+    if (get().currentWorkflow) {
+      return hideSensitive
+        ? maskSensitiveData(get().currentWorkflow!)
+        : get().currentWorkflow!;
+    }
     return get().createEmptyWorkflow();
   },
 
@@ -1027,9 +1283,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   saveWorkflowsToStorage: () => {
     try {
       localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(get().workflows));
-      if (get().currentWorkflowId) {
-        localStorage.setItem(CURRENT_WF_KEY, get().currentWorkflowId!);
-      }
     } catch (e) {
       console.warn('Failed to save workflows to storage:', e);
     }

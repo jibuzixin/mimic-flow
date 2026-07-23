@@ -15,6 +15,7 @@ export interface PropertyField {
   placeholder?: string;
   options?: { label: string; value: string }[];
   defaultValue?: unknown;
+  sensitive?: boolean;
 }
 
 export interface NodeConfig {
