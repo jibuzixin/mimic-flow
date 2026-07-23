@@ -205,38 +205,44 @@ export default function WorkflowList() {
           {filtered.map((wf, idx) => (
             <div
               key={wf.id}
-              className="group bg-white rounded-2xl border border-gray-200/70 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
-              onClick={() => handleOpen(wf)}
+              className="group bg-white rounded-2xl border border-gray-200/70 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative"
             >
               <div
-                className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
+                className="cursor-pointer"
+                onClick={() => handleOpen(wf)}
               >
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                  <Play className="h-10 w-10 text-white/0 group-hover:text-white/90 transition-all scale-75 group-hover:scale-100" />
-                </div>
-                <div className="absolute bottom-3 left-4 right-4">
-                  <div className="text-white font-semibold text-sm truncate drop-shadow">
-                    {wf.workflow.flowMeta.name}
+                <div
+                  className={`h-28 bg-gradient-to-br ${gradients[idx % gradients.length]} relative overflow-hidden rounded-t-2xl`}
+                >
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                    <Play className="h-10 w-10 text-white/0 group-hover:text-white/90 transition-all scale-75 group-hover:scale-100" />
                   </div>
+                  <div className="absolute bottom-3 left-4 right-4">
+                    <div className="text-white font-semibold text-sm truncate drop-shadow">
+                      {wf.workflow.flowMeta.name}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 pb-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500">
+                      {wf.workflow.nodes.length} 个节点
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {formatDate(wf.updatedAt)}
+                    </span>
+                  </div>
+                  {wf.workflow.flowMeta.desc && (
+                    <p className="text-xs text-gray-500 line-clamp-2">
+                      {wf.workflow.flowMeta.desc}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500">
-                    {wf.workflow.nodes.length} 个节点
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {formatDate(wf.updatedAt)}
-                  </span>
-                </div>
-                {wf.workflow.flowMeta.desc && (
-                  <p className="text-xs text-gray-500 line-clamp-2">
-                    {wf.workflow.flowMeta.desc}
-                  </p>
-                )}
-
-                <div className="flex items-center gap-2 mt-3">
+              <div className="p-4 pt-3">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -282,72 +288,82 @@ export default function WorkflowList() {
                     >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
-                    {activeMenu === wf.id && menuPosition && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => {
-                            setActiveMenu(null);
-                            setMenuPosition(null);
-                          }}
-                        />
-                        <div
-                          className="fixed w-36 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1"
-                          style={{
-                            top: `${menuPosition.top}px`,
-                            right: `${menuPosition.right}px`,
-                          }}
-                        >
-                          <button
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRename(wf.id, wf.workflow.flowMeta.name);
-                            }}
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                            重命名
-                          </button>
-                          <button
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDuplicate(wf.id);
-                            }}
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                            复制
-                          </button>
-                          <button
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExport(wf.id);
-                            }}
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            导出
-                          </button>
-                          <div className="border-t border-gray-100 my-1" />
-                          <button
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(wf.id);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                          </button>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {activeMenu && menuPosition && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => {
+              setActiveMenu(null);
+              setMenuPosition(null);
+            }}
+          />
+          <div
+            className="fixed w-36 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1"
+            style={{
+              top: `${menuPosition.top}px`,
+              right: `${menuPosition.right}px`,
+            }}
+          >
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                const wf = workflows.find(w => w.id === activeMenu);
+                if (wf) handleRename(wf.id, wf.workflow.flowMeta.name);
+                setActiveMenu(null);
+                setMenuPosition(null);
+              }}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              重命名
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDuplicate(activeMenu);
+                setActiveMenu(null);
+                setMenuPosition(null);
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              复制
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleExport(activeMenu);
+                setActiveMenu(null);
+                setMenuPosition(null);
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+              导出
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(activeMenu);
+                setActiveMenu(null);
+                setMenuPosition(null);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除
+            </button>
+          </div>
+        </>
       )}
 
       {showExportDialog && (

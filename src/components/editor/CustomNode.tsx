@@ -1,7 +1,9 @@
 import React, { useCallback, useState, useMemo, memo } from 'react';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { motion } from 'framer-motion';
+import { AlertCircle } from 'lucide-react';
 import { getNodeConfig } from './nodeConfigs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
 export interface CustomNodeData {
@@ -9,6 +11,7 @@ export interface CustomNodeData {
   nodeType: string;
   isSelected?: boolean;
   executionStatus?: 'idle' | 'running' | 'success' | 'error';
+  errorMessage?: string;
   [key: string]: unknown;
 }
 
@@ -34,6 +37,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const color = config?.color || '#6b7280';
   const handles = useMemo(() => getNodeHandles(data.nodeType), [data.nodeType]);
   const status = data.executionStatus || 'idle';
+  const errorMessage = data.errorMessage;
 
   const statusBorder = {
     idle: '',
@@ -107,7 +111,25 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
         />
       )}
 
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 relative">
+        {status === 'error' && errorMessage && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute -top-2 -right-2 z-10 cursor-help">
+                  <div className="relative">
+                    <AlertCircle className="h-5 w-5 text-red-500 fill-white" />
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs text-xs">
+                <p className="font-medium text-red-600">执行失败</p>
+                <p className="text-gray-600 mt-1">{errorMessage}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         <div className="flex items-center gap-3">
           <div
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"

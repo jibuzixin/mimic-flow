@@ -4,7 +4,7 @@ import { getLogger } from '../logger.js';
 export class EngineRegistry {
   private engines: Map<string, FlowEngine> = new Map();
   private initializedEngines: Set<string> = new Set();
-  private initConfig: EngineInitConfig | null = null;
+  private initConfigs: Map<string, EngineInitConfig> = new Map();
   private log = getLogger();
 
   register(engine: FlowEngine): void {
@@ -15,6 +15,7 @@ export class EngineRegistry {
   unregister(name: string): void {
     this.engines.delete(name);
     this.initializedEngines.delete(name);
+    this.initConfigs.delete(name);
   }
 
   get(name: string): FlowEngine | undefined {
@@ -25,8 +26,12 @@ export class EngineRegistry {
     return Array.from(this.engines.values());
   }
 
-  setInitConfig(config: EngineInitConfig): void {
-    this.initConfig = config;
+  setInitConfig(engineName: string, config: EngineInitConfig): void {
+    this.initConfigs.set(engineName, config);
+  }
+
+  isInitialized(name: string): boolean {
+    return this.initializedEngines.has(name);
   }
 
   async getOrInitialize(name: string): Promise<FlowEngine> {
@@ -36,11 +41,12 @@ export class EngineRegistry {
     }
 
     if (!this.initializedEngines.has(name) && engine.initialize) {
-      if (!this.initConfig) {
+      const initConfig = this.initConfigs.get(name);
+      if (!initConfig) {
         throw new Error(`Init config not set, cannot initialize engine: ${name}`);
       }
       this.log.info('[EngineRegistry] Initializing engine', { name });
-      await engine.initialize(this.initConfig);
+      await engine.initialize(initConfig);
       this.initializedEngines.add(name);
     }
 

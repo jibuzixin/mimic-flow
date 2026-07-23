@@ -27,10 +27,9 @@ import {
   MousePointer2,
   Hand,
   Square,
-  Terminal,
   Undo2,
   Redo2,
-  Trash2,
+  Eraser,
   Download,
   Upload,
   FilePlus,
@@ -92,6 +91,7 @@ function WorkflowEditorInner() {
     stopExecution,
     executionLogs,
     nodeExecutionStatus,
+    nodeErrors,
     isDirty,
     originalWorkflowId,
     updateWorkflowMeta,
@@ -156,6 +156,7 @@ function WorkflowEditorInner() {
     const flowNodes: CustomNodeType[] = currentWorkflow.nodes.map((node) => {
       const pos = nodePositions[node.id] || { x: 100, y: 0 };
       const status = nodeExecutionStatus[node.id] || 'idle';
+      const errorMsg = nodeErrors[node.id];
       return {
         id: node.id,
         type: 'custom',
@@ -164,6 +165,7 @@ function WorkflowEditorInner() {
           label: node.nodeName,
           nodeType: node.nodeType,
           executionStatus: status,
+          errorMessage: errorMsg,
         },
       } as CustomNodeType;
     });
@@ -180,7 +182,7 @@ function WorkflowEditorInner() {
       : [];
 
     setEdges(normalizedEdges);
-  }, [currentWorkflow, initialized, nodePositions, storeEdges, nodeExecutionStatus, setNodes, setEdges]);
+  }, [currentWorkflow, initialized, nodePositions, storeEdges, nodeExecutionStatus, nodeErrors, setNodes, setEdges]);
 
   const handleNodesChange: OnNodesChange<CustomNodeType> = useCallback(
     (changes) => {
@@ -582,7 +584,7 @@ function WorkflowEditorInner() {
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
             title="清屏"
           >
-            <Trash2 className="h-4 w-4" />
+            <Eraser className="h-4 w-4" />
           </button>
           <div className="h-5 w-px bg-gray-200" />
           <button
@@ -841,60 +843,6 @@ function WorkflowEditorInner() {
           onClose={() => setIsVariablePanelOpen(false)}
         />
 
-        <AnimatePresence>
-          {executionLogs.length > 0 && (
-            <motion.div
-              initial={{ y: 300, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 300, opacity: 0 }}
-              className="absolute bottom-0 left-0 right-0 h-64 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-2xl flex flex-col rounded-t-2xl"
-            >
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">执行日志</span>
-                  <span className="text-xs text-gray-400">({executionLogs.length})</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {isRunning && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                      <span className="text-xs text-amber-600">运行中</span>
-                    </div>
-                  )}
-                  <button
-                    onClick={() => useWorkflowStore.getState().clearExecutionState()}
-                    className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    清空
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto px-3 py-2 font-mono text-xs">
-                {executionLogs.map((log) => {
-                  const time = new Date(log.timestamp).toLocaleTimeString();
-                  const colorMap: Record<string, string> = {
-                    info: 'text-gray-600',
-                    success: 'text-emerald-600',
-                    error: 'text-red-600',
-                    'node-start': 'text-amber-600',
-                    'node-success': 'text-emerald-600',
-                    'node-error': 'text-red-600',
-                  };
-                  return (
-                    <div
-                      key={log.id}
-                      className={`flex gap-2 py-1 ${colorMap[log.type] || 'text-gray-600'}`}
-                    >
-                      <span className="text-gray-400 shrink-0">[{time}]</span>
-                      <span className="break-all">{log.message}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       <AnimatePresence>

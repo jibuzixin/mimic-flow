@@ -141,6 +141,124 @@ export class FlowScheduler extends EventEmitter {
     }
   }
 
+  private async ensureEngineInitialized(engineName: string): Promise<void> {
+    if (this.engineRegistry.isInitialized(engineName)) {
+      return;
+    }
+
+    this.addLog({
+      level: 'info',
+      source: 'scheduler',
+      message: `初始化引擎: ${engineName}`,
+    });
+
+    if (engineName === 'midscene') {
+      await this.initMidsceneEngine();
+    }
+  }
+
+  private async initMidsceneEngine(): Promise<void> {
+    const midsceneModelConfig = this.flow.modelConfig.midscene;
+
+    if (midsceneModelConfig?.inline) {
+      const inline = midsceneModelConfig.inline;
+
+      if (!inline.apiKey) {
+        throw new Error('Midscene 模型配置缺少 apiKey');
+      }
+
+      const toLite = (m: any): any => ({
+        id: 'inline-default',
+        name: m.modelId,
+        provider: 'inline',
+        baseUrl: m.baseUrl,
+        apiKey: m.apiKey,
+        modelId: m.modelId,
+        modelFamily: m.modelFamily || 'doubao-seed',
+        advanced: {
+          timeout: m.timeout ?? 180000,
+          retryCount: m.retryCount ?? 1,
+          reasoningEnabled: m.reasoningEnabled ?? false,
+          preferredLanguage: m.preferredLanguage ?? 'zh',
+        },
+      });
+
+      const initConfig: any = {
+        displayId: this.flow.target.displayId,
+        models: {
+          default: toLite(inline),
+          insight: inline.insightModelId ? toLite({ ...inline, modelId: inline.insightModelId }) : undefined,
+          planning: inline.planningModelId ? toLite({ ...inline, modelId: inline.planningModelId }) : undefined,
+        },
+      };
+
+      this.engineRegistry.setInitConfig('midscene', initConfig);
+      this.addLog({ level: 'info', source: 'scheduler', message: `Midscene 引擎（内联配置）: ${inline.modelId}` });
+      return;
+    }
+
+    const store = getStore();
+    const models = store.get('models') || [];
+    const defaultIds = store.get('defaultModelIds') || {};
+
+    const defaultModelId = midsceneModelConfig?.defaultModelId || defaultIds.midscene;
+    if (!defaultModelId) {
+      throw new Error('未配置 Midscene 默认模型，请在设置页面配置模型');
+    }
+
+    const defaultModel = models.find((m: any) => m.id === defaultModelId && m.enabled);
+    if (!defaultModel) {
+      throw new Error(`未找到 Midscene 默认模型: ${defaultModelId}（请在设置中确认模型已启用）`);
+    }
+
+    if (!defaultModel.apiKey) {
+      throw new Error(`模型 ${defaultModel.name} 的 API Key 为空，请在设置页面配置`);
+    }
+
+    const insightModel = midsceneModelConfig?.insightModelId
+      ? models.find((m: any) => m.id === midsceneModelConfig.insightModelId && m.enabled)
+      : undefined;
+
+    const planningModel = midsceneModelConfig?.planningModelId
+      ? models.find((m: any) => m.id === midsceneModelConfig.planningModelId && m.enabled)
+      : undefined;
+
+    const toLite = (m: any): any => ({
+      id: m.id,
+      name: m.name,
+      provider: m.provider,
+      baseUrl: m.baseUrl,
+      apiKey: m.apiKey,
+      modelId: m.modelId,
+      modelFamily: m.modelFamily || 'doubao-seed',
+      advanced: {
+        timeout: m.timeout,
+        retryCount: m.retryCount,
+        reasoningEnabled: m.reasoningEnabled,
+        preferredLanguage: m.preferredLanguage,
+        cacheable: m.cacheable,
+        extraBodyJson: m.extraModelParams,
+      },
+    });
+
+    const initConfig: any = {
+      displayId: this.flow.target.displayId,
+      models: {
+        default: toLite(defaultModel),
+        insight: insightModel ? toLite(insightModel) : undefined,
+        planning: planningModel ? toLite(planningModel) : undefined,
+      },
+    };
+
+    this.engineRegistry.setInitConfig('midscene', initConfig);
+    this.addLog({
+      level: 'info',
+      source: 'scheduler',
+      message: `Midscene 引擎初始化: ${defaultModel.modelId}`,
+      data: { model: defaultModel.modelId },
+    });
+  }
+
   async start(): Promise<void> {
     if (this.status === 'running') return;
 
@@ -153,10 +271,6 @@ export class FlowScheduler extends EventEmitter {
     this.emit('event', { type: 'flow:start', flowId: this.flowId } as RuntimeEvent);
 
     try {
-      console.log('[FlowScheduler] Initializing engines...');
-      await this.initializeEngines();
-      console.log('[FlowScheduler] Engines initialized');
-
       const startNodeId = this.flow.nodes[0]?.id;
       if (!startNodeId) {
         throw new Error('工作流没有节点');
@@ -200,111 +314,6 @@ export class FlowScheduler extends EventEmitter {
     this.status = 'stopped';
     this.abortController?.abort();
     this.addLog({ level: 'warn', source: 'scheduler', message: '工作流被用户停止' });
-  }
-
-  private async initializeEngines(): Promise<void> {
-    const midsceneModelConfig = this.flow.modelConfig.midscene;
-
-    // 优先使用内联模型配置
-    if (midsceneModelConfig?.inline) {
-      const inline = midsceneModelConfig.inline;
-      console.log('[FlowScheduler] Using inline model config:', inline.modelId);
-
-      if (!inline.apiKey) {
-        throw new Error('内联模型配置缺少 apiKey');
-      }
-
-      const toLite = (m: ModelInlineConfig): ModelProfileLite => ({
-        id: 'inline-default',
-        name: m.modelId,
-        provider: 'inline',
-        baseUrl: m.baseUrl,
-        apiKey: m.apiKey,
-        modelId: m.modelId,
-        modelFamily: m.modelFamily || 'doubao-seed',
-        advanced: {
-          timeout: m.timeout ?? 180000,
-          retryCount: m.retryCount ?? 1,
-          reasoningEnabled: m.reasoningEnabled ?? false,
-          preferredLanguage: m.preferredLanguage ?? 'zh',
-        },
-      });
-
-      const initConfig: EngineInitConfig = {
-        displayId: this.flow.target.displayId,
-        models: {
-          default: toLite(inline),
-          insight: inline.insightModelId ? toLite({ ...inline, modelId: inline.insightModelId }) : undefined,
-          planning: inline.planningModelId ? toLite({ ...inline, modelId: inline.planningModelId }) : undefined,
-        },
-      };
-
-      this.engineRegistry.setInitConfig(initConfig);
-      this.addLog({ level: 'info', source: 'scheduler', message: `引擎初始化（内联配置）: ${inline.modelId}` });
-      return;
-    }
-
-    // 从 store 读取模型配置
-    const store = getStore();
-    const models = store.get('models') || [];
-    const defaultIds = store.get('defaultModelIds') || {};
-
-    console.log('[FlowScheduler] initializeEngines - models count:', models.length);
-    console.log('[FlowScheduler] initializeEngines - defaultIds:', defaultIds);
-
-    const defaultModelId = midsceneModelConfig?.defaultModelId || defaultIds.midscene;
-    if (!defaultModelId) {
-      throw new Error('未配置 Midscene 默认模型（请在 FlowJson 的 modelConfig.midscene.inline 中配置，或在设置页面配置模型）');
-    }
-
-    const defaultModel = models.find((m) => m.id === defaultModelId && m.enabled);
-    if (!defaultModel) {
-      console.error('[FlowScheduler] Model not found. Available:', models.map(m => ({ id: m.id, enabled: m.enabled })));
-      throw new Error(`未找到 Midscene 默认模型: ${defaultModelId}（请在设置中确认模型已启用，或在 FlowJson 中使用 inline 配置）`);
-    }
-
-    // 检查 apiKey 是否已配置
-    if (!defaultModel.apiKey) {
-      throw new Error(`模型 ${defaultModel.name} 的 API Key 为空，请在设置页面配置，或在 FlowJson 的 modelConfig.midscene.inline 中直接填写`);
-    }
-
-    const insightModel = midsceneModelConfig?.insightModelId
-      ? models.find((m) => m.id === midsceneModelConfig.insightModelId && m.enabled)
-      : undefined;
-
-    const planningModel = midsceneModelConfig?.planningModelId
-      ? models.find((m) => m.id === midsceneModelConfig.planningModelId && m.enabled)
-      : undefined;
-
-    const toLite = (m: ModelProfile): ModelProfileLite => ({
-      id: m.id,
-      name: m.name,
-      provider: m.provider,
-      baseUrl: m.baseUrl,
-      apiKey: m.apiKey,
-      modelId: m.modelId,
-      modelFamily: (m as any).modelFamily || 'doubao-seed',
-      advanced: {
-        timeout: m.timeout,
-        retryCount: (m as any).retryCount,
-        reasoningEnabled: (m as any).reasoningEnabled,
-        preferredLanguage: (m as any).preferredLanguage,
-        cacheable: m.cacheable,
-        extraBodyJson: (m as any).extraModelParams,
-      },
-    });
-
-    const initConfig: EngineInitConfig = {
-      displayId: this.flow.target.displayId,
-      models: {
-        default: toLite(defaultModel),
-        insight: insightModel ? toLite(insightModel) : undefined,
-        planning: planningModel ? toLite(planningModel) : undefined,
-      },
-    };
-
-    this.engineRegistry.setInitConfig(initConfig);
-    this.addLog({ level: 'info', source: 'scheduler', message: `引擎初始化: ${defaultModel.modelId}`, data: { model: defaultModel.modelId } });
   }
 
   private async executeNode(nodeId: string): Promise<void> {
@@ -579,6 +588,8 @@ export class FlowScheduler extends EventEmitter {
     if (!engine) {
       throw new Error(`未找到节点 ${startNode.nodeType} 对应的执行引擎`);
     }
+
+    await this.ensureEngineInitialized(engine.name);
 
     const segment = this.collectSegment(startNode);
 

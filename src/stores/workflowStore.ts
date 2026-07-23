@@ -40,6 +40,7 @@ interface WorkflowState {
   isPaused: boolean;
   currentRunningNodeId: string | null;
   nodeExecutionStatus: Record<string, 'idle' | 'running' | 'success' | 'error'>;
+  nodeErrors: Record<string, string>;
   executionLogs: Array<{
     id: string;
     timestamp: number;
@@ -208,6 +209,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   isPaused: false,
   currentRunningNodeId: null,
   nodeExecutionStatus: {},
+  nodeErrors: {},
   executionLogs: [],
   nodePositions: {},
   edges: [],
@@ -415,6 +417,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isPaused: false,
       currentRunningNodeId: null,
       nodeExecutionStatus: {},
+      nodeErrors: {},
       executionLogs: [],
     });
   },
@@ -527,6 +530,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             nodeExecutionStatus: {
               ...get().nodeExecutionStatus,
               [nodeId]: 'error',
+            },
+            nodeErrors: {
+              ...get().nodeErrors,
+              [nodeId]: error,
             },
           });
           const status = get();
@@ -1340,21 +1347,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   createEmptyWorkflow: (name) => {
     const workflowName = name || generateDefaultWorkflowName();
     nodeCounter = 0;
-    const startNode: FlowNode = {
-      id: 'start',
-      nodeType: 'control.start',
-      nodeName: '开始',
-      nodeParams: {},
-      nextNodes: [{ nodeId: 'end' }],
-    };
-
-    const endNode: FlowNode = {
-      id: 'end',
-      nodeType: 'control.end',
-      nodeName: '结束',
-      nodeParams: {},
-      nextNodes: [],
-    };
 
     const wf: FlowSchema = {
       version: '2.0',
@@ -1369,7 +1361,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         midscene: { defaultModelId: 'default' },
       },
       target: { type: 'computer' },
-      nodes: [startNode, endNode],
+      nodes: [],
     };
 
     return wf;

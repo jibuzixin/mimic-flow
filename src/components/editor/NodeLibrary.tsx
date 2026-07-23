@@ -58,9 +58,9 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
 
   return (
     <div
-      className="absolute left-4 top-4 z-10 w-72 flex flex-col"
+      className="absolute left-4 top-4 bottom-4 z-10 w-72 flex flex-col"
     >
-      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden flex-1">
         {/* 头部 - 永远显示 */}
         <div
           className="p-4 border-b border-gray-100 bg-gradient-to-r from-gray-50/50 to-white cursor-pointer select-none"
@@ -84,8 +84,8 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
 
         {/* 搜索和内容 - 可收起 */}
         {!isCollapsed && (
-          <div className="flex flex-col">
-            <div className="px-4 pb-3 pt-1">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="px-4 pb-3 pt-1 shrink-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
@@ -99,7 +99,7 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
               </div>
             </div>
 
-            <div className="overflow-y-auto p-2.5 pt-0 max-h-[calc(100vh-220px)]">
+            <div className="overflow-y-auto p-2.5 pt-0 flex-1 min-h-0">
               {(Object.keys(groupedConfigs) as NodeCategory[]).map((category) => {
                 const items = groupedConfigs[category];
                 if (items.length === 0) return null;

@@ -179,9 +179,9 @@ export const PropertyPanel: React.FC = () => {
 
   return (
     <div
-      className="absolute right-4 top-4 z-10 w-80 flex flex-col"
+      className="absolute right-4 top-4 bottom-4 z-10 w-80 flex flex-col"
     >
-      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white/90 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden flex-1">
         {/* 头部 - 永远显示 */}
         <div
           className="p-4 border-b border-gray-100 bg-gradient-to-l from-gray-50/50 to-white cursor-pointer select-none"
@@ -221,8 +221,8 @@ export const PropertyPanel: React.FC = () => {
 
         {/* 有选中节点且未收起时显示内容 */}
         {hasSelection && !isCollapsed && (
-          <div className="flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-100">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="px-4 py-3 border-b border-gray-100 shrink-0">
               <div
                 className="flex items-center gap-3 p-3 rounded-xl"
                 style={{ backgroundColor: `${config!.color}10` }}
@@ -248,7 +248,7 @@ export const PropertyPanel: React.FC = () => {
               </div>
             </div>
 
-            <div className="overflow-y-auto p-4 max-h-[calc(100vh-280px)] space-y-4">
+            <div className="overflow-y-auto p-4 flex-1 min-h-0 space-y-4">
               {config!.propertyFields.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">该节点无参数配置</p>
               ) : (
