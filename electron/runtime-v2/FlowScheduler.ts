@@ -996,6 +996,30 @@ export class FlowScheduler extends EventEmitter {
     }
   }
 
+  private resetLoopBodyNodes(loopNodeId: string, bodyStartNodeId: string): void {
+    const visited = new Set<string>();
+    const queue: string[] = [bodyStartNodeId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      if (visited.has(currentId) || currentId === loopNodeId) continue;
+      visited.add(currentId);
+      const currentNode = this.nodeMap.get(currentId);
+      if (!currentNode) continue;
+      const state = this.nodeStates.get(currentId);
+      if (state) {
+        state.status = 'pending';
+        state.output = undefined;
+        state.startTime = undefined;
+        state.endTime = undefined;
+      }
+      for (const next of currentNode.nextNodes) {
+        if (!visited.has(next.nodeId) && next.nodeId !== loopNodeId) {
+          queue.push(next.nodeId);
+        }
+      }
+    }
+  }
+
   private async executeLoopNode(node: FlowNode): Promise<void> {
     const params = node.nodeParams as any;
     const loopType = params.loopType || 'for';
@@ -1046,6 +1070,7 @@ export class FlowScheduler extends EventEmitter {
           current: current + step,
           iteration: iteration + 1,
         };
+        this.resetLoopBodyNodes(node.id, bodyNodeId);
         nextNodeId = bodyNodeId;
       } else if (exitNodeId) {
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 for 循环结束，共执行 ${iteration} 次` });
@@ -1103,6 +1128,7 @@ export class FlowScheduler extends EventEmitter {
       if (shouldContinue && bodyNodeId) {
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 while 循环第 ${iteration + 1} 次` });
         pool[loopStateKey] = { ...loopState, iteration: iteration + 1 };
+        this.resetLoopBodyNodes(node.id, bodyNodeId);
         nextNodeId = bodyNodeId;
       } else if (exitNodeId) {
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 while 循环结束，共执行 ${iteration} 次` });
@@ -1110,7 +1136,12 @@ export class FlowScheduler extends EventEmitter {
         nextNodeId = exitNodeId;
       }
     } else if (loopType === 'forEach') {
-      const arrayVar = String(params.arrayVar || '');
+      const arrayVarRaw = String(params.arrayVar || '');
+      const extractVarName = (input: string): string => {
+        const match = input.match(/\{\{\s*([^{}\s]+)\s*\}\}/);
+        return match ? match[1] : input;
+      };
+      const arrayVar = extractVarName(arrayVarRaw);
       const itemVar = String(params.itemVar || 'item');
       iteration = Number(loopState.iteration ?? 0);
 
@@ -1131,6 +1162,7 @@ export class FlowScheduler extends EventEmitter {
         ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[itemVar] = item;
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环第 ${iteration + 1} 次: ${itemVar} = ${JSON.stringify(item)}` });
         pool[loopStateKey] = { ...loopState, iteration: iteration + 1 };
+        this.resetLoopBodyNodes(node.id, bodyNodeId);
         nextNodeId = bodyNodeId;
       } else if (exitNodeId) {
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环结束，共执行 ${iteration} 次` });
