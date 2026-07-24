@@ -3,6 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, Variable, ChevronDown } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
+type VarType = 'string' | 'number' | 'boolean' | 'array' | 'object';
+
+const VAR_TYPE_OPTIONS: { label: string; value: VarType; defaultVal: string; placeholder: string }[] = [
+  { label: '字符串', value: 'string', defaultVal: '', placeholder: '如: hello world' },
+  { label: '数字', value: 'number', defaultVal: '0', placeholder: '如: 100, 3.14' },
+  { label: '布尔', value: 'boolean', defaultVal: 'false', placeholder: 'true / false' },
+  { label: '数组', value: 'array', defaultVal: '[]', placeholder: '如: [1, 2, 3]' },
+  { label: '对象 (JSON)', value: 'object', defaultVal: '{}', placeholder: '如: {"key": "value"}' },
+];
+
 interface VariablePanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,6 +21,7 @@ interface VariablePanelProps {
 export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose }) => {
   const { currentWorkflow, addGlobalVar, updateGlobalVar, deleteGlobalVar } = useWorkflowStore();
   const [newVarName, setNewVarName] = useState('');
+  const [newVarType, setNewVarType] = useState<VarType>('string');
   const [newVarValue, setNewVarValue] = useState('');
   const [editingVar, setEditingVar] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -18,28 +29,67 @@ export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose })
   const variables = currentWorkflow?.globalVars || {};
   const varEntries = Object.entries(variables);
 
+  const detectVarType = (value: unknown): VarType => {
+    if (Array.isArray(value)) return 'array';
+    if (value === null) return 'string';
+    return typeof value as VarType;
+  };
+
+  const parseValue = (str: string, type: VarType): unknown => {
+    switch (type) {
+      case 'number': {
+        const num = Number(str);
+        return isNaN(num) ? 0 : num;
+      }
+      case 'boolean':
+        return str === 'true';
+      case 'array':
+      case 'object': {
+        try {
+          const parsed = JSON.parse(str);
+          if (type === 'array' && !Array.isArray(parsed)) return [];
+          if (type === 'object' && (Array.isArray(parsed) || typeof parsed !== 'object' || parsed === null)) return {};
+          return parsed;
+        } catch {
+          return type === 'array' ? [] : {};
+        }
+      }
+      case 'string':
+      default:
+        return str;
+    }
+  };
+
+  const handleTypeChange = (type: VarType) => {
+    setNewVarType(type);
+    const opt = VAR_TYPE_OPTIONS.find((o) => o.value === type);
+    if (opt) setNewVarValue(opt.defaultVal);
+  };
+
   const handleAdd = () => {
     if (!newVarName.trim()) return;
-    let value: unknown = newVarValue;
-    if (newVarValue === 'true') value = true;
-    else if (newVarValue === 'false') value = false;
-    else if (!isNaN(Number(newVarValue)) && newVarValue !== '') value = Number(newVarValue);
+    const value = parseValue(newVarValue, newVarType);
     addGlobalVar(newVarName.trim(), value);
     setNewVarName('');
+    setNewVarType('string');
     setNewVarValue('');
   };
 
   const handleStartEdit = (name: string, value: unknown) => {
     setEditingVar(name);
-    setEditValue(String(value));
+    const type = detectVarType(value);
+    if (type === 'array' || type === 'object' || typeof value === 'object') {
+      setEditValue(JSON.stringify(value));
+    } else {
+      setEditValue(String(value));
+    }
   };
 
   const handleSaveEdit = () => {
     if (!editingVar) return;
-    let value: unknown = editValue;
-    if (editValue === 'true') value = true;
-    else if (editValue === 'false') value = false;
-    else if (!isNaN(Number(editValue)) && editValue !== '') value = Number(editValue);
+    const currentVal = variables[editingVar];
+    const type = detectVarType(currentVal);
+    const value = parseValue(editValue, type);
     updateGlobalVar(editingVar, value);
     setEditingVar(null);
   };
@@ -114,36 +164,52 @@ export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose })
                 </div>
               </div>
 
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">变量名</label>
-                  <input
-                    type="text"
-                    value={newVarName}
-                    onChange={(e) => setNewVarName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                    placeholder="如: username"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
-                  />
+              <div className="space-y-3">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">变量名</label>
+                    <input
+                      type="text"
+                      value={newVarName}
+                      onChange={(e) => setNewVarName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                      placeholder="如: username, 计数器"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
+                    />
+                  </div>
+                  <div style={{ width: 120 }}>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">类型</label>
+                    <select
+                      value={newVarType}
+                      onChange={(e) => handleTypeChange(e.target.value as VarType)}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white appearance-none cursor-pointer"
+                    >
+                      {VAR_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">初始值</label>
-                  <input
-                    type="text"
-                    value={newVarValue}
-                    onChange={(e) => setNewVarValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                    placeholder="如: testuser"
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
-                  />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">初始值</label>
+                    <input
+                      type="text"
+                      value={newVarValue}
+                      onChange={(e) => setNewVarValue(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                      placeholder={VAR_TYPE_OPTIONS.find((o) => o.value === newVarType)?.placeholder}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white font-mono"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAdd}
+                    className="px-4 py-2 text-sm text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95 font-medium flex items-center gap-1.5"
+                  >
+                    <Plus className="h-4 w-4" />
+                    添加
+                  </button>
                 </div>
-                <button
-                  onClick={handleAdd}
-                  className="px-4 py-2 text-sm text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95 font-medium flex items-center gap-1.5"
-                >
-                  <Plus className="h-4 w-4" />
-                  添加
-                </button>
               </div>
             </div>
 

@@ -1,6 +1,6 @@
 import {
   Play, MousePointer2, MousePointerClick, Type, Keyboard, Scroll, Hand,
-  Search, CheckCircle,
+  Search, CheckCircle, ToggleLeft,
   Clock, Timer,
   Variable, GitBranch, Repeat, FileText, Flag, StopCircle,
 } from 'lucide-react';
@@ -10,13 +10,14 @@ export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait';
 export interface PropertyField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name' | 'file-path';
   description?: string;
   placeholder?: string;
   options?: { label: string; value: string }[];
   defaultValue?: unknown;
   sensitive?: boolean;
   showWhen?: Record<string, string>;
+  multiFile?: boolean;
 }
 
 export interface NodeConfig {
@@ -139,7 +140,6 @@ export const nodeConfigs: NodeConfig[] = [
       varName: '',
       operation: 'set',
       value: '1',
-      valueType: 'number',
     },
     propertyFields: [
       { key: 'varName', label: '变量名', type: 'var-name', placeholder: '例如: result, count, 计数器' },
@@ -161,20 +161,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         defaultValue: 'set',
       },
-      {
-        key: 'valueType',
-        label: '值类型',
-        type: 'select',
-        options: [
-          { label: '数字', value: 'number' },
-          { label: '字符串', value: 'string' },
-          { label: '布尔值', value: 'boolean' },
-          { label: '表达式', value: 'expression' },
-        ],
-        defaultValue: 'number',
-        description: '赋值或运算时使用的值类型',
-      },
-      { key: 'value', label: '值', type: 'textarea', description: '输入 # 选择变量；递增/递减默认 ±1；转大写/小写/trim/取整不需要填值' },
+      { key: 'value', label: '值', type: 'textarea', description: '数字操作填数字，字符串操作填文本。输入 # 选择变量。递增/递减/转大小写/trim/取整不需要填值' },
     ],
   },
   {
@@ -242,7 +229,7 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：确认按钮' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
-      { key: 'fileChooserAccept', label: '上传文件路径', type: 'text', description: '点击后触发文件选择器时，指定要上传的文件路径，多个用逗号分隔' },
+      { key: 'fileChooserAccept', label: '上传文件路径', type: 'file-path', description: '点击后触发文件选择器时，要上传的文件路径', multiFile: true },
     ],
   },
   {
@@ -409,14 +396,20 @@ export const nodeConfigs: NodeConfig[] = [
     name: 'AI 查询',
     category: 'ai-query',
     icon: Search,
-    description: '查询页面内容，结果保存为变量可被后续节点引用',
+    description: '让 AI 查询页面内容并返回结构化数据，结果保存为变量供后续节点使用。支持返回数字、字符串、数组、JSON 对象等格式',
     color: '#ec4899',
     defaultParams: {
       prompt: '',
       outputVar: '',
     },
     propertyFields: [
-      { key: 'prompt', label: '查询描述', type: 'textarea', placeholder: '例如：获取页面上所有的标题' },
+      {
+        key: 'prompt',
+        label: '查询描述',
+        type: 'textarea',
+        placeholder: '例如：获取页面上所有商品的标题和价格，以数组形式返回，每个元素包含 title 和 price 字段',
+        description: '请在描述中明确说明你想要的数据格式，如：返回一个数字、返回字符串、返回数组、返回JSON对象（包含哪些字段）等',
+      },
       { key: 'outputVar', label: '输出变量名', type: 'text', description: '查询结果保存到这个变量，后续节点可通过 # 引用' },
     ],
   },
@@ -425,15 +418,33 @@ export const nodeConfigs: NodeConfig[] = [
     name: 'AI 断言',
     category: 'ai-query',
     icon: CheckCircle,
-    description: '断言页面状态是否符合预期',
+    description: '断言页面状态是否符合预期，失败则中断执行并报错',
     color: '#ec4899',
     defaultParams: {
       prompt: '',
       errorMessage: '',
+      outputVar: '',
     },
     propertyFields: [
       { key: 'prompt', label: '断言描述', type: 'textarea', placeholder: '例如：页面应该显示登录成功' },
       { key: 'errorMessage', label: '失败提示', type: 'text', description: '断言失败时显示的错误信息' },
+      { key: 'outputVar', label: '结果变量名', type: 'text', description: '断言结果（true/false）保存到这个变量，可选' },
+    ],
+  },
+  {
+    type: 'midscene.boolean',
+    name: 'AI 布尔判断',
+    category: 'ai-query',
+    icon: ToggleLeft,
+    description: '让 AI 判断一个条件，返回 true 或 false，结果保存为变量，不中断执行',
+    color: '#ec4899',
+    defaultParams: {
+      prompt: '',
+      outputVar: 'result',
+    },
+    propertyFields: [
+      { key: 'prompt', label: '判断描述', type: 'textarea', placeholder: '例如：页面上是否有登录按钮' },
+      { key: 'outputVar', label: '输出变量名', type: 'text', description: '布尔结果保存到这个变量，后续节点可通过 # 引用' },
     ],
   },
 

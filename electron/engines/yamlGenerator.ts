@@ -182,10 +182,17 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
     }
 
     case 'midscene.assert': {
-      const assertion = String(params.assertion ?? '');
-      lines.push(`      - aiAssert: ${yamlEscape(assertion)}`);
+      const prompt = String(params.prompt ?? '');
+      lines.push(`      - aiAssert: ${yamlEscape(prompt)}`);
       if (params.errorMessage) lines.push(`        errorMessage: ${yamlEscape(String(params.errorMessage))}`);
-      if (params.name) lines.push(`        name: ${yamlEscape(String(params.name))}`);
+      if (params.outputVar) lines.push(`        name: ${yamlEscape(String(params.outputVar))}`);
+      break;
+    }
+
+    case 'midscene.boolean': {
+      const prompt = String(params.prompt ?? '');
+      lines.push(`      - aiBoolean: ${yamlEscape(prompt)}`);
+      if (params.outputVar) lines.push(`        name: ${yamlEscape(String(params.outputVar))}`);
       break;
     }
 

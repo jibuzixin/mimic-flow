@@ -14,6 +14,7 @@ export type FlowNodeType =
   | 'midscene.scroll'
   | 'midscene.query'
   | 'midscene.assert'
+  | 'midscene.boolean'
   | 'midscene.waitFor'
   | 'midscene.sleep'
   // --- 控制流节点（调度层原生处理）---

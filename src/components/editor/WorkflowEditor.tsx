@@ -815,6 +815,23 @@ function WorkflowEditorInner() {
 
           <PropertyPanel />
 
+          <div className="absolute bottom-4 left-4 flex items-center gap-1.5 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-gray-200 px-3 py-1.5 text-[11px] text-gray-500">
+            <span className="inline-flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-600">Ctrl</kbd>
+              <span>+ 拖拽圈选</span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span className="inline-flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-600">Delete</kbd>
+              <span>批量删除</span>
+            </span>
+            <span className="text-gray-300">·</span>
+            <span className="inline-flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-600">#</kbd>
+              <span>插入变量</span>
+            </span>
+          </div>
+
           <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-gray-200 p-1.5">
             <button
               onClick={() => setIsSelectionMode(!isSelectionMode)}

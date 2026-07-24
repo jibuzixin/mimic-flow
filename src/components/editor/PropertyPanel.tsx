@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick } from 'lucide-react';
+import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick, FileText, Plus } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
@@ -272,6 +272,71 @@ export const PropertyPanel: React.FC = () => {
             nodeVariables={nodeOutputVars}
           />
         );
+
+      case 'file-path': {
+        const paths = String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+        const addFiles = async () => {
+          try {
+            const result = await window.mimic.invoke('dialog:select-file', {
+              multiSelections: true,
+            });
+            if (result) {
+              const newPaths = Array.isArray(result) ? result : [result];
+              const allPaths = [...paths, ...newPaths];
+              handleParamChange(field.key, allPaths.join(','));
+            }
+          } catch (e) {
+            console.error('选择文件失败', e);
+          }
+        };
+        const removeFile = (index: number) => {
+          const newPaths = paths.filter((_, i) => i !== index);
+          handleParamChange(field.key, newPaths.join(','));
+        };
+        return (
+          <div className="space-y-2">
+            {paths.length > 0 ? (
+              <div className="space-y-1.5">
+                {paths.map((p, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg group"
+                  >
+                    <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center shrink-0">
+                      <FileText className="h-3.5 w-3.5 text-indigo-600" />
+                    </div>
+                    <span
+                      className="flex-1 text-xs font-mono text-gray-700 truncate"
+                      title={p}
+                    >
+                      {p.split(/[\\/]/).pop() || p}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all p-0.5"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="px-3 py-4 border border-dashed border-gray-300 rounded-xl text-center text-xs text-gray-400">
+                未选择文件
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={addFiles}
+              className="w-full px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              添加文件
+            </button>
+          </div>
+        );
+      }
 
       default:
         return null;

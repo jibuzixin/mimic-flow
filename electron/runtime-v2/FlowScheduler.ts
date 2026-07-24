@@ -580,7 +580,7 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeVarNode(node: FlowNode): void {
-    const { varName, value, operation = 'set', valueType = 'number' } = node.nodeParams as any;
+    const { varName, value, operation = 'set' } = node.nodeParams as any;
     const pool = this.variablePool;
 
     const getCurrentValue = (): unknown => {
@@ -589,6 +589,25 @@ export class FlowScheduler extends EventEmitter {
 
     const setValue = (val: unknown) => {
       pool[varName as string] = val;
+    };
+
+    const autoParseValue = (val: unknown): unknown => {
+      if (typeof val !== 'string') return val;
+      if (val === '') return '';
+      if (val === 'true') return true;
+      if (val === 'false') return false;
+      const num = Number(val);
+      if (!isNaN(num) && val.trim() !== '') return num;
+      const trimmed = val.trim();
+      if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+          (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return val;
+        }
+      }
+      return val;
     };
 
     const isNumericOp = ['add', 'subtract', 'multiply', 'divide', 'increment', 'decrement', 'toInteger'].includes(operation);
@@ -624,19 +643,7 @@ export class FlowScheduler extends EventEmitter {
 
     switch (operation) {
       case 'set': {
-        let finalValue: unknown = interpolatedValue;
-        if (valueType === 'number') {
-          finalValue = Number(interpolatedValue) || 0;
-        } else if (valueType === 'boolean') {
-          finalValue = interpolatedValue === 'true' || interpolatedValue === true;
-        } else if (valueType === 'expression') {
-          try {
-            finalValue = new Function(`"use strict"; return (${interpolatedValue})`)();
-          } catch (e) {
-            finalValue = interpolatedValue;
-          }
-        }
-        setValue(finalValue);
+        setValue(autoParseValue(interpolatedValue));
         break;
       }
       case 'increment':

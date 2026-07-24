@@ -15,6 +15,7 @@ type MimicIpcChannel =
   | 'window:close'
   | 'dialog:select-video'
   | 'dialog:select-folder'
+  | 'dialog:select-file'
   | 'recorder:start'
   | 'recorder:stop'
   | 'recorder:pause'

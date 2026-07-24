@@ -136,7 +136,7 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
   const nodes = useNodes();
 
   const edgePath = useMemo(() => {
-    if (!edgeAvoidNodes || edgeStyle === 'straight') {
+    const getDefaultPath = (): string => {
       switch (edgeStyle) {
         case 'smoothstep':
           return getSmoothStepPath({
@@ -166,6 +166,10 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
             targetPosition,
           })[0];
       }
+    };
+
+    if (!edgeAvoidNodes || edgeStyle === 'straight') {
+      return getDefaultPath();
     }
 
     const nodeRects: Rect[] = nodes
@@ -182,51 +186,38 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
         const minY = Math.min(sourceY, targetY);
         const maxY = Math.max(sourceY, targetY);
         return (
-          rect.x + rect.width > minX - 50 &&
-          rect.x < maxX + 50 &&
-          rect.y + rect.height > minY - 50 &&
-          rect.y < maxY + 50
+          rect.x + rect.width > minX - 30 &&
+          rect.x < maxX + 30 &&
+          rect.y + rect.height > minY - 30 &&
+          rect.y < maxY + 30
         );
       });
 
-    if (nodeRects.length === 0) {
-      switch (edgeStyle) {
-        case 'smoothstep':
-          return getSmoothStepPath({
-            sourceX,
-            sourceY,
-            sourcePosition,
-            targetX,
-            targetY,
-            targetPosition,
-            borderRadius: 8,
-          })[0];
-        case 'bezier':
-        default:
-          return getBezierPath({
-            sourceX,
-            sourceY,
-            sourcePosition,
-            targetX,
-            targetY,
-            targetPosition,
-          })[0];
+    const defaultPath = getDefaultPath();
+
+    const pathHitsAnyNode = (path: string, padding = 0): boolean => {
+      for (const rect of nodeRects) {
+        if (pathIntersectsRect(path, rect, padding)) {
+          return true;
+        }
       }
+      return false;
+    };
+
+    if (!pathHitsAnyNode(defaultPath)) {
+      return defaultPath;
     }
 
-    const defaultOffset = Math.max(Math.abs(targetY - sourceY) * 0.5, 80);
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const isHorizontal = Math.abs(dx) > Math.abs(dy);
 
-    const tryOffset = (offset: number): { valid: boolean; path: string } => {
+    const tryOffset = (offset: number): string | null => {
       let p: string;
 
       if (edgeStyle === 'smoothstep') {
-        const dx = targetX - sourceX;
-        const dy = targetY - sourceY;
-        const isHorizontal = Math.abs(dx) > Math.abs(dy);
-
         const offsetX = isHorizontal ? 0 : offset;
         const offsetY = isHorizontal ? offset : 0;
-
         const midX = (sourceX + targetX) / 2 + offsetX;
         const midY = (sourceY + targetY) / 2 + offsetY;
 
@@ -252,10 +243,6 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
 
         p = p1 + ' ' + p2.replace(/^M[^L]*L/, 'L');
       } else {
-        const dx = targetX - sourceX;
-        const dy = targetY - sourceY;
-        const isHorizontal = Math.abs(dx) > Math.abs(dy);
-
         let c1x = sourceX;
         let c1y = sourceY;
         let c2x = targetX;
@@ -276,57 +263,27 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
         p = `M ${sourceX},${sourceY} C ${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
       }
 
-      let valid = true;
-      for (const rect of nodeRects) {
-        if (pathIntersectsRect(p, rect)) {
-          valid = false;
-          break;
-        }
-      }
-
-      return { valid, path: p };
+      return pathHitsAnyNode(p) ? null : p;
     };
 
+    const baseOffset = 60;
     const offsets = [
-      defaultOffset,
-      -defaultOffset,
-      defaultOffset * 1.5,
-      -defaultOffset * 1.5,
-      defaultOffset * 2,
-      -defaultOffset * 2,
-      defaultOffset * 0.7,
-      -defaultOffset * 0.7,
+      baseOffset,
+      -baseOffset,
+      baseOffset * 2,
+      -baseOffset * 2,
+      baseOffset * 3,
+      -baseOffset * 3,
+      baseOffset * 1.5,
+      -baseOffset * 1.5,
     ];
 
     for (const offset of offsets) {
       const result = tryOffset(offset);
-      if (result.valid) {
-        return result.path;
-      }
+      if (result) return result;
     }
 
-    switch (edgeStyle) {
-      case 'smoothstep':
-        return getSmoothStepPath({
-          sourceX,
-          sourceY,
-          sourcePosition,
-          targetX,
-          targetY,
-          targetPosition,
-          borderRadius: 8,
-        })[0];
-      case 'bezier':
-      default:
-        return getBezierPath({
-          sourceX,
-          sourceY,
-          sourcePosition,
-          targetX,
-          targetY,
-          targetPosition,
-        })[0];
-    }
+    return defaultPath;
   }, [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, edgeStyle, edgeAvoidNodes, nodes, source, target]);
 
   const gradientId = `edge-gradient-${id}`;

@@ -189,6 +189,17 @@ ipcMain.handle('dialog:select-folder', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle('dialog:select-file', async (_event, options?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] }) => {
+  const properties: ('openFile' | 'multiSelections')[] = ['openFile'];
+  if (options?.multiSelections) properties.push('multiSelections');
+  const result = await dialog.showOpenDialog({
+    properties,
+    filters: options?.filters || [{ name: 'All Files', extensions: ['*'] }],
+  });
+  if (result.canceled) return null;
+  return options?.multiSelections ? result.filePaths : result.filePaths[0];
+});
+
 ipcMain.handle('shell:open-path', async (_event, path: string) => {
   if (!path) return false;
   try {
