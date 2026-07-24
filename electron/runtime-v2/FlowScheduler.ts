@@ -42,12 +42,24 @@ function getPathValue(obj: Record<string, unknown>, path: string): unknown {
 }
 
 function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
-  const directValue = getPathValue(pool, path);
-  if (directValue !== undefined) return directValue;
-
   const firstDot = path.indexOf('.');
   const topKey = firstDot === -1 ? path : path.slice(0, firstDot);
   const restPath = firstDot === -1 ? '' : path.slice(firstDot + 1);
+
+  const reservedKeys = new Set(['globalVars', 'outputs', 'system', 'loop']);
+  if (!reservedKeys.has(topKey)) {
+    const topValue = pool[topKey];
+    if (topValue !== undefined) {
+      if (!restPath) return topValue;
+      if (topValue && typeof topValue === 'object') {
+        return getPathValue(topValue as Record<string, unknown>, restPath);
+      }
+      return undefined;
+    }
+  }
+
+  const directValue = getPathValue(pool, path);
+  if (directValue !== undefined) return directValue;
 
   const loopVars = pool.loop as Record<string, unknown> | undefined;
   if (loopVars && topKey in loopVars) {
@@ -559,7 +571,18 @@ export class FlowScheduler extends EventEmitter {
 
   private executeVarNode(node: FlowNode): void {
     const { varName, value, operation = 'set', valueType = 'number' } = node.nodeParams as any;
-    const pool = this.variablePool.globalVars as Record<string, unknown>;
+    const pool = this.variablePool;
+
+    const getCurrentValue = (): unknown => {
+      return resolveVarPath(pool, varName as string);
+    };
+
+    const setValue = (val: unknown) => {
+      pool[varName as string] = val;
+    };
+
+    const isNumericOp = ['add', 'subtract', 'multiply', 'divide', 'increment', 'decrement', 'toInteger'].includes(operation);
+    const isStringOp = ['concat', 'toUpperCase', 'toLowerCase', 'trim'].includes(operation);
 
     const needsValue = !['toUpperCase', 'toLowerCase', 'trim', 'toInteger'].includes(operation);
     const interpolatedValue = needsValue ? interpolateValue(value, this.variablePool) : undefined;
@@ -573,6 +596,21 @@ export class FlowScheduler extends EventEmitter {
     if (needsValue) {
       stringValue = String(interpolatedValue ?? '');
     }
+
+    const ensureInitialized = () => {
+      const current = getCurrentValue();
+      if (current !== undefined) return;
+
+      if (isNumericOp) {
+        setValue(0);
+      } else if (isStringOp) {
+        setValue('');
+      } else if (operation === 'set') {
+        // set 操作不需要预初始化，直接赋值即可
+      } else {
+        setValue(0);
+      }
+    };
 
     switch (operation) {
       case 'set': {
@@ -588,40 +626,58 @@ export class FlowScheduler extends EventEmitter {
             finalValue = interpolatedValue;
           }
         }
-        pool[varName as string] = finalValue;
+        setValue(finalValue);
         break;
       }
       case 'increment':
-      case 'add':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) + numericValue;
+      case 'add': {
+        ensureInitialized();
+        setValue(Number(getCurrentValue() ?? 0) + numericValue);
         break;
+      }
       case 'decrement':
-      case 'subtract':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) - numericValue;
+      case 'subtract': {
+        ensureInitialized();
+        setValue(Number(getCurrentValue() ?? 0) - numericValue);
         break;
-      case 'multiply':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) * numericValue;
+      }
+      case 'multiply': {
+        ensureInitialized();
+        setValue(Number(getCurrentValue() ?? 0) * numericValue);
         break;
-      case 'divide':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) / numericValue;
+      }
+      case 'divide': {
+        ensureInitialized();
+        setValue(Number(getCurrentValue() ?? 0) / numericValue);
         break;
-      case 'concat':
-        pool[varName as string] = String(pool[varName as string] ?? '') + stringValue;
+      }
+      case 'concat': {
+        ensureInitialized();
+        setValue(String(getCurrentValue() ?? '') + stringValue);
         break;
-      case 'toUpperCase':
-        pool[varName as string] = String(pool[varName as string] ?? '').toUpperCase();
+      }
+      case 'toUpperCase': {
+        ensureInitialized();
+        setValue(String(getCurrentValue() ?? '').toUpperCase());
         break;
-      case 'toLowerCase':
-        pool[varName as string] = String(pool[varName as string] ?? '').toLowerCase();
+      }
+      case 'toLowerCase': {
+        ensureInitialized();
+        setValue(String(getCurrentValue() ?? '').toLowerCase());
         break;
-      case 'trim':
-        pool[varName as string] = String(pool[varName as string] ?? '').trim();
+      }
+      case 'trim': {
+        ensureInitialized();
+        setValue(String(getCurrentValue() ?? '').trim());
         break;
-      case 'toInteger':
-        pool[varName as string] = Math.trunc(Number(pool[varName as string] ?? 0));
+      }
+      case 'toInteger': {
+        ensureInitialized();
+        setValue(Math.trunc(Number(getCurrentValue() ?? 0)));
         break;
+      }
       default:
-        pool[varName as string] = interpolatedValue;
+        setValue(interpolatedValue);
     }
 
     this.addLog({

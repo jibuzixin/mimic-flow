@@ -4,6 +4,7 @@ import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick } from 'l
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
+import { VarNameInput } from './VarNameInput';
 import { KeySelect } from './KeySelect';
 import type { FlowNode } from '../../../types/flow-v2';
 
@@ -257,6 +258,18 @@ export const PropertyPanel: React.FC = () => {
           <KeySelect
             value={String(value ?? '')}
             onChange={(v) => handleParamChange(field.key, v)}
+          />
+        );
+
+      case 'var-name':
+        return (
+          <VarNameInput
+            value={String(value ?? '')}
+            onChange={(v) => handleParamChange(field.key, v)}
+            placeholder={field.placeholder}
+            variables={variables}
+            globalVariables={globalVarNames}
+            nodeVariables={nodeOutputVars}
           />
         );
 

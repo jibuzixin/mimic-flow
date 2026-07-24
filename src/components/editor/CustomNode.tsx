@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, memo } from 'react';
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type Node, type NodeProps, useEdges } from '@xyflow/react';
 import { motion } from 'framer-motion';
 import { AlertCircle } from 'lucide-react';
 import { getNodeConfig } from './nodeConfigs';
@@ -21,7 +21,6 @@ export type CustomNodeType = Node<CustomNodeData, 'custom'>;
 export const getNodeHandles = (nodeType: string) => {
   const isStartNode = nodeType === 'control.start';
   const isEndNode = nodeType === 'control.end';
-  const isControlNode = nodeType.startsWith('control.');
   const isIfNode = nodeType === 'control.if';
   const isLoopNode = nodeType === 'control.loop';
 
@@ -39,6 +38,28 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const handles = useMemo(() => getNodeHandles(data.nodeType), [data.nodeType]);
   const status = data.executionStatus || 'idle';
   const errorMessage = data.errorMessage;
+  const edges = useEdges();
+
+  const isLoopNode = data.nodeType === 'control.loop';
+
+  const loopInputHandles = useMemo(() => {
+    if (!isLoopNode) return { showLeft: false, showRight: false, showTop: true };
+
+    const connectedTargets = new Set(
+      edges
+        .filter((e) => e.target === id)
+        .map((e) => e.targetHandle || 'in'),
+    );
+
+    const hasLeft = connectedTargets.has('in-left');
+    const hasRight = connectedTargets.has('in-right');
+
+    return {
+      showTop: true,
+      showLeft: !hasRight,
+      showRight: !hasLeft,
+    };
+  }, [isLoopNode, edges, id]);
 
   const statusBorder = {
     idle: '',
@@ -239,14 +260,43 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       }}
       onClick={handleSelect}
     >
-      {handles.inputs > 0 && (
+      {isLoopNode ? (
+        <>
+          {loopInputHandles.showTop && (
+            <Handle
+              type="target"
+              position={Position.Top}
+              id="in"
+              className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair"
+            />
+          )}
+          {loopInputHandles.showLeft && (
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="in-left"
+              className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair"
+              style={{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }}
+            />
+          )}
+          {loopInputHandles.showRight && (
+            <Handle
+              type="target"
+              position={Position.Right}
+              id="in-right"
+              className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair"
+              style={{ right: '-8px', top: '50%', transform: 'translateY(-50%)' }}
+            />
+          )}
+        </>
+      ) : handles.inputs > 0 ? (
         <Handle
           type="target"
           position={Position.Top}
           id="in"
           className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair"
         />
-      )}
+      ) : null}
 
       <div className="px-4 py-3 relative">
         {status === 'error' && errorMessage && (

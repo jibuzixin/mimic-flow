@@ -274,6 +274,11 @@ function WorkflowEditorInner() {
   );
 
   useEffect(() => {
+    if (!initialized || isSyncingFromStore.current) return;
+    setStoreEdges(edges);
+  }, [edges, initialized, setStoreEdges]);
+
+  useEffect(() => {
     if (!initialized) return;
     saveToStorage();
   }, [currentWorkflow, nodePositions, edges, initialized, saveToStorage]);
@@ -295,8 +300,35 @@ function WorkflowEditorInner() {
       if (targetHandles.inputs === 0) return false;
       if (sourceHandles.outputs === 0) return false;
 
-      const existingSourceEdges = edges.filter((e) => e.source === connection.source);
-      if (existingSourceEdges.length >= sourceHandles.outputs) return false;
+      const existingSourceEdges = edges.filter((e) => e.source === connection.source && e.sourceHandle === (connection.sourceHandle || 'out'));
+      if (existingSourceEdges.length > 0) return false;
+
+      const isLoopTarget = targetType === 'control.loop';
+      if (isLoopTarget) {
+        const targetHandle = connection.targetHandle || 'in';
+        const existingTargetEdges = edges.filter(
+          (e) => e.target === connection.target && e.targetHandle === targetHandle,
+        );
+        if (existingTargetEdges.length > 0) return false;
+
+        if (targetHandle === 'in-left') {
+          const hasRight = edges.some(
+            (e) => e.target === connection.target && e.targetHandle === 'in-right',
+          );
+          if (hasRight) return false;
+        }
+        if (targetHandle === 'in-right') {
+          const hasLeft = edges.some(
+            (e) => e.target === connection.target && e.targetHandle === 'in-left',
+          );
+          if (hasLeft) return false;
+        }
+      } else {
+        const existingTargetEdges = edges.filter(
+          (e) => e.target === connection.target && e.targetHandle === (connection.targetHandle || 'in'),
+        );
+        if (existingTargetEdges.length > 0) return false;
+      }
 
       return true;
     },

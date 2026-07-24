@@ -1000,7 +1000,7 @@ export default function SettingsPage() {
               <div className="space-y-3 pt-4 border-t border-border/40">
                 <Label className="text-sm font-medium">连线样式</Label>
                 <p className="text-xs text-muted-foreground">
-                  选择节点之间连线的显示样式。
+                  选择节点之间连线的显示样式。选中连线后可拖动中间控制点调整形状。
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -1011,7 +1011,12 @@ export default function SettingsPage() {
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setLocalUiSettings((p) => ({ ...p, edgeStyle: opt.value as 'bezier' | 'smoothstep' | 'straight' }))}
+                      onClick={() =>
+                        setLocalUiSettings((p) => ({
+                          ...p,
+                          edgeStyle: opt.value as 'bezier' | 'smoothstep' | 'straight',
+                        }))
+                      }
                       className={cn(
                         'rounded-xl border-2 py-3 text-sm font-medium transition-all',
                         localUiSettings.edgeStyle === opt.value

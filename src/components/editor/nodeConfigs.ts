@@ -10,7 +10,7 @@ export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait';
 export interface PropertyField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name';
   description?: string;
   placeholder?: string;
   options?: { label: string; value: string }[];
@@ -138,7 +138,7 @@ export const nodeConfigs: NodeConfig[] = [
       valueType: 'number',
     },
     propertyFields: [
-      { key: 'varName', label: '变量名', type: 'text', placeholder: '例如: result, count' },
+      { key: 'varName', label: '变量名', type: 'var-name', placeholder: '例如: result, count, 计数器' },
       {
         key: 'operation',
         label: '操作类型',
