@@ -5,6 +5,7 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
 import { KeySelect } from './KeySelect';
+import type { FlowNode } from '../../../types/flow-v2';
 
 interface HelpTooltipProps {
   text: string;
@@ -77,15 +78,60 @@ export const PropertyPanel: React.FC = () => {
   const selectedNode = currentWorkflow?.nodes.find((n) => n.id === selectedNodeId);
   const config = selectedNode ? getNodeConfig(selectedNode.nodeType) : null;
 
-  const getNodeOutputVars = useCallback((): string[] => {
+  const getPrecedingNodeVars = useCallback((): string[] => {
     if (!currentWorkflow || !selectedNodeId) return [];
 
-    const nodeVars: string[] = [];
+    const nodeMap = new Map<string, FlowNode>();
+    currentWorkflow.nodes.forEach((n) => nodeMap.set(n.id, n));
+
+    const prevNodesMap = new Map<string, string[]>();
     currentWorkflow.nodes.forEach((node) => {
-      if (node.id === selectedNodeId) return;
+      node.nextNodes?.forEach((next) => {
+        if (!prevNodesMap.has(next.nodeId)) {
+          prevNodesMap.set(next.nodeId, []);
+        }
+        prevNodesMap.get(next.nodeId)!.push(node.id);
+      });
+    });
+
+    const visited = new Set<string>();
+    const queue: string[] = [];
+    const prevNodeIds: string[] = [];
+
+    const initialPrevs = prevNodesMap.get(selectedNodeId) || [];
+    initialPrevs.forEach((id) => {
+      if (!visited.has(id)) {
+        visited.add(id);
+        queue.push(id);
+      }
+    });
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      prevNodeIds.push(nodeId);
+
+      const prevs = prevNodesMap.get(nodeId) || [];
+      prevs.forEach((prevId) => {
+        if (!visited.has(prevId)) {
+          visited.add(prevId);
+          queue.push(prevId);
+        }
+      });
+    }
+
+    const nodeVars: string[] = [];
+    prevNodeIds.forEach((nodeId) => {
+      const node = nodeMap.get(nodeId);
+      if (!node) return;
       const params = node.nodeParams as any;
       if (node.nodeType === 'control.var' && params?.varName) {
         nodeVars.push(params.varName);
+      } else if (node.nodeType === 'control.loop') {
+        if (params?.loopType === 'for' && params?.iteratorVar) {
+          nodeVars.push(params.iteratorVar);
+        } else if (params?.loopType === 'forEach' && params?.itemVar) {
+          nodeVars.push(params.itemVar);
+        }
       } else if (params?.outputVar) {
         nodeVars.push(params.outputVar);
       }
@@ -99,7 +145,7 @@ export const PropertyPanel: React.FC = () => {
     return Object.keys(currentWorkflow.globalVars);
   }, [currentWorkflow?.globalVars]);
 
-  const nodeOutputVars = useMemo(() => getNodeOutputVars(), [getNodeOutputVars]);
+  const nodeOutputVars = useMemo(() => getPrecedingNodeVars(), [getPrecedingNodeVars]);
 
   const variables = useMemo(() => {
     const allVars: string[] = [];

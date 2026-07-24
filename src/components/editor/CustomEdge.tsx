@@ -1,9 +1,12 @@
 import React from 'react';
 import {
   getBezierPath,
+  getSmoothStepPath,
+  getStraightPath,
   type EdgeProps,
   type Edge,
 } from '@xyflow/react';
+import { useAppStore } from '../../stores/appStore';
 
 export type CustomEdgeType = Edge<{ label?: string }>;
 
@@ -19,14 +22,42 @@ export const CustomEdge: React.FC<EdgeProps<CustomEdgeType>> = ({
   markerEnd,
   selected,
 }) => {
-  const [edgePath] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  const edgeStyle = useAppStore((s) => s.uiSettings.edgeStyle);
+
+  let edgePath: string;
+
+  switch (edgeStyle) {
+    case 'smoothstep':
+      [edgePath] = getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        borderRadius: 8,
+      });
+      break;
+    case 'straight':
+      [edgePath] = getStraightPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+      });
+      break;
+    case 'bezier':
+    default:
+      [edgePath] = getBezierPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+      });
+      break;
+  }
 
   const gradientId = `edge-gradient-${id}`;
   const glowFilterId = `edge-glow-${id}`;

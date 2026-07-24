@@ -24,6 +24,10 @@ function isControlNode(nodeType: FlowNodeType): boolean {
   return CONTROL_NODE_TYPES.includes(nodeType);
 }
 
+function isSleepNode(nodeType: FlowNodeType): boolean {
+  return nodeType === 'midscene.sleep';
+}
+
 function getPathValue(obj: Record<string, unknown>, path: string): unknown {
   const keys = path.split('.');
   let val: unknown = obj;
@@ -44,6 +48,12 @@ function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
   const firstDot = path.indexOf('.');
   const topKey = firstDot === -1 ? path : path.slice(0, firstDot);
   const restPath = firstDot === -1 ? '' : path.slice(firstDot + 1);
+
+  const loopVars = pool.loop as Record<string, unknown> | undefined;
+  if (loopVars && topKey in loopVars) {
+    if (!restPath) return loopVars[topKey];
+    return getPathValue(loopVars, path);
+  }
 
   const globalVars = pool.globalVars as Record<string, unknown> | undefined;
   if (globalVars && topKey in globalVars) {
@@ -380,6 +390,50 @@ export class FlowScheduler extends EventEmitter {
         if (continueNext) {
           await this.executeNextNodes(node);
         }
+      } else if (isSleepNode(node.nodeType) && this.isSleepStandalone(node)) {
+        const duration = Number((node.nodeParams as any)?.duration ?? 1000);
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId,
+          message: `⏱️ 等待 ${duration}ms`,
+        });
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(resolve, duration);
+          if (this.abortController) {
+            this.abortController.signal.addEventListener('abort', () => {
+              clearTimeout(timeout);
+              resolve();
+            }, { once: true });
+          }
+        });
+
+        if (this.status !== 'running') {
+          state.status = 'stopped';
+          state.endTime = Date.now();
+          return;
+        }
+
+        state.status = 'success';
+        state.endTime = Date.now();
+        state.output = duration;
+
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId,
+          message: `节点执行完成: ${node.nodeName || node.nodeType}`,
+          data: { duration: state.endTime - state.startTime },
+        });
+
+        this.emit('event', {
+          type: 'node:complete',
+          nodeId,
+          duration: state.endTime - state.startTime!,
+          output: state.output,
+        } as RuntimeEvent);
+
+        await this.executeNextNodes(node);
       } else {
         const success = await this.executeEngineNode(node);
         if (!success || this.status !== 'running') {
@@ -891,6 +945,23 @@ export class FlowScheduler extends EventEmitter {
 
       if (isControlNode(nextNode.nodeType)) break;
 
+      if (isSleepNode(nextNode.nodeType)) {
+        const afterNext = nextNode.nextNodes.find((n) => !n.condition);
+        if (afterNext) {
+          const afterNextNode = this.nodeMap.get(afterNext.nodeId);
+          if (afterNextNode && !isControlNode(afterNextNode.nodeType) && !isSleepNode(afterNextNode.nodeType)) {
+            const startEngine = this.engineRegistry.findEngineForNode(startNode.nodeType, startNode.engine);
+            const afterNextEngine = this.engineRegistry.findEngineForNode(afterNextNode.nodeType, afterNextNode.engine);
+            if (startEngine && afterNextEngine && startEngine.name === afterNextEngine.name) {
+              segment.push(nextNode);
+              cursor = nextNode;
+              continue;
+            }
+          }
+        }
+        break;
+      }
+
       if (nextNode.engine && nextNode.engine !== startNode.engine) break;
 
       const startEngine = this.engineRegistry.findEngineForNode(startNode.nodeType, startNode.engine);
@@ -905,6 +976,34 @@ export class FlowScheduler extends EventEmitter {
     }
 
     return segment;
+  }
+
+  private isSleepStandalone(node: FlowNode): boolean {
+    if (!isSleepNode(node.nodeType)) return false;
+
+    const prevNodes = this.findPrevNodes(node.id);
+    const nextUnconditional = node.nextNodes.find((n) => !n.condition);
+    const nextNode = nextUnconditional ? this.nodeMap.get(nextUnconditional.nodeId) : undefined;
+
+    const prevHasMidscene = prevNodes.some((prevId) => {
+      const prev = this.nodeMap.get(prevId);
+      return prev && !isControlNode(prev.nodeType) && !isSleepNode(prev.nodeType);
+    });
+
+    const nextHasMidscene = nextNode && !isControlNode(nextNode.nodeType) && !isSleepNode(nextNode.nodeType);
+
+    return !prevHasMidscene && !nextHasMidscene;
+  }
+
+  private findPrevNodes(nodeId: string): string[] {
+    const result: string[] = [];
+    for (const [id, node] of this.nodeMap) {
+      const hasNext = node.nextNodes?.some((n) => n.nodeId === nodeId);
+      if (hasNext) {
+        result.push(id);
+      }
+    }
+    return result;
   }
 
   private async executeNextNodes(node: FlowNode): Promise<void> {

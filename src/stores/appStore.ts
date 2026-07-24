@@ -14,6 +14,7 @@ interface AppState {
   workflowSavePath: string;
   uiSettings: {
     nodeWidthMultiplier: number;
+    edgeStyle: 'bezier' | 'smoothstep' | 'straight';
   };
   isLoading: boolean;
 
@@ -47,6 +48,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   workflowSavePath: '',
   uiSettings: {
     nodeWidthMultiplier: 2,
+    edgeStyle: 'bezier',
   },
   isLoading: true,
 
@@ -78,7 +80,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: defaultModelIds || getDefaultModelIds(),
       logSavePath: logSavePath || '',
       workflowSavePath: workflowSavePath || '',
-      uiSettings: uiSettings || { nodeWidthMultiplier: 2 },
+      uiSettings: uiSettings || { nodeWidthMultiplier: 2, edgeStyle: 'bezier' },
       isLoading: false,
     });
   },
@@ -141,7 +143,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2 },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier' },
     });
   },
 
@@ -155,7 +157,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2 },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier' },
     });
   },
 }));

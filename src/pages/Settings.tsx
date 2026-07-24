@@ -996,6 +996,35 @@ export default function SettingsPage() {
                   当前最大宽度：普通节点 {Math.round(220 * localUiSettings.nodeWidthMultiplier)}px，内容节点 {Math.round(280 * localUiSettings.nodeWidthMultiplier)}px
                 </div>
               </div>
+
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <Label className="text-sm font-medium">连线样式</Label>
+                <p className="text-xs text-muted-foreground">
+                  选择节点之间连线的显示样式。
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'bezier', label: '曲线', desc: '贝塞尔曲线' },
+                    { value: 'smoothstep', label: '圆角折线', desc: '平滑转角' },
+                    { value: 'straight', label: '直线', desc: '直接连接' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setLocalUiSettings((p) => ({ ...p, edgeStyle: opt.value as 'bezier' | 'smoothstep' | 'straight' }))}
+                      className={cn(
+                        'rounded-xl border-2 py-3 text-sm font-medium transition-all',
+                        localUiSettings.edgeStyle === opt.value
+                          ? 'border-violet-400 bg-violet-50 text-violet-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                      )}
+                    >
+                      <div>{opt.label}</div>
+                      <div className="text-[10px] font-normal text-muted-foreground mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
