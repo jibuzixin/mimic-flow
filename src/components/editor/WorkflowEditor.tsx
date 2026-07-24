@@ -227,6 +227,26 @@ function WorkflowEditorInner() {
     );
   }, [nodeExecutionStatus, nodeErrors, nodeOutputs, currentWorkflow, initialized, setNodes]);
 
+  useEffect(() => {
+    if (!currentWorkflow || !initialized) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        const wfNode = currentWorkflow.nodes.find((n) => n.id === node.id);
+        if (!wfNode) return node;
+        if (wfNode.nodeParams === node.data.nodeParams && wfNode.nodeName === node.data.label) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            nodeParams: wfNode.nodeParams,
+            label: wfNode.nodeName || node.data.label,
+          },
+        } as CustomNodeType;
+      })
+    );
+  }, [currentWorkflow, initialized, setNodes]);
+
   const handleNodesChange: OnNodesChange<CustomNodeType> = useCallback(
     (changes) => {
       onNodesChange(changes);

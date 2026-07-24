@@ -66,6 +66,111 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const output = data.output as string | undefined;
   const displayContent = output !== undefined ? output : contentMessage;
 
+  const subtitle = useMemo(() => {
+    const params = nodeParams || {};
+    const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + '...' : s;
+
+    switch (data.nodeType) {
+      case 'control.var': {
+        const varName = params.varName as string || '?';
+        const op = params.operation as string;
+        const val = params.value as string;
+        switch (op) {
+          case 'set': return `${varName} = ${truncate(val || '', 20)}`;
+          case 'add': return val && val !== '1' ? `${varName} += ${truncate(val, 20)}` : `${varName}++`;
+          case 'subtract': return val && val !== '1' ? `${varName} -= ${truncate(val, 20)}` : `${varName}--`;
+          case 'multiply': return `${varName} *= ${truncate(val || '', 20)}`;
+          case 'divide': return `${varName} /= ${truncate(val || '', 20)}`;
+          case 'concat': return `${varName} += "${truncate(val || '', 15)}"`;
+          case 'toUpperCase': return `${varName}.toUpperCase()`;
+          case 'toLowerCase': return `${varName}.toLowerCase()`;
+          case 'trim': return `${varName}.trim()`;
+          case 'toInteger': return `parseInt(${varName})`;
+          default: return `${varName} = ${truncate(val || '', 20)}`;
+        }
+      }
+      case 'control.sleep':
+      case 'midscene.sleep': {
+        const ms = params.duration || params.ms || params.time;
+        return ms ? `等待 ${ms}ms` : '等待';
+      }
+      case 'control.if': {
+        const cond = params.condition as string;
+        return `if ${truncate(cond || '', 25)}`;
+      }
+      case 'control.loop': {
+        const it = params.iteratorVar as string || 'i';
+        const max = params.maxIterations;
+        return max ? `for ${it}=0..${max}` : '循环';
+      }
+      case 'control.log': {
+        if (params.var) return `log [${params.var}]`;
+        if (params.message) return `log "${truncate(params.message as string, 25)}"`;
+        return 'log all';
+      }
+      case 'control.end': {
+        if (params.message) return `end: ${truncate(params.message as string, 25)}`;
+        return '结束';
+      }
+      case 'control.start':
+        return '开始';
+
+      case 'midscene.act': {
+        const prompt = params.prompt as string;
+        return truncate(prompt || '', 30);
+      }
+      case 'midscene.tap': {
+        const target = params.target as string;
+        return `点击: ${truncate(target || '', 25)}`;
+      }
+      case 'midscene.doubleClick': {
+        const target = params.target as string;
+        return `双击: ${truncate(target || '', 25)}`;
+      }
+      case 'midscene.rightClick': {
+        const target = params.target as string;
+        return `右键: ${truncate(target || '', 25)}`;
+      }
+      case 'midscene.input': {
+        const target = params.target as string;
+        const val = params.value as string;
+        return `输入: "${truncate(val || '', 15)}" → ${truncate(target || '', 15)}`;
+      }
+      case 'midscene.clearInput': {
+        const target = params.target as string;
+        return `清空: ${truncate(target || '', 25)}`;
+      }
+      case 'midscene.keyboardPress': {
+        const key = params.keyName as string;
+        const target = params.target as string;
+        return `按键: ${key || '?'}${target ? ' → ' + truncate(target, 15) : ''}`;
+      }
+      case 'midscene.query': {
+        const prompt = params.prompt as string;
+        return `查询: ${truncate(prompt || '', 25)}`;
+      }
+      case 'midscene.scroll': {
+        const dir = params.direction as string || 'down';
+        const target = params.target as string;
+        return `滚动: ${dir}${target ? ' → ' + truncate(target, 15) : ''}`;
+      }
+      case 'midscene.hover': {
+        const target = params.target as string;
+        return `悬停: ${truncate(target || '', 25)}`;
+      }
+      case 'midscene.assert': {
+        const prompt = params.prompt as string;
+        return `断言: ${truncate(prompt || '', 25)}`;
+      }
+      case 'midscene.waitFor': {
+        const prompt = params.prompt as string;
+        return `等待: ${truncate(prompt || '', 25)}`;
+      }
+      default:
+        return config?.name || data.nodeType;
+    }
+  }, [data.nodeType, nodeParams, config?.name]);
+
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsEditing(true);
@@ -165,18 +270,18 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
                 {data.label}
               </div>
             )}
-            <div className="text-xs text-gray-400 mt-0.5">{config?.name || data.nodeType}</div>
+            <div className="text-xs text-gray-400 mt-0.5 truncate font-mono">{subtitle}</div>
           </div>
         </div>
 
         {showContent && displayContent && (
           <div
-            className={`mt-3 pt-3 border-t text-xs rounded-lg p-2.5 font-mono whitespace-pre-wrap break-all line-clamp-4 ${
+            className={`mt-3 pt-3 border-t text-xs rounded-lg p-2.5 font-mono whitespace-pre-wrap break-all line-clamp-3 ${
               output !== undefined
                 ? 'border-emerald-200 bg-emerald-50/80 text-emerald-800'
                 : 'border-gray-100 bg-gray-50/50 text-gray-600'
             }`}
-            style={{ maxHeight: '100px', overflow: 'hidden' }}
+            style={{ maxHeight: '72px', overflow: 'hidden' }}
           >
             {displayContent}
           </div>

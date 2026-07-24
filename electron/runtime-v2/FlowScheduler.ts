@@ -504,28 +504,25 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeVarNode(node: FlowNode): void {
-    const { varName, value, operation = 'set', valueType = 'string' } = node.nodeParams as any;
-    const interpolatedValue = interpolateValue(value, this.variablePool);
+    const { varName, value, operation = 'set', valueType = 'number' } = node.nodeParams as any;
     const pool = this.variablePool.globalVars as Record<string, unknown>;
 
-    let finalValue: unknown = interpolatedValue;
+    const needsValue = !['toUpperCase', 'toLowerCase', 'trim', 'toInteger'].includes(operation);
+    const interpolatedValue = needsValue ? interpolateValue(value, this.variablePool) : undefined;
 
-    if (operation !== 'set' && operation !== 'concat') {
-      if (valueType === 'number') {
-        finalValue = Number(interpolatedValue) || 0;
-      } else if (valueType === 'boolean') {
-        finalValue = interpolatedValue === 'true' || interpolatedValue === true;
-      } else if (valueType === 'expression') {
-        try {
-          finalValue = new Function(`"use strict"; return (${interpolatedValue})`)();
-        } catch (e) {
-          finalValue = interpolatedValue;
-        }
-      }
+    let numericValue = 1;
+    if (needsValue && value !== undefined && value !== '') {
+      numericValue = Number(interpolatedValue) || 0;
+    }
+
+    let stringValue = '';
+    if (needsValue) {
+      stringValue = String(interpolatedValue ?? '');
     }
 
     switch (operation) {
-      case 'set':
+      case 'set': {
+        let finalValue: unknown = interpolatedValue;
         if (valueType === 'number') {
           finalValue = Number(interpolatedValue) || 0;
         } else if (valueType === 'boolean') {
@@ -539,20 +536,23 @@ export class FlowScheduler extends EventEmitter {
         }
         pool[varName as string] = finalValue;
         break;
+      }
       case 'increment':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) + Number(finalValue);
+      case 'add':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) + numericValue;
         break;
       case 'decrement':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) - Number(finalValue);
+      case 'subtract':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) - numericValue;
         break;
       case 'multiply':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) * Number(finalValue);
+        pool[varName as string] = Number(pool[varName as string] ?? 0) * numericValue;
         break;
       case 'divide':
-        pool[varName as string] = Number(pool[varName as string] ?? 0) / Number(finalValue);
+        pool[varName as string] = Number(pool[varName as string] ?? 0) / numericValue;
         break;
       case 'concat':
-        pool[varName as string] = String(pool[varName as string] ?? '') + String(finalValue);
+        pool[varName as string] = String(pool[varName as string] ?? '') + stringValue;
         break;
       case 'toUpperCase':
         pool[varName as string] = String(pool[varName as string] ?? '').toUpperCase();
@@ -567,7 +567,7 @@ export class FlowScheduler extends EventEmitter {
         pool[varName as string] = Math.trunc(Number(pool[varName as string] ?? 0));
         break;
       default:
-        pool[varName as string] = finalValue;
+        pool[varName as string] = interpolatedValue;
     }
 
     this.addLog({
