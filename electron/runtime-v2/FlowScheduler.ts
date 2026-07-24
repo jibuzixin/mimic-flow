@@ -900,30 +900,42 @@ export class FlowScheduler extends EventEmitter {
     let result = false;
     let displayExpr = '';
 
+    const extractVarName = (input: string): string => {
+      const match = input.match(/\{\{\s*([^{}\s]+)\s*\}\}/);
+      return match ? match[1] : input;
+    };
+
     if (params.expression) {
       const exprStr = String(params.expression);
       const interpolatedExpr = String(interpolateValue(exprStr, this.variablePool));
       result = evaluateCondition(exprStr, this.variablePool);
       displayExpr = interpolatedExpr;
     } else if (params.leftVar !== undefined) {
-      const leftVarName = String(params.leftVar || '');
-      const operator = String(params.operator || '==');
-      const rightRaw = params.rightValue;
-
+      const leftVarRaw = String(params.leftVar || '');
+      const conditionType = String(params.conditionType || 'boolean');
+      const leftVarName = extractVarName(leftVarRaw);
       const leftValue = resolveVarPath(this.variablePool, leftVarName);
-      let rightValue: unknown;
 
-      if (typeof rightRaw === 'string' && rightRaw.includes('{{') && rightRaw.includes('}}')) {
-        rightValue = interpolateValue(rightRaw, this.variablePool);
-        rightValue = this.parseValue(String(rightValue));
-      } else if (typeof rightRaw === 'string') {
-        rightValue = this.parseValue(rightRaw);
+      if (conditionType === 'boolean') {
+        result = !!leftValue;
+        displayExpr = `${leftVarName} = ${JSON.stringify(leftValue)} (${result})`;
       } else {
-        rightValue = rightRaw;
-      }
+        const operator = String(params.operator || '==');
+        const rightRaw = params.rightValue;
+        let rightValue: unknown;
 
-      result = this.compareValues(leftValue, operator, rightValue);
-      displayExpr = `${leftVarName}(${JSON.stringify(leftValue)}) ${operator} ${JSON.stringify(rightValue)}`;
+        if (typeof rightRaw === 'string' && rightRaw.includes('{{') && rightRaw.includes('}}')) {
+          rightValue = interpolateValue(rightRaw, this.variablePool);
+          rightValue = this.parseValue(String(rightValue));
+        } else if (typeof rightRaw === 'string') {
+          rightValue = this.parseValue(rightRaw);
+        } else {
+          rightValue = rightRaw;
+        }
+
+        result = this.compareValues(leftValue, operator, rightValue);
+        displayExpr = `${leftVarName}(${JSON.stringify(leftValue)}) ${operator} ${JSON.stringify(rightValue)}`;
+      }
     } else {
       displayExpr = 'undefined';
       result = false;
@@ -1013,9 +1025,13 @@ export class FlowScheduler extends EventEmitter {
       }
     } else if (loopType === 'while') {
       const condition = String(params.condition || '');
-      const whileLeftVar = String(params.whileLeftVar || '');
-      const whileOperator = String(params.whileOperator || '==');
-      const whileRightRaw = params.whileRightValue;
+      const whileLeftVarRaw = String(params.whileLeftVar || '');
+      const whileConditionType = String(params.whileConditionType || 'boolean');
+      const extractVarName = (input: string): string => {
+        const match = input.match(/\{\{\s*([^{}\s]+)\s*\}\}/);
+        return match ? match[1] : input;
+      };
+      const whileLeftVar = extractVarName(whileLeftVarRaw);
       iteration = Number(loopState.iteration ?? 0);
 
       if (iteration >= maxIterations) {
@@ -1025,18 +1041,25 @@ export class FlowScheduler extends EventEmitter {
         try {
           if (whileLeftVar) {
             const leftValue = resolveVarPath(this.variablePool, whileLeftVar);
-            let rightValue: unknown;
-
-            if (typeof whileRightRaw === 'string' && whileRightRaw.includes('{{') && whileRightRaw.includes('}}')) {
-              rightValue = interpolateValue(whileRightRaw, this.variablePool);
-              rightValue = this.parseValue(String(rightValue));
-            } else if (typeof whileRightRaw === 'string') {
-              rightValue = this.parseValue(whileRightRaw);
+            
+            if (whileConditionType === 'boolean') {
+              shouldContinue = !!leftValue;
             } else {
-              rightValue = whileRightRaw;
-            }
+              const whileOperator = String(params.whileOperator || '==');
+              const whileRightRaw = params.whileRightValue;
+              let rightValue: unknown;
 
-            shouldContinue = this.compareValues(leftValue, whileOperator, rightValue);
+              if (typeof whileRightRaw === 'string' && whileRightRaw.includes('{{') && whileRightRaw.includes('}}')) {
+                rightValue = interpolateValue(whileRightRaw, this.variablePool);
+                rightValue = this.parseValue(String(rightValue));
+              } else if (typeof whileRightRaw === 'string') {
+                rightValue = this.parseValue(whileRightRaw);
+              } else {
+                rightValue = whileRightRaw;
+              }
+
+              shouldContinue = this.compareValues(leftValue, whileOperator, rightValue);
+            }
           } else if (condition) {
             shouldContinue = evaluateCondition(condition, this.variablePool);
           } else {

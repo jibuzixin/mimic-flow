@@ -114,17 +114,6 @@ export const nodeConfigs: NodeConfig[] = [
         showWhen: { conditionType: 'string' },
       },
       {
-        key: 'operator',
-        label: '判断为',
-        type: 'select',
-        options: [
-          { label: '真 (true)', value: '==' },
-          { label: '假 (false)', value: '!=' },
-        ],
-        defaultValue: '==',
-        showWhen: { conditionType: 'boolean' },
-      },
-      {
         key: 'rightValue',
         label: '比较值',
         type: 'number',
@@ -139,13 +128,6 @@ export const nodeConfigs: NodeConfig[] = [
         defaultValue: '',
         description: '文字，输入 # 选择变量',
         showWhen: { conditionType: 'string' },
-      },
-      {
-        key: 'rightValue',
-        label: '布尔值',
-        type: 'switch',
-        defaultValue: true,
-        showWhen: { conditionType: 'boolean' },
       },
     ],
   },
@@ -232,17 +214,6 @@ export const nodeConfigs: NodeConfig[] = [
         showWhen: { loopType: 'while', whileConditionType: 'string' },
       },
       {
-        key: 'whileOperator',
-        label: '判断为',
-        type: 'select',
-        options: [
-          { label: '真 (true)', value: '==' },
-          { label: '假 (false)', value: '!=' },
-        ],
-        defaultValue: '==',
-        showWhen: { loopType: 'while', whileConditionType: 'boolean' },
-      },
-      {
         key: 'whileRightValue',
         label: '比较值',
         type: 'number',
@@ -257,13 +228,6 @@ export const nodeConfigs: NodeConfig[] = [
         defaultValue: '',
         description: '文字，输入 # 选择变量',
         showWhen: { loopType: 'while', whileConditionType: 'string' },
-      },
-      {
-        key: 'whileRightValue',
-        label: '布尔值',
-        type: 'switch',
-        defaultValue: true,
-        showWhen: { loopType: 'while', whileConditionType: 'boolean' },
       },
       { key: 'arrayVar', label: '数组变量', type: 'variable', placeholder: '选择数组变量', showWhen: { loopType: 'forEach' } },
       { key: 'itemVar', label: '当前项变量名', type: 'text', defaultValue: 'item', showWhen: { loopType: 'forEach' } },
