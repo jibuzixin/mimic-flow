@@ -204,7 +204,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       animate={{ scale: 1, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       className={`relative rounded-xl border-2 bg-white/90 backdrop-blur-sm shadow-lg transition-all ${
-        showContent ? 'min-w-[280px]' : 'min-w-[200px]'
+        showContent ? 'w-[280px]' : 'w-[220px]'
       } ${
         selected
           ? 'border-blue-500 shadow-blue-500/30 ring-4 ring-blue-500/20'
@@ -270,7 +270,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
                 {data.label}
               </div>
             )}
-            <div className="text-xs text-gray-400 mt-0.5 truncate font-mono">{subtitle}</div>
+            <div className="text-xs text-gray-400 mt-0.5 font-mono leading-relaxed line-clamp-2" style={{ wordBreak: 'break-all' }}>{subtitle}</div>
           </div>
         </div>
 
