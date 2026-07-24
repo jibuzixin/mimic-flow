@@ -364,6 +364,12 @@ export class FlowScheduler extends EventEmitter {
     }
 
     const state = this.nodeStates.get(nodeId)!;
+    const isLoopNode = node.nodeType === 'control.loop';
+
+    if (!isLoopNode && (state.status === 'success' || state.status === 'running')) {
+      return;
+    }
+
     state.status = 'running';
     state.startTime = Date.now();
 

@@ -318,11 +318,6 @@ function WorkflowEditorInner() {
           );
           if (hasLeft) return false;
         }
-      } else {
-        const existingTargetEdges = edges.filter(
-          (e) => e.target === connection.target && e.targetHandle === (connection.targetHandle || 'in'),
-        );
-        if (existingTargetEdges.length > 0) return false;
       }
 
       return true;
