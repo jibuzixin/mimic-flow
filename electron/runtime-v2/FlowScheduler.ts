@@ -84,10 +84,20 @@ function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
 
 function interpolateValue(val: unknown, pool: Record<string, unknown>): unknown {
   if (typeof val === 'string') {
-    return val.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
+    let result = val;
+
+    result = result.replace(/\\\{/g, '\u0000');
+    result = result.replace(/\\\}/g, '\u0001');
+
+    result = result.replace(/\{\{([\u4e00-\u9fa5\w.]+)\}\}/g, (_, path) => {
       const value = resolveVarPath(pool, path);
       return String(value ?? '');
     });
+
+    result = result.replace(/\u0000/g, '{');
+    result = result.replace(/\u0001/g, '}');
+
+    return result;
   }
   if (Array.isArray(val)) {
     return val.map((item) => interpolateValue(item, pool));

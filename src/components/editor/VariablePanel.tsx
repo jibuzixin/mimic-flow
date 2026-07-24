@@ -98,6 +98,22 @@ export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose })
             </div>
 
             <div className="p-4 border-b border-gray-100">
+              <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-1.5 mb-4">
+                <div className="text-[11px] font-medium text-indigo-700 flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                  变量使用说明
+                </div>
+                <div className="text-[12px] text-indigo-600 leading-relaxed">
+                  <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">{'{{变量名}}'}</code> 在节点输入框中引用变量
+                </div>
+                <div className="text-[12px] text-indigo-600 leading-relaxed">
+                  <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">#</code> 输入 # 号快速选择变量插入
+                </div>
+                <div className="text-[11px] text-indigo-500 leading-relaxed">
+                  转义：<code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">{'\\{{text}\\}}'}</code> 输出字面量 {'{{text}}'}
+                </div>
+              </div>
+
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <label className="text-xs font-medium text-gray-600 mb-1 block">变量名</label>

@@ -358,15 +358,64 @@ export const PropertyPanel: React.FC = () => {
               {config!.propertyFields.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">该节点无参数配置</p>
               ) : (
-                config!.propertyFields.map((field) => (
-                  <div key={field.key} className="space-y-1.5">
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs font-semibold text-gray-700">{field.label}</label>
-                      {field.description && <HelpTooltip text={field.description} />}
+                <>
+                  <div
+                    className="p-3 rounded-xl border space-y-1"
+                    style={{
+                      backgroundColor: `${config!.color}0a`,
+                      borderColor: `${config!.color}20`,
+                    }}
+                  >
+                    <div
+                      className="text-[11px] font-medium flex items-center gap-1.5"
+                      style={{ color: config!.color }}
+                    >
+                      <span
+                        className="w-1 h-1 rounded-full"
+                        style={{ backgroundColor: config!.color }}
+                      />
+                      功能说明
                     </div>
-                    {renderField(field)}
+                    <div
+                      className="text-[12px] leading-relaxed"
+                      style={{ color: `${config!.color}cc` }}
+                    >
+                      {config!.description}
+                    </div>
                   </div>
-                ))
+
+                  {selectedNode!.nodeType === 'control.var' && (
+                    <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-1">
+                      <div className="text-[11px] font-medium text-indigo-700 flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-indigo-500" />
+                        变量语法
+                      </div>
+                      <div className="text-[11px] text-indigo-600 leading-relaxed">
+                        双大括号引用变量，如 <code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">{'{{count}}'}</code>，输入 # 快速选择
+                      </div>
+                      <div className="text-[11px] text-indigo-500 leading-relaxed">
+                        转义：<code className="bg-indigo-100 px-1 py-0.5 rounded font-mono">{'\\{{text}\\}}'}</code> 输出字面量 {'{{text}}'}
+                      </div>
+                    </div>
+                  )}
+
+                  {config!.propertyFields
+                    .filter((field) => {
+                      if (!field.showWhen) return true;
+                      return Object.entries(field.showWhen).every(
+                        ([key, value]) => selectedNode!.nodeParams?.[key] === value
+                      );
+                    })
+                    .map((field) => (
+                      <div key={field.key} className="space-y-1.5">
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs font-semibold text-gray-700">{field.label}</label>
+                          {field.description && <HelpTooltip text={field.description} />}
+                        </div>
+                        {renderField(field)}
+                      </div>
+                    ))}
+                </>
               )}
 
               <div className="pt-4 mt-4 border-t border-gray-100">

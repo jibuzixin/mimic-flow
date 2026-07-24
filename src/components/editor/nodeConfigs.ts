@@ -16,6 +16,7 @@ export interface PropertyField {
   options?: { label: string; value: string }[];
   defaultValue?: unknown;
   sensitive?: boolean;
+  showWhen?: Record<string, string>;
 }
 
 export interface NodeConfig {
@@ -60,7 +61,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: '条件判断',
     category: 'control',
     icon: GitBranch,
-    description: '根据条件决定走哪条分支',
+    description: '根据条件表达式决定走哪条分支',
     color: '#3b82f6',
     defaultParams: {
       leftVar: '',
@@ -91,7 +92,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: '循环',
     category: 'control',
     icon: Repeat,
-    description: '重复执行一段流程',
+    description: '重复执行一段流程，支持 for 计数循环、while 条件循环、forEach 数组遍历',
     color: '#f59e0b',
     defaultParams: {
       loopType: 'for',
@@ -117,11 +118,14 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         defaultValue: 'for',
       },
-      { key: 'from', label: '起始值', type: 'number', defaultValue: 1 },
-      { key: 'to', label: '结束值', type: 'number', defaultValue: 5 },
-      { key: 'step', label: '步长', type: 'number', defaultValue: 1 },
-      { key: 'iteratorVar', label: '迭代变量名', type: 'text', defaultValue: 'i' },
-      { key: 'maxIterations', label: '最大迭代次数', type: 'number', defaultValue: 100 },
+      { key: 'from', label: '起始值', type: 'number', defaultValue: 1, showWhen: { loopType: 'for' } },
+      { key: 'to', label: '结束值', type: 'number', defaultValue: 5, showWhen: { loopType: 'for' } },
+      { key: 'step', label: '步长', type: 'number', defaultValue: 1, showWhen: { loopType: 'for' } },
+      { key: 'iteratorVar', label: '迭代变量名', type: 'text', defaultValue: 'i', showWhen: { loopType: 'for' } },
+      { key: 'condition', label: '循环条件', type: 'text', placeholder: '如: {{count}} < 10', showWhen: { loopType: 'while' }, description: '支持表达式和变量引用，结果为 true 时继续循环' },
+      { key: 'arrayVar', label: '数组变量', type: 'variable', placeholder: '选择数组变量', showWhen: { loopType: 'forEach' } },
+      { key: 'itemVar', label: '当前项变量名', type: 'text', defaultValue: 'item', showWhen: { loopType: 'forEach' } },
+      { key: 'maxIterations', label: '最大迭代次数', type: 'number', defaultValue: 100, description: '防止死循环的安全限制' },
     ],
   },
   {
@@ -129,7 +133,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: '变量赋值',
     category: 'control',
     icon: Variable,
-    description: '给变量赋值或进行运算',
+    description: '创建变量或进行运算，支持中文变量名',
     color: '#8b5cf6',
     defaultParams: {
       varName: '',
@@ -226,17 +230,19 @@ export const nodeConfigs: NodeConfig[] = [
     name: '点击元素',
     category: 'ai-action',
     icon: MousePointerClick,
-    description: '点击指定的元素',
+    description: '点击指定的元素，支持文件上传',
     color: '#06b6d4',
     defaultParams: {
       target: '',
       deepLocate: false,
       cacheable: true,
+      fileChooserAccept: '',
     },
     propertyFields: [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：确认按钮' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
+      { key: 'fileChooserAccept', label: '上传文件路径', type: 'text', description: '点击后触发文件选择器时，指定要上传的文件路径，多个用逗号分隔' },
     ],
   },
   {
@@ -403,7 +409,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: 'AI 查询',
     category: 'ai-query',
     icon: Search,
-    description: '查询页面内容并保存为变量',
+    description: '查询页面内容，结果保存为变量可被后续节点引用',
     color: '#ec4899',
     defaultParams: {
       prompt: '',
@@ -437,7 +443,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: '等待条件',
     category: 'wait',
     icon: Clock,
-    description: '等待某个条件满足',
+    description: '等待某个条件满足，超时则失败',
     color: '#10b981',
     defaultParams: {
       prompt: '',

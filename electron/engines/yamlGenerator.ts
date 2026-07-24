@@ -35,10 +35,20 @@ function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
 }
 
 function interpolateString(str: string, pool: Record<string, unknown>): string {
-  return str.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
+  let result = str;
+
+  result = result.replace(/\\\{/g, '\u0000');
+  result = result.replace(/\\\}/g, '\u0001');
+
+  result = result.replace(/\{\{([\u4e00-\u9fa5\w.]+)\}\}/g, (_, path) => {
     const value = resolveVarPath(pool, path);
     return String(value ?? '');
   });
+
+  result = result.replace(/\u0000/g, '{');
+  result = result.replace(/\u0001/g, '}');
+
+  return result;
 }
 
 function interpolateParams(params: Record<string, unknown>, pool: Record<string, unknown>): Record<string, unknown> {
@@ -87,6 +97,19 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
       const target = String(params.target ?? '');
       lines.push(`      - aiTap: ${yamlEscape(target)}`);
       if (params.deepLocate !== undefined) lines.push(`        deepLocate: ${params.deepLocate}`);
+      if (params.cacheable !== undefined) lines.push(`        cacheable: ${params.cacheable}`);
+      if (params.fileChooserAccept) {
+        const paths = String(params.fileChooserAccept)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (paths.length === 1) {
+          lines.push(`        fileChooserAccept: ${yamlEscape(paths[0])}`);
+        } else if (paths.length > 1) {
+          lines.push(`        fileChooserAccept:`);
+          paths.forEach((p) => lines.push(`          - ${yamlEscape(p)}`));
+        }
+      }
       break;
     }
 

@@ -71,7 +71,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
       if (e.key === 'Backspace') {
         if (cursorPos > 0) {
           const textBeforeCursor = value.slice(0, cursorPos);
-          const varMatch = textBeforeCursor.match(/\{\{([\w.]+)\}\}$/);
+          const varMatch = textBeforeCursor.match(/\{\{([\u4e00-\u9fa5\w.]+)\}\}$/);
           if (varMatch) {
             e.preventDefault();
             const varStart = cursorPos - varMatch[0].length;
@@ -226,7 +226,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     let lastIndex = 0;
     let key = 0;
     
-    const regex = /\{\{([\w.]+)\}\}/g;
+    const regex = /\{\{([\u4e00-\u9fa5\w.]+)\}\}/g;
     let match;
     
     while ((match = regex.exec(value)) !== null) {
@@ -259,7 +259,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     return parts;
   };
 
-  const hasVariables = /\{\{[\w.]+\}\}/.test(value);
+  const hasVariables = /\{\{[\u4e00-\u9fa5\w.]+\}\}/.test(value);
   const showHighlighted = hasVariables && !isFocused && !showDropdown;
 
   return (

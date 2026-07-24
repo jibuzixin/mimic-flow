@@ -21,10 +21,20 @@ function getPathValue(obj: Record<string, unknown>, path: string): unknown {
  */
 export function resolveVariableInterpolate<T>(obj: T, variablePool: Record<string, unknown>): T {
   if (typeof obj === 'string') {
-    return obj.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
+    let result: string = obj;
+
+    result = result.replace(/\\\{/g, '\u0000');
+    result = result.replace(/\\\}/g, '\u0001');
+
+    result = result.replace(/\{\{([\u4e00-\u9fa5\w.]+)\}\}/g, (_, path) => {
       const value = getPathValue(variablePool, path);
       return String(value ?? '');
-    }) as unknown as T;
+    });
+
+    result = result.replace(/\u0000/g, '{');
+    result = result.replace(/\u0001/g, '}');
+
+    return result as unknown as T;
   }
 
   if (Array.isArray(obj)) {
@@ -63,7 +73,7 @@ export function evaluateExpression(exprStr: string, variablePool: Record<string,
 export function extractReferencedVars(node: FlowNode): string[] {
   const vars = new Set<string>();
   const text = JSON.stringify(node.nodeParams) + JSON.stringify(node.nextNodes.map((n) => n.condition));
-  const matches = text.match(/\{\{([\w.]+)\}\}/g) ?? [];
+  const matches = text.match(/\{\{([\u4e00-\u9fa5\w.]+)\}\}/g) ?? [];
   for (const match of matches) {
     const path = match.slice(2, -2);
     const key = path.split('.')[0];
