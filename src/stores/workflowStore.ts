@@ -719,11 +719,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   stopExecution: async () => {
+    const state = get();
+    const idleStatus: Record<string, 'idle' | 'running' | 'success' | 'error'> = {};
+    if (state.currentWorkflow) {
+      state.currentWorkflow.nodes.forEach((n) => {
+        idleStatus[n.id] = 'idle';
+      });
+    }
+
     if (!window.mimic) {
       set({
         isRunning: false,
         isPaused: false,
         currentRunningNodeId: null,
+        nodeExecutionStatus: idleStatus,
+        nodeErrors: {},
       });
       get().addExecutionLog({
         type: 'info',
@@ -738,6 +748,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         isRunning: false,
         isPaused: false,
         currentRunningNodeId: null,
+        nodeExecutionStatus: idleStatus,
+        nodeErrors: {},
       });
       get().addExecutionLog({
         type: 'info',
@@ -749,6 +761,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         isRunning: false,
         isPaused: false,
         currentRunningNodeId: null,
+        nodeExecutionStatus: idleStatus,
+        nodeErrors: {},
       });
     }
 

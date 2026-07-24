@@ -338,6 +338,111 @@ export const PropertyPanel: React.FC = () => {
         );
       }
 
+      case 'image-list': {
+        const images = Array.isArray(value) ? value as { name: string; url: string }[] : [];
+        
+        const updateImage = (index: number, updates: Partial<{ name: string; url: string }>) => {
+          const newImages = [...images];
+          newImages[index] = { ...newImages[index], ...updates };
+          handleParamChange(field.key, newImages);
+        };
+        
+        const addImage = () => {
+          const newImages = [...images, { name: `图片${images.length + 1}`, url: '' }];
+          handleParamChange(field.key, newImages);
+        };
+        
+        const removeImage = (index: number) => {
+          const newImages = images.filter((_, i) => i !== index);
+          handleParamChange(field.key, newImages);
+        };
+        
+        const selectImageFile = async (index: number) => {
+          try {
+            const result = await window.mimic.invoke('dialog:select-file', {
+              multiSelections: false,
+              filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+            });
+            if (result && typeof result === 'string') {
+              updateImage(index, { url: result });
+            }
+          } catch (e) {
+            console.error('选择图片失败', e);
+          }
+        };
+        
+        return (
+          <div className="space-y-2">
+            {images.length > 0 && (
+              <div className="space-y-2">
+                {images.map((img, i) => (
+                  <div
+                    key={i}
+                    className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-500 shrink-0">#{i + 1}</span>
+                      <input
+                        type="text"
+                        value={img.name || ''}
+                        onChange={(e) => updateImage(i, { name: e.target.value })}
+                        placeholder="图片名称"
+                        className="flex-1 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(i)}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={img.url || ''}
+                        onChange={(e) => updateImage(i, { url: e.target.value })}
+                        placeholder="图片路径/URL/Base64"
+                        className="flex-1 px-2 py-1 text-xs font-mono border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => selectImageFile(i)}
+                        className="px-2 py-1 text-xs text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors shrink-0"
+                      >
+                        选择
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={addImage}
+              className="w-full px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              添加参考图片
+            </button>
+            {images.length > 0 && (
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="convert-http-img"
+                  checked={!!(selectedNode?.nodeParams as any)?.convertHttpImage2Base64}
+                  onChange={(e) => handleParamChange('convertHttpImage2Base64', e.target.checked)}
+                  className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="convert-http-img" className="text-xs text-gray-600 cursor-pointer">
+                  HTTP 图片自动转 Base64
+                </label>
+              </div>
+            )}
+          </div>
+        );
+      }
+
       default:
         return null;
     }

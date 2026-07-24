@@ -711,18 +711,73 @@ export class FlowScheduler extends EventEmitter {
     });
   }
 
+  private parseValue(str: string): unknown {
+    if (str === 'true') return true;
+    if (str === 'false') return false;
+    if (str === 'null') return null;
+    if (str === 'undefined') return undefined;
+    const num = Number(str);
+    if (!isNaN(num) && str.trim() !== '') return num;
+    return str;
+  }
+
+  private compareValues(left: unknown, operator: string, right: unknown): boolean {
+    switch (operator) {
+      case '==':
+        return left == right;
+      case '!=':
+        return left != right;
+      case '>':
+        return (left as number) > (right as number);
+      case '<':
+        return (left as number) < (right as number);
+      case '>=':
+        return (left as number) >= (right as number);
+      case '<=':
+        return (left as number) <= (right as number);
+      default:
+        return false;
+    }
+  }
+
   private async executeIfNode(node: FlowNode): Promise<void> {
-    const { expression } = node.nodeParams as any;
-    const exprStr = String(expression);
-    const interpolatedExpr = String(interpolateValue(exprStr, this.variablePool));
-    const result = evaluateCondition(exprStr, this.variablePool);
+    const params = node.nodeParams as any;
+    let result = false;
+    let displayExpr = '';
+
+    if (params.expression) {
+      const exprStr = String(params.expression);
+      const interpolatedExpr = String(interpolateValue(exprStr, this.variablePool));
+      result = evaluateCondition(exprStr, this.variablePool);
+      displayExpr = interpolatedExpr;
+    } else if (params.leftVar !== undefined) {
+      const leftVarName = String(params.leftVar || '');
+      const operator = String(params.operator || '==');
+      const rightRaw = String(params.rightValue ?? '');
+
+      const leftValue = resolveVarPath(this.variablePool, leftVarName);
+      let rightValue: unknown;
+
+      if (rightRaw.includes('{{') && rightRaw.includes('}}')) {
+        rightValue = interpolateValue(rightRaw, this.variablePool);
+        rightValue = this.parseValue(String(rightValue));
+      } else {
+        rightValue = this.parseValue(rightRaw);
+      }
+
+      result = this.compareValues(leftValue, operator, rightValue);
+      displayExpr = `${leftVarName}(${JSON.stringify(leftValue)}) ${operator} ${JSON.stringify(rightValue)}`;
+    } else {
+      displayExpr = 'undefined';
+      result = false;
+    }
 
     this.addLog({
       level: 'info',
       source: 'scheduler',
       nodeId: node.id,
-      message: `条件判断: ${interpolatedExpr} = ${result}`,
-      data: { expression: exprStr, result },
+      message: `条件判断: ${displayExpr} = ${result}`,
+      data: { result },
     });
 
     const trueBranch = node.nextNodes.find((n) => n.condition === 'true' || n.condition === undefined && n.nodeId);

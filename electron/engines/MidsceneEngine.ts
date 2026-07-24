@@ -7,6 +7,7 @@ import type {
 } from '../../types/flow-v2.js';
 import { generateMidsceneYaml } from './yamlGenerator.js';
 import { getLogger } from '../logger.js';
+import { createRequire } from 'module';
 
 export class MidsceneEngine implements FlowEngine {
   name = 'midscene';
@@ -22,12 +23,25 @@ export class MidsceneEngine implements FlowEngine {
   private currentSegment: FlowNode[] = [];
   private isStopping = false;
 
+  private requireMidscene(moduleName: string): any {
+    const require = createRequire(import.meta.url);
+    const modulePath = require.resolve(moduleName);
+    
+    Object.keys(require.cache).forEach((key) => {
+      if (key.includes('@midscene') || key.includes('midscene')) {
+        delete require.cache[key];
+      }
+    });
+    
+    return require(modulePath);
+  }
+
   async initialize(config: EngineInitConfig): Promise<void> {
     this.initConfig = config;
     this.segmentCount = 0;
 
     try {
-      const { ReportMergingTool } = await import('@midscene/core/report');
+      const { ReportMergingTool } = this.requireMidscene('@midscene/core/report');
       this.reportMerger = new ReportMergingTool();
     } catch (e) {
       this.log.warn('[MidsceneEngine] ReportMergingTool not available, report merging disabled');
@@ -68,7 +82,7 @@ export class MidsceneEngine implements FlowEngine {
 
     try {
       this.log.info('[MidsceneEngine] Importing @midscene/computer...');
-      const { agentForComputer } = await import('@midscene/computer');
+      const { agentForComputer } = this.requireMidscene('@midscene/computer');
       this.log.info('[MidsceneEngine] Creating agent...');
 
       // 加 30 秒超时保护，防止 agentForComputer 卡死
@@ -183,7 +197,22 @@ export class MidsceneEngine implements FlowEngine {
 
       const outputs: Record<string, unknown> = {};
       for (const node of segment) {
-        const nodeOutput = result?.[node.id];
+        let outputKey: string = node.id;
+        const params = node.nodeParams || {};
+
+        switch (node.nodeType) {
+          case 'midscene.query':
+            outputKey = String(params.name || node.id);
+            break;
+          case 'midscene.assert':
+          case 'midscene.boolean':
+            if (params.outputVar) {
+              outputKey = String(params.outputVar);
+            }
+            break;
+        }
+
+        const nodeOutput = result?.[outputKey];
         outputs[node.id] = nodeOutput;
         onEvent({ type: 'node:complete', nodeId: node.id, output: nodeOutput });
       }

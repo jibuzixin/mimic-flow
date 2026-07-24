@@ -47,6 +47,7 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, nodeConfigs, type NodeConfig } from './nodeConfigs';
 import type { FlowSchema } from '../../../types/flow-v2';
 import { Button } from '../ui/button';
+import { simplifyError } from '../../lib/utils';
 
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
@@ -174,7 +175,7 @@ function WorkflowEditorInner() {
           label: node.nodeName,
           nodeType: node.nodeType,
           executionStatus: status,
-          errorMessage: errorMsg,
+          errorMessage: errorMsg ? simplifyError(errorMsg) : undefined,
           nodeParams: node.nodeParams,
           output,
         },
@@ -207,9 +208,10 @@ function WorkflowEditorInner() {
         const status = nodeExecutionStatus[node.id] || 'idle';
         const errorMsg = nodeErrors[node.id];
         const output = nodeOutputs[node.id];
+        const shortError = errorMsg ? simplifyError(errorMsg) : undefined;
         if (
           node.data.executionStatus === status &&
-          node.data.errorMessage === errorMsg &&
+          node.data.errorMessage === shortError &&
           node.data.output === output
         ) {
           return node;
@@ -219,7 +221,7 @@ function WorkflowEditorInner() {
           data: {
             ...node.data,
             executionStatus: status,
-            errorMessage: errorMsg,
+            errorMessage: shortError,
             output,
           },
         };

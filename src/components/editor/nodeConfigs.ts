@@ -10,7 +10,7 @@ export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait';
 export interface PropertyField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name' | 'file-path';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name' | 'file-path' | 'image-list';
   description?: string;
   placeholder?: string;
   options?: { label: string; value: string }[];
@@ -70,22 +70,22 @@ export const nodeConfigs: NodeConfig[] = [
       rightValue: '',
     },
     propertyFields: [
-      { key: 'leftVar', label: '左侧变量', type: 'variable', placeholder: '选择变量' },
+      { key: 'leftVar', label: '变量', type: 'variable', placeholder: '选择要判断的变量' },
       {
         key: 'operator',
-        label: '比较符',
+        label: '比较方式',
         type: 'select',
         options: [
-          { label: '等于 (==)', value: '==' },
-          { label: '不等于 (!=)', value: '!=' },
-          { label: '大于 (>)', value: '>' },
-          { label: '小于 (<)', value: '<' },
-          { label: '大于等于 (>=)', value: '>=' },
-          { label: '小于等于 (<=)', value: '<=' },
+          { label: '等于', value: '==' },
+          { label: '不等于', value: '!=' },
+          { label: '大于', value: '>' },
+          { label: '小于', value: '<' },
+          { label: '大于等于', value: '>=' },
+          { label: '小于等于', value: '<=' },
         ],
         defaultValue: '==',
       },
-      { key: 'rightValue', label: '右侧值', type: 'text', description: '输入 # 选择变量，或直接写固定值' },
+      { key: 'rightValue', label: '比较值', type: 'text', description: '固定值直接写（true/false/数字/文字），输入 # 选择变量' },
     ],
   },
   {
@@ -224,12 +224,15 @@ export const nodeConfigs: NodeConfig[] = [
       deepLocate: false,
       cacheable: true,
       fileChooserAccept: '',
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：确认按钮' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
       { key: 'fileChooserAccept', label: '上传文件路径', type: 'file-path', description: '点击后触发文件选择器时，要上传的文件路径', multiFile: true },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升定位准确率' },
     ],
   },
   {
@@ -279,11 +282,14 @@ export const nodeConfigs: NodeConfig[] = [
       target: '',
       deepLocate: false,
       cacheable: true,
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：下拉菜单' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升定位准确率' },
     ],
   },
   {
@@ -298,12 +304,15 @@ export const nodeConfigs: NodeConfig[] = [
       value: '',
       deepLocate: false,
       cacheable: true,
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：搜索框' },
       { key: 'value', label: '输入内容', type: 'text' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升定位准确率' },
     ],
   },
   {
@@ -401,6 +410,8 @@ export const nodeConfigs: NodeConfig[] = [
     defaultParams: {
       prompt: '',
       outputVar: '',
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       {
@@ -411,6 +422,7 @@ export const nodeConfigs: NodeConfig[] = [
         description: '请在描述中明确说明你想要的数据格式，如：返回一个数字、返回字符串、返回数组、返回JSON对象（包含哪些字段）等',
       },
       { key: 'outputVar', label: '输出变量名', type: 'text', description: '查询结果保存到这个变量，后续节点可通过 # 引用' },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升识别准确率' },
     ],
   },
   {
@@ -424,11 +436,14 @@ export const nodeConfigs: NodeConfig[] = [
       prompt: '',
       errorMessage: '',
       outputVar: '',
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       { key: 'prompt', label: '断言描述', type: 'textarea', placeholder: '例如：页面应该显示登录成功' },
       { key: 'errorMessage', label: '失败提示', type: 'text', description: '断言失败时显示的错误信息' },
       { key: 'outputVar', label: '结果变量名', type: 'text', description: '断言结果（true/false）保存到这个变量，可选' },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升判断准确率' },
     ],
   },
   {
@@ -441,10 +456,13 @@ export const nodeConfigs: NodeConfig[] = [
     defaultParams: {
       prompt: '',
       outputVar: 'result',
+      images: [],
+      convertHttpImage2Base64: false,
     },
     propertyFields: [
       { key: 'prompt', label: '判断描述', type: 'textarea', placeholder: '例如：页面上是否有登录按钮' },
       { key: 'outputVar', label: '输出变量名', type: 'text', description: '布尔结果保存到这个变量，后续节点可通过 # 引用' },
+      { key: 'images', label: '参考图像', type: 'image-list', description: '添加参考图片提升判断准确率' },
     ],
   },
 
