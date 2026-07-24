@@ -653,7 +653,36 @@ export class FlowScheduler extends EventEmitter {
 
     switch (operation) {
       case 'set': {
-        setValue(autoParseValue(interpolatedValue));
+        const valueType = String(params.setValueType || 'string');
+        if (valueType === 'boolean') {
+          const raw = params.value;
+          setValue(raw === true || raw === 'true' || raw === 1 || raw === '1');
+        } else if (valueType === 'number') {
+          setValue(Number(interpolatedValue) || 0);
+        } else if (valueType === 'array') {
+          const rawLines = String(params.value ?? '').split('\n');
+          const parsed: unknown[] = [];
+          for (const line of rawLines) {
+            const trimmed = line.trim();
+            if (trimmed.length === 0) continue;
+            const interpolated = interpolateValue(trimmed, this.variablePool);
+            if (interpolated === 'true') {
+              parsed.push(true);
+            } else if (interpolated === 'false') {
+              parsed.push(false);
+            } else {
+              const num = Number(interpolated);
+              if (!isNaN(num) && String(interpolated).trim() !== '') {
+                parsed.push(num);
+              } else {
+                parsed.push(interpolated);
+              }
+            }
+          }
+          setValue(parsed);
+        } else {
+          setValue(String(interpolatedValue ?? ''));
+        }
         break;
       }
       case 'increment':
