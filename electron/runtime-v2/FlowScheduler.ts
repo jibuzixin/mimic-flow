@@ -447,9 +447,19 @@ export class FlowScheduler extends EventEmitter {
       case 'control.start':
         this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '▶️ 工作流开始' });
         return true;
-      case 'control.end':
-        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '🏁 工作流结束' });
+      case 'control.end': {
+        const { message } = node.nodeParams as any;
+        let content = '';
+        if (message) {
+          content = String(interpolateValue(message, this.variablePool));
+        }
+        const state = this.nodeStates.get(node.id);
+        if (state) {
+          state.output = content;
+        }
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '🏁 工作流结束' + (content ? `\n${content}` : '') });
         return true;
+      }
       case 'control.if':
         await this.executeIfNode(node);
         return false;
@@ -480,6 +490,11 @@ export class FlowScheduler extends EventEmitter {
       content = JSON.stringify(this.variablePool.globalVars, null, 2);
     }
 
+    const state = this.nodeStates.get(node.id);
+    if (state) {
+      state.output = content;
+    }
+
     this.addLog({
       level: 'info',
       source: 'scheduler',
@@ -489,31 +504,77 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeVarNode(node: FlowNode): void {
-    const { name, value, mode = 'set' } = node.nodeParams as any;
+    const { varName, value, operation = 'set', valueType = 'string' } = node.nodeParams as any;
     const interpolatedValue = interpolateValue(value, this.variablePool);
+    const pool = this.variablePool.globalVars as Record<string, unknown>;
 
-    if (mode === 'set') {
-      (this.variablePool.globalVars as Record<string, unknown>)[name as string] = interpolatedValue;
-    } else if (mode === 'increment' || mode === 'incr' || mode === 'add') {
-      const current = Number((this.variablePool.globalVars as Record<string, unknown>)[name as string] ?? 0);
-      (this.variablePool.globalVars as Record<string, unknown>)[name as string] = current + Number(interpolatedValue);
-    } else if (mode === 'decrement' || mode === 'decr' || mode === 'sub') {
-      const current = Number((this.variablePool.globalVars as Record<string, unknown>)[name as string] ?? 0);
-      (this.variablePool.globalVars as Record<string, unknown>)[name as string] = current - Number(interpolatedValue);
-    } else if (mode === 'append') {
-      const current = (this.variablePool.globalVars as Record<string, unknown>)[name as string];
-      if (Array.isArray(current)) {
-        current.push(interpolatedValue);
-      } else {
-        (this.variablePool.globalVars as Record<string, unknown>)[name as string] = [current, interpolatedValue].filter(Boolean);
+    let finalValue: unknown = interpolatedValue;
+
+    if (operation !== 'set' && operation !== 'concat') {
+      if (valueType === 'number') {
+        finalValue = Number(interpolatedValue) || 0;
+      } else if (valueType === 'boolean') {
+        finalValue = interpolatedValue === 'true' || interpolatedValue === true;
+      } else if (valueType === 'expression') {
+        try {
+          finalValue = new Function(`"use strict"; return (${interpolatedValue})`)();
+        } catch (e) {
+          finalValue = interpolatedValue;
+        }
       }
+    }
+
+    switch (operation) {
+      case 'set':
+        if (valueType === 'number') {
+          finalValue = Number(interpolatedValue) || 0;
+        } else if (valueType === 'boolean') {
+          finalValue = interpolatedValue === 'true' || interpolatedValue === true;
+        } else if (valueType === 'expression') {
+          try {
+            finalValue = new Function(`"use strict"; return (${interpolatedValue})`)();
+          } catch (e) {
+            finalValue = interpolatedValue;
+          }
+        }
+        pool[varName as string] = finalValue;
+        break;
+      case 'increment':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) + Number(finalValue);
+        break;
+      case 'decrement':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) - Number(finalValue);
+        break;
+      case 'multiply':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) * Number(finalValue);
+        break;
+      case 'divide':
+        pool[varName as string] = Number(pool[varName as string] ?? 0) / Number(finalValue);
+        break;
+      case 'concat':
+        pool[varName as string] = String(pool[varName as string] ?? '') + String(finalValue);
+        break;
+      case 'toUpperCase':
+        pool[varName as string] = String(pool[varName as string] ?? '').toUpperCase();
+        break;
+      case 'toLowerCase':
+        pool[varName as string] = String(pool[varName as string] ?? '').toLowerCase();
+        break;
+      case 'trim':
+        pool[varName as string] = String(pool[varName as string] ?? '').trim();
+        break;
+      case 'toInteger':
+        pool[varName as string] = Math.trunc(Number(pool[varName as string] ?? 0));
+        break;
+      default:
+        pool[varName as string] = finalValue;
     }
 
     this.addLog({
       level: 'debug',
       source: 'scheduler',
       nodeId: node.id,
-      message: `变量赋值: ${name} = ${JSON.stringify(interpolatedValue)}`,
+      message: `变量赋值: ${varName} = ${JSON.stringify(pool[varName as string])}`,
     });
   }
 

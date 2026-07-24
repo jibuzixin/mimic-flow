@@ -15,9 +15,28 @@ function getPathValue(obj: Record<string, unknown>, path: string): unknown {
   return val;
 }
 
+function resolveVarPath(pool: Record<string, unknown>, path: string): unknown {
+  const directValue = getPathValue(pool, path);
+  if (directValue !== undefined) return directValue;
+  
+  const globalVars = pool.globalVars as Record<string, unknown> | undefined;
+  if (globalVars) {
+    const val = getPathValue(globalVars, path);
+    if (val !== undefined) return val;
+  }
+  
+  const outputs = pool.outputs as Record<string, unknown> | undefined;
+  if (outputs) {
+    const val = getPathValue(outputs, path);
+    if (val !== undefined) return val;
+  }
+  
+  return undefined;
+}
+
 function interpolateString(str: string, pool: Record<string, unknown>): string {
   return str.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
-    const value = getPathValue(pool, path);
+    const value = resolveVarPath(pool, path);
     return String(value ?? '');
   });
 }

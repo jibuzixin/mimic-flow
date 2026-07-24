@@ -4,6 +4,7 @@ import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick } from 'l
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
+import { KeySelect } from './KeySelect';
 
 interface HelpTooltipProps {
   text: string;
@@ -223,6 +224,14 @@ export const PropertyPanel: React.FC = () => {
             variables={variables}
             globalVariables={globalVarNames}
             nodeVariables={nodeOutputVars}
+          />
+        );
+
+      case 'key-select':
+        return (
+          <KeySelect
+            value={String(value ?? '')}
+            onChange={(v) => handleParamChange(field.key, v)}
           />
         );
 

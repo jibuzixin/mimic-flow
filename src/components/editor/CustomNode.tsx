@@ -63,6 +63,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
 
   const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
   const contentMessage = nodeParams?.message as string | undefined;
+  const output = data.output as string | undefined;
+  const displayContent = output !== undefined ? output : contentMessage;
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -167,16 +169,20 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
           </div>
         </div>
 
-        {showContent && contentMessage && (
+        {showContent && displayContent && (
           <div
-            className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-600 bg-gray-50/50 rounded-lg p-2.5 font-mono whitespace-pre-wrap break-all line-clamp-4"
+            className={`mt-3 pt-3 border-t text-xs rounded-lg p-2.5 font-mono whitespace-pre-wrap break-all line-clamp-4 ${
+              output !== undefined
+                ? 'border-emerald-200 bg-emerald-50/80 text-emerald-800'
+                : 'border-gray-100 bg-gray-50/50 text-gray-600'
+            }`}
             style={{ maxHeight: '100px', overflow: 'hidden' }}
           >
-            {contentMessage}
+            {displayContent}
           </div>
         )}
 
-        {showContent && !contentMessage && (
+        {showContent && !displayContent && (
           <div className="mt-3 pt-3 border-t border-gray-100">
             <div className="text-xs text-gray-400 italic flex items-center gap-1">
               <span className="w-1 h-1 rounded-full bg-gray-300"></span>

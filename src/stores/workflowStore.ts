@@ -56,6 +56,7 @@ interface WorkflowState {
   currentRunningNodeId: string | null;
   nodeExecutionStatus: Record<string, 'idle' | 'running' | 'success' | 'error'>;
   nodeErrors: Record<string, string>;
+  nodeOutputs: Record<string, unknown>;
   executionLogs: Array<{
     id: string;
     timestamp: number;
@@ -237,6 +238,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentRunningNodeId: null,
   nodeExecutionStatus: {},
   nodeErrors: {},
+  nodeOutputs: {},
   executionLogs: [],
   nodePositions: {},
   edges: [],
@@ -446,6 +448,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentRunningNodeId: null,
       nodeExecutionStatus: {},
       nodeErrors: {},
+      nodeOutputs: {},
       executionLogs: [],
     });
   },
@@ -476,6 +479,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentRunningNodeId: null,
       nodeExecutionStatus: initialStatus,
       nodeErrors: {},
+      nodeOutputs: {},
       executionLogs: [],
     });
 
@@ -531,12 +535,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           const { nodeId, duration, output } = runtimeEvent;
           const newErrors = { ...get().nodeErrors };
           delete newErrors[nodeId];
+          const newOutputs = { ...get().nodeOutputs };
+          if (output !== undefined) {
+            newOutputs[nodeId] = output;
+          }
           set({
             nodeExecutionStatus: {
               ...get().nodeExecutionStatus,
               [nodeId]: 'success',
             },
             nodeErrors: newErrors,
+            nodeOutputs: newOutputs,
           });
           const status = get();
           const node = status.currentWorkflow?.nodes.find((n: FlowNode) => n.id === nodeId);

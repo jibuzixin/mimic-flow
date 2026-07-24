@@ -43,6 +43,14 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     return variables.filter(v => !set.has(v) && v.toLowerCase().includes(filter.toLowerCase()));
   }, [variables, globalVariables, nodeVariables, filter]);
 
+  const displayList = useMemo(() => {
+    const list: { type: 'global' | 'node' | 'other'; name: string }[] = [];
+    filteredGlobalVars.forEach((v) => list.push({ type: 'global', name: v }));
+    filteredNodeVars.forEach((v) => list.push({ type: 'node', name: v }));
+    filteredOtherVars.forEach((v) => list.push({ type: 'other', name: v }));
+    return list;
+  }, [filteredGlobalVars, filteredNodeVars, filteredOtherVars]);
+
   const filteredVariables = allVariables.filter((v) =>
     v.toLowerCase().includes(filter.toLowerCase())
   );
@@ -75,7 +83,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
         }
       }
 
-      if (!showDropdown || filteredVariables.length === 0) {
+      if (!showDropdown || displayList.length === 0) {
         if (e.key === '#') {
           e.preventDefault();
           const newValue = value.slice(0, cursorPos) + '#' + value.slice(cursorPos);
@@ -93,7 +101,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
         case 'ArrowDown':
           e.preventDefault();
           setSelectedIndex((prev) =>
-            prev < filteredVariables.length - 1 ? prev + 1 : prev
+            prev < displayList.length - 1 ? prev + 1 : prev
           );
           break;
         case 'ArrowUp':
@@ -102,8 +110,8 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
           break;
         case 'Enter':
           e.preventDefault();
-          if (filteredVariables[selectedIndex] && hashStartPos !== null) {
-            const varText = `{{${filteredVariables[selectedIndex]}}}`;
+          if (displayList[selectedIndex] && hashStartPos !== null) {
+            const varText = `{{${displayList[selectedIndex].name}}}`;
             const newValue = value.slice(0, hashStartPos) + varText + value.slice(cursorPos);
             onChange(newValue);
             const newCursorPos = hashStartPos + varText.length;
@@ -123,7 +131,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
           break;
       }
     },
-    [showDropdown, filteredVariables, selectedIndex, value, onChange, hashStartPos, setCursorPosition]
+    [showDropdown, displayList, selectedIndex, value, onChange, hashStartPos, setCursorPosition]
   );
 
   const handleChange = useCallback(
@@ -189,6 +197,20 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!showDropdown || !dropdownRef.current) return;
+
+    const container = dropdownRef.current;
+    const selectedEl = container.querySelector('[data-selected="true"]') as HTMLElement | null;
+    if (selectedEl) {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = selectedEl.getBoundingClientRect();
+      if (elRect.top < containerRect.top || elRect.bottom > containerRect.bottom) {
+        selectedEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [selectedIndex, showDropdown, displayList.length]);
 
   const renderHighlightedValue = () => {
     if (!value) return null;
@@ -277,7 +299,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
           }`}
         />
       )}
-      {showDropdown && filteredVariables.length > 0 &&
+      {showDropdown && displayList.length > 0 &&
         createPortal(
           <div
             ref={dropdownRef}
@@ -292,18 +314,27 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
                 <div className="px-3 py-1.5 text-[11px] font-medium text-gray-400 bg-gray-50 border-b border-gray-100 sticky top-0">
                   全局变量
                 </div>
-                {filteredGlobalVars.map((variable) => (
-                  <div
-                    key={`global-${variable}`}
-                    onClick={() => handleSelect(variable)}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-indigo-50 transition-colors text-gray-700"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                      {variable}
-                    </span>
-                  </div>
-                ))}
+                {filteredGlobalVars.map((variable) => {
+                  const idx = displayList.findIndex((item) => item.type === 'global' && item.name === variable);
+                  const isSelected = idx === selectedIndex;
+                  return (
+                    <div
+                      key={`global-${variable}`}
+                      data-selected={isSelected}
+                      onClick={() => handleSelect(variable)}
+                      className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'text-gray-700 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                        {variable}
+                      </span>
+                    </div>
+                  );
+                })}
               </>
             )}
             {filteredNodeVars.length > 0 && (
@@ -311,18 +342,27 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
                 <div className="px-3 py-1.5 text-[11px] font-medium text-gray-400 bg-gray-50 border-b border-gray-100 sticky top-0">
                   节点输出
                 </div>
-                {filteredNodeVars.map((variable) => (
-                  <div
-                    key={`node-${variable}`}
-                    onClick={() => handleSelect(variable)}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-indigo-50 transition-colors text-gray-700"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      {variable}
-                    </span>
-                  </div>
-                ))}
+                {filteredNodeVars.map((variable) => {
+                  const idx = displayList.findIndex((item) => item.type === 'node' && item.name === variable);
+                  const isSelected = idx === selectedIndex;
+                  return (
+                    <div
+                      key={`node-${variable}`}
+                      data-selected={isSelected}
+                      onClick={() => handleSelect(variable)}
+                      className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'text-gray-700 hover:bg-indigo-50'
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        {variable}
+                      </span>
+                    </div>
+                  );
+                })}
               </>
             )}
             {filteredOtherVars.length > 0 && (
@@ -330,15 +370,24 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
                 <div className="px-3 py-1.5 text-[11px] font-medium text-gray-400 bg-gray-50 border-b border-gray-100 sticky top-0">
                   其他变量
                 </div>
-                {filteredOtherVars.map((variable) => (
-                  <div
-                    key={`other-${variable}`}
-                    onClick={() => handleSelect(variable)}
-                    className="px-3 py-2 text-sm cursor-pointer hover:bg-indigo-50 transition-colors text-gray-700"
-                  >
-                    {variable}
-                  </div>
-                ))}
+                {filteredOtherVars.map((variable) => {
+                  const idx = displayList.findIndex((item) => item.type === 'other' && item.name === variable);
+                  const isSelected = idx === selectedIndex;
+                  return (
+                    <div
+                      key={`other-${variable}`}
+                      data-selected={isSelected}
+                      onClick={() => handleSelect(variable)}
+                      className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'text-gray-700 hover:bg-indigo-50'
+                      }`}
+                    >
+                      {variable}
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>,

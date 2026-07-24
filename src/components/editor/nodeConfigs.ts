@@ -10,7 +10,7 @@ export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait';
 export interface PropertyField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select';
   description?: string;
   placeholder?: string;
   options?: { label: string; value: string }[];
@@ -346,7 +346,7 @@ export const nodeConfigs: NodeConfig[] = [
     },
     propertyFields: [
       { key: 'target', label: '目标描述', type: 'text', placeholder: '例如：输入框' },
-      { key: 'keyName', label: '按键名', type: 'text', defaultValue: 'Enter', description: '如 Enter, Tab, Escape' },
+      { key: 'keyName', label: '按键', type: 'key-select', defaultValue: 'Enter', description: '选择要按下的按键' },
       { key: 'deepLocate', label: '深度定位', type: 'switch' },
       { key: 'cacheable', label: '启用缓存', type: 'switch', defaultValue: true },
     ],

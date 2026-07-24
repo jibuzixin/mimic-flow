@@ -94,6 +94,7 @@ function WorkflowEditorInner() {
     executionLogs,
     nodeExecutionStatus,
     nodeErrors,
+    nodeOutputs,
     isDirty,
     originalWorkflowId,
     updateWorkflowMeta,
@@ -164,6 +165,7 @@ function WorkflowEditorInner() {
       const pos = nodePositions[node.id] || { x: 100, y: 0 };
       const status = nodeExecutionStatus[node.id] || 'idle';
       const errorMsg = nodeErrors[node.id];
+      const output = nodeOutputs[node.id];
       return {
         id: node.id,
         type: 'custom',
@@ -174,6 +176,7 @@ function WorkflowEditorInner() {
           executionStatus: status,
           errorMessage: errorMsg,
           nodeParams: node.nodeParams,
+          output,
         },
       } as CustomNodeType;
     });
@@ -203,9 +206,11 @@ function WorkflowEditorInner() {
       nds.map((node) => {
         const status = nodeExecutionStatus[node.id] || 'idle';
         const errorMsg = nodeErrors[node.id];
+        const output = nodeOutputs[node.id];
         if (
           node.data.executionStatus === status &&
-          node.data.errorMessage === errorMsg
+          node.data.errorMessage === errorMsg &&
+          node.data.output === output
         ) {
           return node;
         }
@@ -215,11 +220,12 @@ function WorkflowEditorInner() {
             ...node.data,
             executionStatus: status,
             errorMessage: errorMsg,
+            output,
           },
         };
       })
     );
-  }, [nodeExecutionStatus, nodeErrors, currentWorkflow, initialized, setNodes]);
+  }, [nodeExecutionStatus, nodeErrors, nodeOutputs, currentWorkflow, initialized, setNodes]);
 
   const handleNodesChange: OnNodesChange<CustomNodeType> = useCallback(
     (changes) => {
@@ -708,7 +714,7 @@ function WorkflowEditorInner() {
             className={`flex items-center gap-1.5 px-4 py-1.5 text-sm text-white rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95 ${
               isRunning
                 ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600'
-                : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600'
+                : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600'
             }`}
           >
             {isRunning ? (
