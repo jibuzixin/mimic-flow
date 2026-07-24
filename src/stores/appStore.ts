@@ -12,6 +12,9 @@ interface AppState {
   defaultModelIds: DefaultModelSelection;
   logSavePath: string;
   workflowSavePath: string;
+  uiSettings: {
+    nodeWidthMultiplier: number;
+  };
   isLoading: boolean;
 
   init: () => Promise<void>;
@@ -22,6 +25,7 @@ interface AppState {
   setDefaultModelIds: (ids: DefaultModelSelection) => Promise<void>;
   setLogSavePath: (path: string) => Promise<void>;
   setWorkflowSavePath: (path: string) => Promise<void>;
+  setUiSettings: (settings: Partial<AppState['uiSettings']>) => Promise<void>;
   resetSettings: () => Promise<void>;
   clearAllData: () => Promise<void>;
 }
@@ -41,6 +45,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   defaultModelIds: getDefaultModelIds(),
   logSavePath: '',
   workflowSavePath: '',
+  uiSettings: {
+    nodeWidthMultiplier: 2,
+  },
   isLoading: true,
 
   init: async () => {
@@ -52,6 +59,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds,
       logSavePath,
       workflowSavePath,
+      uiSettings,
     ] = await Promise.all([
       invoke<boolean>('store:get', 'ui.sidebarCollapsed'),
       invoke<ModelProviderConfig>('store:get', 'modelProvider'),
@@ -60,6 +68,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       invoke<DefaultModelSelection>('store:get', 'defaultModelIds'),
       invoke<string>('store:get', 'logSavePath'),
       invoke<string>('store:get', 'workflowSavePath'),
+      invoke<AppState['uiSettings']>('store:get', 'uiSettings'),
     ]);
     set({
       sidebarCollapsed,
@@ -69,6 +78,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: defaultModelIds || getDefaultModelIds(),
       logSavePath: logSavePath || '',
       workflowSavePath: workflowSavePath || '',
+      uiSettings: uiSettings || { nodeWidthMultiplier: 2 },
       isLoading: false,
     });
   },
@@ -77,6 +87,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = !get().sidebarCollapsed;
     set({ sidebarCollapsed: next });
     invoke('store:set', 'ui.sidebarCollapsed', next);
+  },
+
+  setUiSettings: async (settings) => {
+    const next = { ...get().uiSettings, ...settings };
+    set({ uiSettings: next });
+    await invoke('store:set', 'uiSettings', next);
   },
 
   setModelProvider: async (config) => {
@@ -115,6 +131,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       'defaultModelIds',
       'logSavePath',
       'workflowSavePath',
+      'uiSettings',
     ];
     for (const key of keys) {
       await invoke('store:delete', key);
@@ -124,6 +141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
+      uiSettings: { nodeWidthMultiplier: 2 },
     });
   },
 
@@ -137,6 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
+      uiSettings: { nodeWidthMultiplier: 2 },
     });
   },
 }));

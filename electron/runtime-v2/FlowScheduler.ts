@@ -465,7 +465,7 @@ export class FlowScheduler extends EventEmitter {
         return false;
       case 'control.loop':
         await this.executeLoopNode(node);
-        return true;
+        return false;
       case 'control.var':
         this.executeVarNode(node);
         return true;
@@ -482,12 +482,12 @@ export class FlowScheduler extends EventEmitter {
     let content = '';
 
     if (varName) {
-      const value = (this.variablePool.globalVars as Record<string, unknown>)[varName as string];
+      const value = resolveVarPath(this.variablePool, varName as string);
       content = `[${varName}] = ${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}`;
     } else if (message) {
       content = String(interpolateValue(message, this.variablePool));
     } else {
-      content = JSON.stringify(this.variablePool.globalVars, null, 2);
+      content = '(日志内容为空)';
     }
 
     const state = this.nodeStates.get(node.id);
@@ -612,74 +612,122 @@ export class FlowScheduler extends EventEmitter {
 
   private async executeLoopNode(node: FlowNode): Promise<void> {
     const params = node.nodeParams as any;
-    const { type, maxIterations = 100, bodyNodeId } = params;
-    const loopBodyNodeId = bodyNodeId || node.nextNodes[0]?.nodeId;
+    const loopType = params.loopType || 'for';
+    const maxIterations = Number(params.maxIterations ?? 100);
 
-    if (!loopBodyNodeId) {
-      this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: '循环没有指定循环体节点，跳过' });
+    const bodyBranch = node.nextNodes.find((n) => n.condition === 'body');
+    const exitBranch = node.nextNodes.find((n) => n.condition === 'exit');
+    const bodyNodeId = bodyBranch?.nodeId;
+    const exitNodeId = exitBranch?.nodeId;
+
+    if (!bodyNodeId && !exitNodeId) {
+      this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: '循环没有连接 body 或 exit 分支，跳过' });
       return;
     }
 
+    const loopStateKey = `__loop_${node.id}`;
+    const pool = this.variablePool as Record<string, unknown>;
+    const loopState = (pool[loopStateKey] as Record<string, unknown> | undefined) || {};
+
+    let shouldContinue = false;
+    let nextNodeId: string | undefined;
     let iteration = 0;
 
-    if (type === 'for') {
-      const { from = 0, to = 0, step = 1, iteratorVar = 'i' } = params;
-      const iterVar = String(iteratorVar);
-      (this.variablePool as any).loop = { ...((this.variablePool as any).loop || {}) };
+    if (loopType === 'for') {
+      const from = Number(params.from ?? 0);
+      const to = Number(params.to ?? 0);
+      const step = Number(params.step ?? 1);
+      const iteratorVar = String(params.iteratorVar || 'i');
 
-      for (let i = Number(from); i <= Number(to); i += Number(step)) {
-        if (this.status !== 'running') break;
-        if (iteration >= maxIterations) {
-          this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: `达到最大循环次数 ${maxIterations}` });
-          break;
-        }
-        (this.variablePool as any).loop[iterVar] = i;
-        this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `for 循环第 ${iteration + 1} 次: ${iterVar} = ${i}` });
-        try {
-          await this.executeNode(loopBodyNodeId);
-        } catch (e) {
-          if (this.status === 'running') {
-            this.status = 'failed';
-          }
-          break;
-        }
-        iteration++;
+      let current = loopState.current !== undefined ? Number(loopState.current) : from;
+      iteration = Number(loopState.iteration ?? 0);
+
+      if (iteration >= maxIterations) {
+        this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: `🔄 达到最大循环次数 ${maxIterations}，退出循环` });
+        shouldContinue = false;
+      } else if ((step > 0 && current <= to) || (step < 0 && current >= to)) {
+        shouldContinue = true;
+      } else {
+        shouldContinue = false;
       }
-    } else if (type === 'while') {
-      const { condition } = params;
-      while (evaluateCondition(String(condition), this.variablePool)) {
-        if (this.status !== 'running') break;
-        if (iteration >= maxIterations) {
-          this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: `达到最大循环次数 ${maxIterations}` });
-          break;
-        }
-        this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `while 循环第 ${iteration + 1} 次` });
-        try {
-          await this.executeNode(loopBodyNodeId);
-        } catch (e) {
-          if (this.status === 'running') {
-            this.status = 'failed';
-          }
-          break;
-        }
-        iteration++;
+
+      if (shouldContinue && bodyNodeId) {
+        ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[iteratorVar] = current;
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 for 循环第 ${iteration + 1} 次: ${iteratorVar} = ${current}` });
+
+        pool[loopStateKey] = {
+          ...loopState,
+          current: current + step,
+          iteration: iteration + 1,
+        };
+        nextNodeId = bodyNodeId;
+      } else if (exitNodeId) {
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 for 循环结束，共执行 ${iteration} 次` });
+        delete pool[loopStateKey];
+        nextNodeId = exitNodeId;
       }
-    } else if (type === 'forEach') {
-      const { array, iteratorVar = 'item' } = params;
-      const arr = Array.isArray(array) ? array : [];
-      for (const item of arr) {
-        if (this.status !== 'running') break;
-        (this.variablePool as any).loop = { ...((this.variablePool as any).loop || {}), [iteratorVar]: item };
-        this.addLog({ level: 'debug', source: 'scheduler', nodeId: node.id, message: `forEach 循环: ${iteratorVar} = ${JSON.stringify(item)}` });
+    } else if (loopType === 'while') {
+      const condition = String(params.condition || '');
+      iteration = Number(loopState.iteration ?? 0);
+
+      if (iteration >= maxIterations) {
+        this.addLog({ level: 'warn', source: 'scheduler', nodeId: node.id, message: `🔄 达到最大循环次数 ${maxIterations}，退出循环` });
+        shouldContinue = false;
+      } else {
         try {
-          await this.executeNode(loopBodyNodeId);
+          shouldContinue = evaluateCondition(condition, this.variablePool);
         } catch (e) {
-          if (this.status === 'running') {
-            this.status = 'failed';
-          }
-          break;
+          this.addLog({ level: 'error', source: 'scheduler', nodeId: node.id, message: `🔄 while 条件判断失败: ${condition}` });
+          shouldContinue = false;
         }
-        iteration++;
+      }
+
+      if (shouldContinue && bodyNodeId) {
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 while 循环第 ${iteration + 1} 次` });
+        pool[loopStateKey] = { ...loopState, iteration: iteration + 1 };
+        nextNodeId = bodyNodeId;
+      } else if (exitNodeId) {
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 while 循环结束，共执行 ${iteration} 次` });
+        delete pool[loopStateKey];
+        nextNodeId = exitNodeId;
+      }
+    } else if (loopType === 'forEach') {
+      const arrayVar = String(params.arrayVar || '');
+      const itemVar = String(params.itemVar || 'item');
+      iteration = Number(loopState.iteration ?? 0);
+
+      let arr: unknown[] = [];
+      const arrayVal = resolveVarPath(this.variablePool, arrayVar);
+      if (Array.isArray(arrayVal)) {
+        arr = arrayVal;
+      }
+
+      if (iteration >= maxIterations || iteration >= arr.length) {
+        shouldContinue = false;
+      } else {
+        shouldContinue = true;
+      }
+
+      if (shouldContinue && bodyNodeId) {
+        const item = arr[iteration];
+        ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[itemVar] = item;
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环第 ${iteration + 1} 次: ${itemVar} = ${JSON.stringify(item)}` });
+        pool[loopStateKey] = { ...loopState, iteration: iteration + 1 };
+        nextNodeId = bodyNodeId;
+      } else if (exitNodeId) {
+        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环结束，共执行 ${iteration} 次` });
+        delete pool[loopStateKey];
+        nextNodeId = exitNodeId;
+      }
+    }
+
+    if (nextNodeId) {
+      try {
+        await this.executeNode(nextNodeId);
+      } catch (e) {
+        if (this.status === 'running') {
+          this.status = 'failed';
+        }
       }
     }
   }

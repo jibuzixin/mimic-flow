@@ -5,6 +5,7 @@ import { AlertCircle } from 'lucide-react';
 import { getNodeConfig } from './nodeConfigs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { useAppStore } from '../../stores/appStore';
 
 export interface CustomNodeData {
   label: string;
@@ -26,8 +27,8 @@ export const getNodeHandles = (nodeType: string) => {
 
   return {
     inputs: isStartNode ? 0 : 1,
-    outputs: isEndNode ? 0 : (isIfNode ? 2 : isLoopNode ? 1 : 1),
-    outputLabels: isIfNode ? ['true', 'false'] : isLoopNode ? ['body'] : ['out'],
+    outputs: isEndNode ? 0 : (isIfNode ? 2 : isLoopNode ? 2 : 1),
+    outputLabels: isIfNode ? ['true', 'false'] : isLoopNode ? ['body', 'exit'] : ['out'],
   };
 };
 
@@ -54,12 +55,19 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   };
 
   const { setSelectedNode } = useWorkflowStore();
+  const { uiSettings } = useAppStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(data.label);
 
   const isLogNode = data.nodeType === 'control.log';
   const isEndNode = data.nodeType === 'control.end';
   const showContent = isLogNode || isEndNode;
+
+  const nodeWidth = useMemo(() => {
+    const baseWidth = showContent ? 280 : 220;
+    const maxWidth = baseWidth * uiSettings.nodeWidthMultiplier;
+    return { base: baseWidth, max: maxWidth };
+  }, [uiSettings.nodeWidthMultiplier, showContent]);
 
   const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
   const contentMessage = nodeParams?.message as string | undefined;
@@ -99,9 +107,21 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
         return `if ${truncate(cond || '', 25)}`;
       }
       case 'control.loop': {
-        const it = params.iteratorVar as string || 'i';
-        const max = params.maxIterations;
-        return max ? `for ${it}=0..${max}` : '循环';
+        const loopType = params.loopType as string || 'for';
+        if (loopType === 'for') {
+          const it = params.iteratorVar as string || 'i';
+          const from = params.from ?? 0;
+          const to = params.to ?? 0;
+          return `for ${it}=${from}..${to}`;
+        } else if (loopType === 'while') {
+          const cond = params.condition as string;
+          return `while ${truncate(cond || 'true', 20)}`;
+        } else if (loopType === 'forEach') {
+          const arr = params.arrayVar as string || 'arr';
+          const item = params.itemVar as string || 'item';
+          return `forEach ${item} in ${arr}`;
+        }
+        return '循环';
       }
       case 'control.log': {
         if (params.var) return `log [${params.var}]`;
@@ -204,8 +224,6 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       animate={{ scale: 1, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       className={`relative rounded-xl border-2 bg-white/90 backdrop-blur-sm shadow-lg transition-all ${
-        showContent ? 'w-[280px]' : 'w-[220px]'
-      } ${
         selected
           ? 'border-blue-500 shadow-blue-500/30 ring-4 ring-blue-500/20'
           : status !== 'idle'
@@ -213,6 +231,9 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
           : 'border-gray-200 hover:border-gray-300 hover:shadow-xl'
       } ${isEditing ? 'nodrag' : ''}`}
       style={{
+        minWidth: nodeWidth.base,
+        maxWidth: nodeWidth.max,
+        width: 'auto',
         borderTopWidth: '4px',
         borderTopColor: statusTopBorder[status],
       }}
@@ -270,7 +291,9 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
                 {data.label}
               </div>
             )}
-            <div className="text-xs text-gray-400 mt-0.5 font-mono leading-relaxed line-clamp-2" style={{ wordBreak: 'break-all' }}>{subtitle}</div>
+            {!showContent && (
+              <div className="text-xs text-gray-400 mt-0.5 font-mono leading-relaxed line-clamp-2" style={{ wordBreak: 'break-all' }}>{subtitle}</div>
+            )}
           </div>
         </div>
 

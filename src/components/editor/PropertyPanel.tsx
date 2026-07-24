@@ -77,40 +77,19 @@ export const PropertyPanel: React.FC = () => {
   const selectedNode = currentWorkflow?.nodes.find((n) => n.id === selectedNodeId);
   const config = selectedNode ? getNodeConfig(selectedNode.nodeType) : null;
 
-  const getPrecedingNodeVars = useCallback((): string[] => {
+  const getNodeOutputVars = useCallback((): string[] => {
     if (!currentWorkflow || !selectedNodeId) return [];
 
-    const startNode = currentWorkflow.nodes.find((n) => n.nodeType === 'control.start');
-    if (!startNode) return [];
-
-    const visited = new Set<string>();
-    const precedingNodes: string[] = [];
-    const queue: string[] = [startNode.id];
-
-    while (queue.length > 0) {
-      const nodeId = queue.shift()!;
-      if (visited.has(nodeId)) continue;
-      if (nodeId === selectedNodeId) continue;
-
-      visited.add(nodeId);
-      precedingNodes.push(nodeId);
-
-      const node = currentWorkflow.nodes.find((n) => n.id === nodeId);
-      if (node?.nextNodes) {
-        node.nextNodes.forEach((next) => {
-          if (!visited.has(next.nodeId) && next.nodeId !== selectedNodeId) {
-            queue.push(next.nodeId);
-          }
-        });
+    const nodeVars: string[] = [];
+    currentWorkflow.nodes.forEach((node) => {
+      if (node.id === selectedNodeId) return;
+      const params = node.nodeParams as any;
+      if (node.nodeType === 'control.var' && params?.varName) {
+        nodeVars.push(params.varName);
+      } else if (params?.outputVar) {
+        nodeVars.push(params.outputVar);
       }
-    }
-
-    const nodeVars = precedingNodes
-      .map((id) => {
-        const node = currentWorkflow.nodes.find((n) => n.id === id);
-        return (node?.nodeParams as any)?.outputVar;
-      })
-      .filter((v): v is string => !!v);
+    });
 
     return nodeVars;
   }, [currentWorkflow, selectedNodeId]);
@@ -120,7 +99,7 @@ export const PropertyPanel: React.FC = () => {
     return Object.keys(currentWorkflow.globalVars);
   }, [currentWorkflow?.globalVars]);
 
-  const nodeOutputVars = useMemo(() => getPrecedingNodeVars(), [getPrecedingNodeVars]);
+  const nodeOutputVars = useMemo(() => getNodeOutputVars(), [getNodeOutputVars]);
 
   const variables = useMemo(() => {
     const allVars: string[] = [];

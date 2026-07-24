@@ -212,6 +212,13 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     }
   }, [selectedIndex, showDropdown, displayList.length]);
 
+  useEffect(() => {
+    if (!multiline || !inputRef.current) return;
+    const textarea = inputRef.current as HTMLTextAreaElement;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [value, multiline]);
+
   const renderHighlightedValue = () => {
     if (!value) return null;
     
@@ -260,7 +267,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
       {showHighlighted ? (
         <div
           className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white ${
-            multiline ? 'min-h-[80px] whitespace-pre-wrap' : ''
+            multiline ? 'min-h-[80px] whitespace-pre-wrap resize-y overflow-hidden' : ''
           }`}
           onClick={() => inputRef.current?.focus()}
         >
@@ -279,8 +286,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={placeholder}
-          rows={4}
-          className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white resize-none ${
+          className={`w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white resize-y overflow-hidden min-h-[80px] ${
             showHighlighted ? 'absolute inset-0 opacity-0 cursor-text' : ''
           }`}
         />

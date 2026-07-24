@@ -34,6 +34,7 @@ import {
   Boxes,
   HardDrive,
   Zap,
+  Palette,
 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { invoke } from '../lib/api';
@@ -438,10 +439,12 @@ export default function SettingsPage() {
     defaultModelIds,
     logSavePath,
     workflowSavePath,
+    uiSettings,
     setModels,
     setDefaultModelIds,
     setLogSavePath,
     setWorkflowSavePath,
+    setUiSettings,
     resetSettings,
     clearAllData,
   } = useAppStore();
@@ -450,6 +453,7 @@ export default function SettingsPage() {
   const [localDefaultIds, setLocalDefaultIds] = useState(defaultModelIds);
   const [localLogPath, setLocalLogPath] = useState(logSavePath);
   const [localWorkflowPath, setLocalWorkflowPath] = useState(workflowSavePath);
+  const [localUiSettings, setLocalUiSettings] = useState(uiSettings);
   const [defaultPaths, setDefaultPaths] = useState<{ log: string; workflow: string; userData: string } | null>(null);
 
   useEffect(() => {
@@ -487,6 +491,10 @@ export default function SettingsPage() {
   useEffect(() => {
     setLocalWorkflowPath(workflowSavePath);
   }, [workflowSavePath]);
+
+  useEffect(() => {
+    setLocalUiSettings(uiSettings);
+  }, [uiSettings]);
 
   useEffect(() => {
     invoke<IpcResponse<{ globalRuntimeOption: { defaultTimeout: number; defaultRetry: number } }>>('config:get').then((res) => {
@@ -564,6 +572,7 @@ export default function SettingsPage() {
       await setDefaultModelIds(nextDefaultIds);
       await setLogSavePath(localLogPath);
       await setWorkflowSavePath(localWorkflowPath);
+      await setUiSettings(localUiSettings);
       await invoke('config:set', { globalRuntimeOption: localRuntimeOption });
       setLocalDefaultIds(nextDefaultIds);
       setStatus({ type: 'success', message: '设置已保存' });
@@ -694,6 +703,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="advanced" className="gap-2">
             <SettingsIcon className="w-4 h-4" /> 高级设置
+          </TabsTrigger>
+          <TabsTrigger value="appearance" className="gap-2">
+            <Palette className="w-4 h-4" /> 外观设置
           </TabsTrigger>
           <TabsTrigger value="storage" className="gap-2">
             <HardDrive className="w-4 h-4" /> 存储设置
@@ -942,6 +954,46 @@ export default function SettingsPage() {
                     }
                     className="bg-white"
                   />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="appearance" className="space-y-4 mt-4">
+          <Card className="border-0 shadow-sm bg-white">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Palette className="w-5 h-5 text-violet-500" />
+                画布外观
+              </CardTitle>
+              <CardDescription>自定义工作流画布的显示效果。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">节点最大宽度倍数</Label>
+                <p className="text-xs text-muted-foreground">
+                  节点宽度会根据内容自适应，但不会超过基础宽度 × 倍数。普通节点基础宽度 220px，内容节点 280px。
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 1.5, 2, 2.5, 3].map((multiplier) => (
+                    <button
+                      key={multiplier}
+                      type="button"
+                      onClick={() => setLocalUiSettings((p) => ({ ...p, nodeWidthMultiplier: multiplier }))}
+                      className={cn(
+                        'rounded-xl border-2 py-3 text-sm font-medium transition-all',
+                        localUiSettings.nodeWidthMultiplier === multiplier
+                          ? 'border-violet-400 bg-violet-50 text-violet-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                      )}
+                    >
+                      {multiplier}x
+                    </button>
+                  ))}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  当前最大宽度：普通节点 {Math.round(220 * localUiSettings.nodeWidthMultiplier)}px，内容节点 {Math.round(280 * localUiSettings.nodeWidthMultiplier)}px
                 </div>
               </div>
             </CardContent>

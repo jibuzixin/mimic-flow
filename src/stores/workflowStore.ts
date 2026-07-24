@@ -308,6 +308,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const nodeCount = wf.nodes.length;
     const newPosition = position || { x: 100, y: nodeCount * 120 };
 
+    const state = get();
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
+
     set({
       currentWorkflow: {
         ...wf,
@@ -319,6 +322,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         [newNode.id]: newPosition,
       },
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
 
     const recent = get().recentNodeTypes.filter((t) => t !== type);
@@ -338,12 +346,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
+    const state = get();
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
+
     set({
       currentWorkflow: {
         ...wf,
         nodes: wf.nodes.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
       },
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
 
     get().pushHistory();
@@ -353,6 +369,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
+    const state = get();
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
+
     set({
       currentWorkflow: {
         ...wf,
@@ -361,6 +380,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ),
       },
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
 
     get().pushHistory();
@@ -370,17 +394,24 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const wf = get().currentWorkflow;
     if (!wf) return;
 
-    const { [nodeId]: _, ...restPositions } = get().nodePositions;
+    const state = get();
+    const { [nodeId]: _, ...restPositions } = state.nodePositions;
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
 
     set({
       currentWorkflow: {
         ...wf,
         nodes: wf.nodes.filter((n) => n.id !== nodeId),
       },
-      selectedNodeId: get().selectedNodeId === nodeId ? null : get().selectedNodeId,
+      selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
       nodePositions: restPositions,
-      edges: get().edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      edges: state.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
 
     get().pushHistory();
@@ -758,27 +789,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   addEdgeToStore: (edge) => {
     const state = get();
-    let newEdges = [...state.edges, edge];
-    
     const sourceHandle = edge.sourceHandle || 'out';
-    if (sourceHandle === 'out') {
-      newEdges = newEdges.filter(
-        e => !(e.source === edge.source && (e.sourceHandle || 'out') === 'out')
-      );
-    }
-    
-    const targetHandle = edge.targetHandle || 'in';
-    if (targetHandle === 'in') {
-      newEdges = newEdges.filter(
-        e => !(e.target === edge.target && (e.targetHandle || 'in') === 'in')
-      );
-    }
-    
+
+    const newEdges = state.edges.filter((e) => {
+      const sameSource = e.source === edge.source && (e.sourceHandle || 'out') === sourceHandle;
+      return !sameSource;
+    });
+
     newEdges.push(edge);
     
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
+
     set({
       edges: newEdges,
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
     get().pushHistory();
   },
@@ -804,6 +833,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nextNodes: nextNodesMap[node.id] || [],
     })) || [];
 
+    const shouldClearStatus = !state.isRunning && Object.keys(state.nodeExecutionStatus).length > 0;
+
     set({
       edges: newEdges,
       currentWorkflow: state.currentWorkflow ? {
@@ -811,6 +842,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodes: updatedNodes,
       } : null,
       isDirty: true,
+      ...(shouldClearStatus ? {
+        nodeExecutionStatus: {},
+        nodeErrors: {},
+        nodeOutputs: {},
+      } : {}),
     });
     get().pushHistory();
   },
