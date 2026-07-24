@@ -150,13 +150,47 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
 
     case 'midscene.doubleClick': {
       const target = String(params.target ?? '');
-      lines.push(`      - aiAct: ${yamlEscape('双击 ' + target)}`);
+      const hasImages = Array.isArray(params.images) && params.images.length > 0;
+      
+      if (hasImages) {
+        lines.push(`      - aiDoubleClick:`);
+        lines.push(`          locate:`);
+        lines.push(`            prompt: ${yamlEscape(target)}`);
+        const imgLines = generateImagesYaml(params.images as unknown[], '            ');
+        lines.push(...imgLines);
+        if (params.convertHttpImage2Base64 !== undefined) {
+          lines.push(`            convertHttpImage2Base64: ${params.convertHttpImage2Base64}`);
+        }
+        if (params.deepLocate !== undefined) lines.push(`          deepLocate: ${params.deepLocate}`);
+        if (params.cacheable !== undefined) lines.push(`          cacheable: ${params.cacheable}`);
+      } else {
+        lines.push(`      - aiDoubleClick: ${yamlEscape(target)}`);
+        if (params.deepLocate !== undefined) lines.push(`        deepLocate: ${params.deepLocate}`);
+        if (params.cacheable !== undefined) lines.push(`        cacheable: ${params.cacheable}`);
+      }
       break;
     }
 
     case 'midscene.rightClick': {
       const target = String(params.target ?? '');
-      lines.push(`      - aiAct: ${yamlEscape('右键点击 ' + target)}`);
+      const hasImages = Array.isArray(params.images) && params.images.length > 0;
+      
+      if (hasImages) {
+        lines.push(`      - aiRightClick:`);
+        lines.push(`          locate:`);
+        lines.push(`            prompt: ${yamlEscape(target)}`);
+        const imgLines = generateImagesYaml(params.images as unknown[], '            ');
+        lines.push(...imgLines);
+        if (params.convertHttpImage2Base64 !== undefined) {
+          lines.push(`            convertHttpImage2Base64: ${params.convertHttpImage2Base64}`);
+        }
+        if (params.deepLocate !== undefined) lines.push(`          deepLocate: ${params.deepLocate}`);
+        if (params.cacheable !== undefined) lines.push(`          cacheable: ${params.cacheable}`);
+      } else {
+        lines.push(`      - aiRightClick: ${yamlEscape(target)}`);
+        if (params.deepLocate !== undefined) lines.push(`        deepLocate: ${params.deepLocate}`);
+        if (params.cacheable !== undefined) lines.push(`        cacheable: ${params.cacheable}`);
+      }
       break;
     }
 

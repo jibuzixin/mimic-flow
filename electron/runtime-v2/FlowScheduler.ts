@@ -586,7 +586,8 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeVarNode(node: FlowNode): void {
-    const { varName, value, operation = 'set' } = node.nodeParams as any;
+    const params = node.nodeParams as any;
+    const { varName, value, operation = 'set' } = params;
     const pool = this.variablePool;
 
     const getCurrentValue = (): unknown => {
@@ -616,11 +617,14 @@ export class FlowScheduler extends EventEmitter {
       return val;
     };
 
-    const isNumericOp = ['add', 'subtract', 'multiply', 'divide', 'increment', 'decrement', 'toInteger'].includes(operation);
-    const isStringOp = ['concat', 'toUpperCase', 'toLowerCase', 'trim'].includes(operation);
+    const isNumericOp = ['add', 'subtract', 'multiply', 'divide', 'increment', 'decrement', 'toInteger', 'abs', 'round', 'ceil', 'floor', 'toNumber', 'modulo'].includes(operation);
+    const isStringOp = ['concat', 'toUpperCase', 'toLowerCase', 'trim', 'substring', 'charAt', 'replace', 'toString', 'startsWith', 'endsWith', 'includes', 'strLength'].includes(operation);
+    const isArrayOp = ['arrayLength', 'arrayGet', 'arrayPush', 'arrayPop', 'arrayJoin'].includes(operation);
 
-    const needsValue = !['toUpperCase', 'toLowerCase', 'trim', 'toInteger'].includes(operation);
+    const needsValue = !['toUpperCase', 'toLowerCase', 'trim', 'toInteger', 'abs', 'round', 'ceil', 'floor', 'toString', 'toNumber', 'arrayLength', 'arrayPop', 'strLength'].includes(operation);
+    const needsValue2 = ['substring', 'replace', 'charAt', 'arrayGet', 'arrayPush', 'arrayJoin', 'modulo', 'startsWith', 'endsWith', 'includes'].includes(operation);
     const interpolatedValue = needsValue ? interpolateValue(value, this.variablePool) : undefined;
+    const interpolatedValue2 = needsValue2 && params.value2 !== undefined ? interpolateValue(String(params.value2), this.variablePool) : undefined;
 
     let numericValue = 1;
     if (needsValue && value !== undefined && value !== '') {
@@ -699,6 +703,146 @@ export class FlowScheduler extends EventEmitter {
         setValue(Math.trunc(Number(getCurrentValue() ?? 0)));
         break;
       }
+      case 'abs': {
+        ensureInitialized();
+        setValue(Math.abs(Number(getCurrentValue() ?? 0)));
+        break;
+      }
+      case 'round': {
+        ensureInitialized();
+        setValue(Math.round(Number(getCurrentValue() ?? 0)));
+        break;
+      }
+      case 'ceil': {
+        ensureInitialized();
+        setValue(Math.ceil(Number(getCurrentValue() ?? 0)));
+        break;
+      }
+      case 'floor': {
+        ensureInitialized();
+        setValue(Math.floor(Number(getCurrentValue() ?? 0)));
+        break;
+      }
+      case 'modulo': {
+        ensureInitialized();
+        const val2 = Number(interpolatedValue2 ?? 0) || 1;
+        setValue(Number(getCurrentValue() ?? 0) % val2);
+        break;
+      }
+      case 'toString': {
+        ensureInitialized();
+        setValue(String(getCurrentValue() ?? ''));
+        break;
+      }
+      case 'toNumber': {
+        ensureInitialized();
+        setValue(Number(getCurrentValue()) || 0);
+        break;
+      }
+      case 'substring': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const start = Number(interpolatedValue ?? 0);
+        const end = interpolatedValue2 !== undefined ? Number(interpolatedValue2) : undefined;
+        setValue(end !== undefined ? str.substring(start, end) : str.substring(start));
+        break;
+      }
+      case 'charAt': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const idx = Number(interpolatedValue ?? 0);
+        setValue(str.charAt(idx));
+        break;
+      }
+      case 'replace': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const search = String(interpolatedValue ?? '');
+        const replacement = String(interpolatedValue2 ?? '');
+        setValue(str.replace(search, replacement));
+        break;
+      }
+      case 'startsWith': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const search = String(interpolatedValue ?? '');
+        setValue(str.startsWith(search));
+        break;
+      }
+      case 'endsWith': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const search = String(interpolatedValue ?? '');
+        setValue(str.endsWith(search));
+        break;
+      }
+      case 'includes': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        const search = String(interpolatedValue ?? '');
+        setValue(str.includes(search));
+        break;
+      }
+      case 'strLength': {
+        ensureInitialized();
+        const str = String(getCurrentValue() ?? '');
+        setValue(str.length);
+        break;
+      }
+      case 'arrayLength': {
+        ensureInitialized();
+        const arr = getCurrentValue();
+        if (Array.isArray(arr)) {
+          setValue(arr.length);
+        } else {
+          setValue(0);
+        }
+        break;
+      }
+      case 'arrayGet': {
+        ensureInitialized();
+        const arr = getCurrentValue();
+        const idx = Number(interpolatedValue ?? 0);
+        if (Array.isArray(arr)) {
+          setValue(arr[idx]);
+        } else {
+          setValue(undefined);
+        }
+        break;
+      }
+      case 'arrayPush': {
+        ensureInitialized();
+        let arr = getCurrentValue();
+        if (!Array.isArray(arr)) arr = [];
+        const newArr = [...(arr as unknown[])];
+        const val = autoParseValue(interpolatedValue2);
+        newArr.push(val);
+        setValue(newArr);
+        break;
+      }
+      case 'arrayPop': {
+        ensureInitialized();
+        let arr = getCurrentValue();
+        if (!Array.isArray(arr)) arr = [];
+        const newArr = [...(arr as unknown[])];
+        const popped = newArr.pop();
+        setValue(newArr);
+        if (params.outputVar) {
+          pool[String(params.outputVar)] = popped;
+        }
+        break;
+      }
+      case 'arrayJoin': {
+        ensureInitialized();
+        const arr = getCurrentValue();
+        const separator = String(interpolatedValue ?? ',');
+        if (Array.isArray(arr)) {
+          setValue(arr.join(separator));
+        } else {
+          setValue('');
+        }
+        break;
+      }
       default:
         setValue(interpolatedValue);
     }
@@ -722,6 +866,9 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private compareValues(left: unknown, operator: string, right: unknown): boolean {
+    const leftStr = String(left ?? '');
+    const rightStr = String(right ?? '');
+    
     switch (operator) {
       case '==':
         return left == right;
@@ -735,6 +882,14 @@ export class FlowScheduler extends EventEmitter {
         return (left as number) >= (right as number);
       case '<=':
         return (left as number) <= (right as number);
+      case 'contains':
+        return leftStr.includes(rightStr);
+      case 'notContains':
+        return !leftStr.includes(rightStr);
+      case 'startsWith':
+        return leftStr.startsWith(rightStr);
+      case 'endsWith':
+        return leftStr.endsWith(rightStr);
       default:
         return false;
     }
@@ -753,16 +908,18 @@ export class FlowScheduler extends EventEmitter {
     } else if (params.leftVar !== undefined) {
       const leftVarName = String(params.leftVar || '');
       const operator = String(params.operator || '==');
-      const rightRaw = String(params.rightValue ?? '');
+      const rightRaw = params.rightValue;
 
       const leftValue = resolveVarPath(this.variablePool, leftVarName);
       let rightValue: unknown;
 
-      if (rightRaw.includes('{{') && rightRaw.includes('}}')) {
+      if (typeof rightRaw === 'string' && rightRaw.includes('{{') && rightRaw.includes('}}')) {
         rightValue = interpolateValue(rightRaw, this.variablePool);
         rightValue = this.parseValue(String(rightValue));
-      } else {
+      } else if (typeof rightRaw === 'string') {
         rightValue = this.parseValue(rightRaw);
+      } else {
+        rightValue = rightRaw;
       }
 
       result = this.compareValues(leftValue, operator, rightValue);
@@ -856,6 +1013,9 @@ export class FlowScheduler extends EventEmitter {
       }
     } else if (loopType === 'while') {
       const condition = String(params.condition || '');
+      const whileLeftVar = String(params.whileLeftVar || '');
+      const whileOperator = String(params.whileOperator || '==');
+      const whileRightRaw = params.whileRightValue;
       iteration = Number(loopState.iteration ?? 0);
 
       if (iteration >= maxIterations) {
@@ -863,9 +1023,27 @@ export class FlowScheduler extends EventEmitter {
         shouldContinue = false;
       } else {
         try {
-          shouldContinue = evaluateCondition(condition, this.variablePool);
+          if (whileLeftVar) {
+            const leftValue = resolveVarPath(this.variablePool, whileLeftVar);
+            let rightValue: unknown;
+
+            if (typeof whileRightRaw === 'string' && whileRightRaw.includes('{{') && whileRightRaw.includes('}}')) {
+              rightValue = interpolateValue(whileRightRaw, this.variablePool);
+              rightValue = this.parseValue(String(rightValue));
+            } else if (typeof whileRightRaw === 'string') {
+              rightValue = this.parseValue(whileRightRaw);
+            } else {
+              rightValue = whileRightRaw;
+            }
+
+            shouldContinue = this.compareValues(leftValue, whileOperator, rightValue);
+          } else if (condition) {
+            shouldContinue = evaluateCondition(condition, this.variablePool);
+          } else {
+            shouldContinue = false;
+          }
         } catch (e) {
-          this.addLog({ level: 'error', source: 'scheduler', nodeId: node.id, message: `🔄 while 条件判断失败: ${condition}` });
+          this.addLog({ level: 'error', source: 'scheduler', nodeId: node.id, message: `🔄 while 条件判断失败` });
           shouldContinue = false;
         }
       }

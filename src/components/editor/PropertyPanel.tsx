@@ -217,11 +217,18 @@ export const PropertyPanel: React.FC = () => {
             onChange={(e) => handleParamChange(field.key, e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
           >
-            {field.options?.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
+            {field.options?.map((opt) => {
+              if (opt.value.startsWith('---') && opt.value.endsWith('---')) {
+                return (
+                  <optgroup key={opt.value} label={opt.label} />
+                );
+              }
+              return (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              );
+            })}
           </select>
         );
 
@@ -347,8 +354,8 @@ export const PropertyPanel: React.FC = () => {
           handleParamChange(field.key, newImages);
         };
         
-        const addImage = () => {
-          const newImages = [...images, { name: `图片${images.length + 1}`, url: '' }];
+        const addImage = (name?: string, url?: string) => {
+          const newImages = [...images, { name: name || `图片${images.length + 1}`, url: url || '' }];
           handleParamChange(field.key, newImages);
         };
         
@@ -371,8 +378,30 @@ export const PropertyPanel: React.FC = () => {
           }
         };
         
+        const handlePaste = async (e: React.ClipboardEvent) => {
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+              e.preventDefault();
+              const file = item.getAsFile();
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = reader.result as string;
+                  addImage(`剪贴板图片${images.length + 1}`, base64);
+                };
+                reader.readAsDataURL(file);
+              }
+              break;
+            }
+          }
+        };
+        
         return (
-          <div className="space-y-2">
+          <div className="space-y-2" onPaste={handlePaste}>
             {images.length > 0 && (
               <div className="space-y-2">
                 {images.map((img, i) => (
@@ -417,14 +446,46 @@ export const PropertyPanel: React.FC = () => {
                 ))}
               </div>
             )}
-            <button
-              type="button"
-              onClick={addImage}
-              className="w-full px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              添加参考图片
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => addImage()}
+                className="flex-1 px-3 py-2 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                添加图片
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const clipItems = await navigator.clipboard.read();
+                    for (const item of clipItems) {
+                      const imgType = item.types.find((t) => t.startsWith('image/'));
+                      if (imgType) {
+                        const blob = await item.getType(imgType);
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const base64 = reader.result as string;
+                          addImage(`剪贴板图片${images.length + 1}`, base64);
+                        };
+                        reader.readAsDataURL(blob);
+                        break;
+                      }
+                    }
+                  } catch (e) {
+                    console.error('读取剪贴板失败，请在图片区域按 Ctrl+V 粘贴', e);
+                  }
+                }}
+                className="px-3 py-2 text-sm text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+                title="也可以在图片区域按 Ctrl+V 粘贴"
+              >
+                粘贴
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 text-center">
+              提示：在图片区域按 Ctrl+V 可直接粘贴剪贴板图片
+            </p>
             {images.length > 0 && (
               <div className="flex items-center gap-2 pt-1">
                 <input
