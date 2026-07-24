@@ -274,11 +274,6 @@ function WorkflowEditorInner() {
   );
 
   useEffect(() => {
-    if (!initialized || isSyncingFromStore.current) return;
-    setStoreEdges(edges);
-  }, [edges, initialized, setStoreEdges]);
-
-  useEffect(() => {
     if (!initialized) return;
     saveToStorage();
   }, [currentWorkflow, nodePositions, edges, initialized, saveToStorage]);

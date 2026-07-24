@@ -1000,7 +1000,7 @@ export default function SettingsPage() {
               <div className="space-y-3 pt-4 border-t border-border/40">
                 <Label className="text-sm font-medium">连线样式</Label>
                 <p className="text-xs text-muted-foreground">
-                  选择节点之间连线的显示样式。选中连线后可拖动中间控制点调整形状。
+                  选择节点之间连线的显示样式。
                 </p>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -1015,6 +1015,7 @@ export default function SettingsPage() {
                         setLocalUiSettings((p) => ({
                           ...p,
                           edgeStyle: opt.value as 'bezier' | 'smoothstep' | 'straight',
+                          edgeAvoidNodes: opt.value === 'straight' ? false : p.edgeAvoidNodes,
                         }))
                       }
                       className={cn(
@@ -1029,6 +1030,38 @@ export default function SettingsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-border/40">
+                <div className="space-y-0.5">
+                  <Label className={`text-sm font-medium ${localUiSettings.edgeStyle === 'straight' ? 'text-gray-400' : ''}`}>
+                    连线自动避障
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {localUiSettings.edgeStyle === 'straight'
+                      ? '直线模式下不支持自动避障，请切换到曲线或圆角折线样式后开启。'
+                      : '连线自动绕开中间节点，避免重叠遮挡。节点较多时可能影响性能。'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={localUiSettings.edgeStyle === 'straight'}
+                  onClick={() => setLocalUiSettings((p) => ({ ...p, edgeAvoidNodes: !p.edgeAvoidNodes }))}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    localUiSettings.edgeStyle === 'straight'
+                      ? 'bg-gray-100 cursor-not-allowed opacity-50'
+                      : 'cursor-pointer',
+                    localUiSettings.edgeAvoidNodes ? 'bg-violet-500' : 'bg-gray-200'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform',
+                      localUiSettings.edgeAvoidNodes ? 'translate-x-5' : 'translate-x-0'
+                    )}
+                  />
+                </button>
               </div>
             </CardContent>
           </Card>
