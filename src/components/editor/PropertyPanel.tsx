@@ -142,10 +142,14 @@ export const PropertyPanel: React.FC = () => {
             seen.add(params.iteratorVar);
             nodeVars.push(params.iteratorVar);
           }
-        } else if (params?.loopType === 'forEach' && params?.itemVar) {
-          if (!seen.has(params.itemVar)) {
+        } else if (params?.loopType === 'forEach') {
+          if (params?.itemVar && !seen.has(params.itemVar)) {
             seen.add(params.itemVar);
             nodeVars.push(params.itemVar);
+          }
+          if (params?.keyVar && !seen.has(params.keyVar)) {
+            seen.add(params.keyVar);
+            nodeVars.push(params.keyVar);
           }
         }
       } else if (params?.outputVar) {

@@ -1357,29 +1357,45 @@ export class FlowScheduler extends EventEmitter {
       };
       const arrayVar = extractVarName(arrayVarRaw);
       const itemVar = String(params.itemVar || 'item');
+      const keyVar = String(params.keyVar || 'key');
       iteration = Number(loopState.iteration ?? 0);
 
-      let arr: unknown[] = [];
-      const arrayVal = resolveVarPath(this.variablePool, arrayVar);
-      if (Array.isArray(arrayVal)) {
-        arr = arrayVal;
+      let items: { key: string | number; value: unknown }[] = [];
+      const sourceVal = resolveVarPath(this.variablePool, arrayVar);
+      if (Array.isArray(sourceVal)) {
+        items = sourceVal.map((v, i) => ({ key: i, value: v }));
+      } else if (typeof sourceVal === 'object' && sourceVal !== null) {
+        items = Object.entries(sourceVal).map(([k, v]) => ({ key: k, value: v }));
       }
 
-      if (iteration >= maxIterations || iteration >= arr.length) {
+      if (iteration >= maxIterations || iteration >= items.length) {
         shouldContinue = false;
       } else {
         shouldContinue = true;
       }
 
       if (shouldContinue && bodyNodeId) {
-        const item = arr[iteration];
-        ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[itemVar] = item;
-        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环第 ${iteration + 1} 次: ${itemVar} = ${JSON.stringify(item)}` });
+        const item = items[iteration];
+        ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[itemVar] = item.value;
+        ((this.variablePool as any).loop = (this.variablePool as any).loop || {})[keyVar] = item.key;
+        const isObj = !Array.isArray(sourceVal) && typeof sourceVal === 'object' && sourceVal !== null;
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: node.id,
+          message: `🔄 forEach 第 ${iteration + 1} 次: ${keyVar}=${item.key}, ${itemVar}=${JSON.stringify(item.value)}`,
+        });
         pool[loopStateKey] = { ...loopState, iteration: iteration + 1 };
         this.resetLoopBodyNodes(node.id, bodyNodeId);
         nextNodeId = bodyNodeId;
       } else if (exitNodeId) {
-        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: `🔄 forEach 循环结束，共执行 ${iteration} 次` });
+        const isObj = !Array.isArray(sourceVal) && typeof sourceVal === 'object' && sourceVal !== null;
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: node.id,
+          message: `🔄 forEach 循环结束，共执行 ${iteration} 次`,
+        });
         delete pool[loopStateKey];
         nextNodeId = exitNodeId;
       }

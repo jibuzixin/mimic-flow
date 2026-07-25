@@ -122,7 +122,7 @@ function WorkflowEditorInner() {
 
   const validationWarnings = useMemo(() => {
     const emptyResult = { byNode: {} as Record<string, string[]>, all: [] as any[], errorCount: 0, warningCount: 0 };
-    if (!uiSettings.enableValidation) return emptyResult;
+    if (uiSettings.enableValidation === false) return emptyResult;
     if (!currentWorkflow) return emptyResult;
 
     const byNode: Record<string, string[]> = {};
@@ -188,8 +188,13 @@ function WorkflowEditorInner() {
       } else if (node.nodeType === 'control.loop') {
         if (params?.loopType === 'for' && params?.iteratorVar) {
           loopVarNames.add(String(params.iteratorVar));
-        } else if (params?.loopType === 'forEach' && params?.itemVar) {
-          loopVarNames.add(String(params.itemVar));
+        } else if (params?.loopType === 'forEach') {
+          if (params?.itemVar) {
+            loopVarNames.add(String(params.itemVar));
+          }
+          if (params?.keyVar) {
+            loopVarNames.add(String(params.keyVar));
+          }
         }
       } else if (params?.outputVar) {
         assignedVarNames.add(String(params.outputVar));

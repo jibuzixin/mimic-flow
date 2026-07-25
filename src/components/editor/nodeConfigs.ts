@@ -136,7 +136,7 @@ export const nodeConfigs: NodeConfig[] = [
     name: '循环',
     category: 'control',
     icon: Repeat,
-    description: '重复执行一段流程，支持 for 计数循环、while 条件循环、forEach 数组遍历',
+    description: '重复执行一段流程，支持 for 计数循环、while 条件循环、forEach 遍历（数组/对象）',
     color: '#f59e0b',
     defaultParams: {
       loopType: 'for',
@@ -152,6 +152,7 @@ export const nodeConfigs: NodeConfig[] = [
       whileRightValue: true,
       arrayVar: '',
       itemVar: 'item',
+      keyVar: 'key',
       bodyNodeId: '',
     },
     propertyFields: [
@@ -229,8 +230,9 @@ export const nodeConfigs: NodeConfig[] = [
         description: '文字，输入 # 选择变量',
         showWhen: { loopType: 'while', whileConditionType: 'string' },
       },
-      { key: 'arrayVar', label: '数组变量', type: 'variable', placeholder: '选择数组变量', showWhen: { loopType: 'forEach' } },
-      { key: 'itemVar', label: '当前项变量名', type: 'text', defaultValue: 'item', showWhen: { loopType: 'forEach' } },
+      { key: 'arrayVar', label: '数据源变量', type: 'variable', placeholder: '选择数组或对象变量', showWhen: { loopType: 'forEach' }, description: '支持数组和 JSON 对象' },
+      { key: 'itemVar', label: '当前项变量名', type: 'text', defaultValue: 'item', showWhen: { loopType: 'forEach' }, description: '数组：当前元素；对象：当前值' },
+      { key: 'keyVar', label: '键/索引变量名', type: 'text', defaultValue: 'key', showWhen: { loopType: 'forEach' }, description: '数组：索引；对象：键名' },
       { key: 'maxIterations', label: '最大迭代次数', type: 'number', defaultValue: 100, description: '防止死循环的安全限制' },
     ],
   },

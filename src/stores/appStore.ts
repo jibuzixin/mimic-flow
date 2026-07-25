@@ -92,7 +92,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: defaultModelIds || getDefaultModelIds(),
       logSavePath: logSavePath || '',
       workflowSavePath: workflowSavePath || '',
-      uiSettings: uiSettings || { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default' },
+      uiSettings: {
+        nodeWidthMultiplier: 2,
+        edgeStyle: 'bezier',
+        edgeAvoidNodes: true,
+        contextMenuMode: 'simple',
+        recentNodeCount: 5,
+        showAllPinned: true,
+        fullMenuSort: 'default',
+        enableValidation: true,
+        ...(uiSettings || {}),
+      },
       isLoading: false,
     });
   },
