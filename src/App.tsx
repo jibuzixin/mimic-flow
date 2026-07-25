@@ -27,7 +27,7 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
+  { path: '/', label: '首页', icon: LayoutDashboard, end: true },
   { path: '/workflows', label: '工作流库', icon: Workflow, end: true },
   { path: '/workflows/editor', label: '流程编排', icon: Sparkles },
   { path: '/logs', label: '日志', icon: Terminal },

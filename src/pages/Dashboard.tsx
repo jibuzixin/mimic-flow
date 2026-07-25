@@ -126,8 +126,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <section className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight">仪表盘</h1>
-        <p className="text-muted-foreground">总览执行统计和最近工作流动态</p>
+        <h1 className="text-3xl font-semibold tracking-tight">首页</h1>
+        <p className="text-muted-foreground">快速开始工作流，查看最近执行动态</p>
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -152,7 +152,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
           <CardContent className="p-4 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -164,27 +164,9 @@ export default function Dashboard() {
         <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
           <CardContent className="p-4 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-500" /> 成功率
-            </p>
-            <p className="text-2xl font-semibold text-emerald-600">
-              {stats && stats.totalExecutions > 0 ? `${Math.round(stats.successRate * 100)}%` : '—'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Layers className="w-3 h-3" /> 工作流数
             </p>
             <p className="text-2xl font-semibold">{formatNumber(stats?.workflowCount ?? 0)}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
-          <CardContent className="p-4 space-y-1">
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <XCircle className="w-3 h-3 text-rose-500" /> 失败次数
-            </p>
-            <p className="text-2xl font-semibold text-rose-600">{formatNumber(stats?.failedCount ?? 0)}</p>
           </CardContent>
         </Card>
       </div>
