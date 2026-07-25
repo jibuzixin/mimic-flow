@@ -46,8 +46,10 @@ import { CustomEdge } from './CustomEdge';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { useAppStore } from '../../stores/appStore';
 import { getNodeConfig, nodeConfigs, type NodeConfig } from './nodeConfigs';
+import { isValidVarName } from './VarNameInput';
 import type { FlowSchema } from '../../../types/flow-v2';
 import { Button } from '../ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { simplifyError } from '../../lib/utils';
 
 const nodeTypes: NodeTypes = {
@@ -64,7 +66,7 @@ function WorkflowEditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<CustomNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [isVariablePanelOpen, setIsVariablePanelOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; mode: 'normal' | 'quickAdd'; sourceNodeId?: string; sourceHandle?: string } | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isModifierPressed, setIsModifierPressed] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -77,6 +79,7 @@ function WorkflowEditorInner() {
     currentWorkflow,
     setSelectedNode,
     addNode,
+    addNodeAfter,
     deleteNode,
     removeEdge,
     addEdgeToStore,
@@ -97,6 +100,7 @@ function WorkflowEditorInner() {
     nodeExecutionStatus,
     nodeErrors,
     nodeOutputs,
+    nodeResolvedParams,
     isDirty,
     originalWorkflowId,
     updateWorkflowMeta,
@@ -245,6 +249,49 @@ function WorkflowEditorInner() {
       });
     });
 
+    nodes.forEach((node) => {
+      if (!reachableNodeIds.has(node.id)) return;
+      const params = node.nodeParams as Record<string, unknown>;
+      if (!params) return;
+
+      const nodeWarnings = new Set<string>();
+      const addWarning = (msg: string) => {
+        if (nodeWarnings.has(msg)) return;
+        nodeWarnings.add(msg);
+        if (!byNode[node.id]) byNode[node.id] = [];
+        byNode[node.id].push(msg);
+        all.push({
+          id: `invalid-varname-${node.id}-${msg}`,
+          nodeId: node.id,
+          message: msg,
+          type: 'warning',
+        });
+      };
+
+      if (node.nodeType === 'control.var') {
+        if (params.varName && typeof params.varName === 'string' && !isValidVarName(params.varName)) {
+          addWarning(`变量名「${params.varName}」不合法`);
+        }
+        if (params.saveToNewVar && params.outputVarName && typeof params.outputVarName === 'string' && !isValidVarName(params.outputVarName)) {
+          addWarning(`输出变量名「${params.outputVarName}」不合法`);
+        }
+      } else if (node.nodeType === 'control.loop') {
+        if (params.loopType === 'for' && params.iteratorVar && typeof params.iteratorVar === 'string' && !isValidVarName(params.iteratorVar)) {
+          addWarning(`迭代变量名「${params.iteratorVar}」不合法`);
+        }
+        if (params.loopType === 'forEach') {
+          if (params.itemVar && typeof params.itemVar === 'string' && !isValidVarName(params.itemVar)) {
+            addWarning(`项变量名「${params.itemVar}」不合法`);
+          }
+          if (params.keyVar && typeof params.keyVar === 'string' && !isValidVarName(params.keyVar)) {
+            addWarning(`键变量名「${params.keyVar}」不合法`);
+          }
+        }
+      } else if (params.outputVar && typeof params.outputVar === 'string' && !isValidVarName(params.outputVar)) {
+        addWarning(`输出变量名「${params.outputVar}」不合法`);
+      }
+    });
+
     const errorCount = all.filter((w) => w.type === 'error').length;
     const warningCount = all.filter((w) => w.type === 'warning').length;
 
@@ -326,6 +373,22 @@ function WorkflowEditorInner() {
   }, [initialized, loadFromStorage]);
 
   useEffect(() => {
+    const handleQuickAdd = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setContextMenuFilter('');
+      setContextMenu({
+        x: detail.x,
+        y: detail.y,
+        mode: 'quickAdd',
+        sourceNodeId: detail.nodeId,
+        sourceHandle: detail.handleId,
+      });
+    };
+    window.addEventListener('workflow:quick-add', handleQuickAdd);
+    return () => window.removeEventListener('workflow:quick-add', handleQuickAdd);
+  }, []);
+
+  useEffect(() => {
     if (currentWorkflow?.flowMeta?.name !== undefined) {
       setEditingName(currentWorkflow.flowMeta.name);
     } else {
@@ -348,6 +411,7 @@ function WorkflowEditorInner() {
       const status = nodeExecutionStatus[node.id] || 'idle';
       const errorMsg = nodeErrors[node.id];
       const output = nodeOutputs[node.id];
+      const resolvedParams = nodeResolvedParams[node.id];
       return {
         id: node.id,
         type: 'custom',
@@ -359,6 +423,7 @@ function WorkflowEditorInner() {
           errorMessage: errorMsg ? simplifyError(errorMsg) : undefined,
           nodeParams: node.nodeParams,
           output,
+          resolvedParams,
         },
       } as CustomNodeType;
     });
@@ -389,12 +454,14 @@ function WorkflowEditorInner() {
         const status = nodeExecutionStatus[node.id] || 'idle';
         const errorMsg = nodeErrors[node.id];
         const output = nodeOutputs[node.id];
+        const resolvedParams = nodeResolvedParams[node.id];
         const warnings = validationWarnings.byNode[node.id];
         const shortError = errorMsg ? simplifyError(errorMsg) : undefined;
         if (
           node.data.executionStatus === status &&
           node.data.errorMessage === shortError &&
           node.data.output === output &&
+          node.data.resolvedParams === resolvedParams &&
           node.data.validationWarnings === warnings
         ) {
           return node;
@@ -406,12 +473,13 @@ function WorkflowEditorInner() {
             executionStatus: status,
             errorMessage: shortError,
             output,
+            resolvedParams,
             validationWarnings: warnings,
           },
         };
       })
     );
-  }, [nodeExecutionStatus, nodeErrors, nodeOutputs, validationWarnings.byNode, currentWorkflow, initialized, setNodes]);
+  }, [nodeExecutionStatus, nodeErrors, nodeOutputs, nodeResolvedParams, validationWarnings.byNode, currentWorkflow, initialized, setNodes]);
 
   useEffect(() => {
     if (!currentWorkflow || !initialized) return;
@@ -655,7 +723,7 @@ function WorkflowEditorInner() {
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
       setContextMenuFilter('');
-      setContextMenu({ x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY });
+      setContextMenu({ x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY, mode: 'normal' });
     },
     [],
   );
@@ -663,14 +731,18 @@ function WorkflowEditorInner() {
   const handleAddNodeFromMenu = useCallback(
     (nodeType: string) => {
       if (!contextMenu || !currentWorkflow) return;
-      const position = screenToFlowPosition({
-        x: contextMenu.x,
-        y: contextMenu.y,
-      });
-      addNode(nodeType, { x: position.x - 100, y: position.y - 30 });
+      if (contextMenu.mode === 'quickAdd' && contextMenu.sourceNodeId && contextMenu.sourceHandle) {
+        addNodeAfter(contextMenu.sourceNodeId, contextMenu.sourceHandle, nodeType);
+      } else {
+        const position = screenToFlowPosition({
+          x: contextMenu.x,
+          y: contextMenu.y,
+        });
+        addNode(nodeType, { x: position.x - 100, y: position.y - 30 });
+      }
       setContextMenu(null);
     },
-    [contextMenu, currentWorkflow, screenToFlowPosition, addNode],
+    [contextMenu, currentWorkflow, screenToFlowPosition, addNode, addNodeAfter],
   );
 
   const handleRun = useCallback(() => {
@@ -941,26 +1013,47 @@ function WorkflowEditorInner() {
               </>
             )}
           </button>
-          <button
-            onClick={handleRun}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-sm text-white rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95 ${
-              isRunning
-                ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600'
-            }`}
-          >
-            {isRunning ? (
-              <>
-                <Square className="h-4 w-4" />
-                停止
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4" />
-                运行
-              </>
-            )}
-          </button>
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleRun}
+                  disabled={!isRunning && validationWarnings.errorCount > 0}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 text-sm text-white rounded-lg transition-all shadow-md active:scale-95 ${
+                    isRunning
+                      ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 hover:shadow-lg'
+                      : validationWarnings.errorCount > 0
+                      ? 'bg-gray-400 cursor-not-allowed opacity-70'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 hover:shadow-lg'
+                  }`}
+                >
+                  {isRunning ? (
+                    <>
+                      <Square className="h-4 w-4" />
+                      停止
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4" />
+                      运行
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              {validationWarnings.errorCount > 0 && !isRunning && (
+                <TooltipContent side="left" sideOffset={8} className="max-w-xs z-[9999]">
+                  <div className="space-y-1">
+                    <p className="font-medium text-red-600">无法运行</p>
+                    {validationWarnings.all
+                      .filter((w: any) => w.type === 'error')
+                      .map((w: any, i: number) => (
+                        <p key={i} className="text-xs text-gray-600">• {w.message}</p>
+                      ))}
+                  </div>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </motion.div>
 
@@ -1060,7 +1153,7 @@ function WorkflowEditorInner() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -5 }}
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-              className={`fixed z-50 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl overflow-hidden ${
+              className={`fixed z-[9999] bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl overflow-hidden ${
                 uiSettings.contextMenuMode === 'full' ? 'w-64' : 'w-56'
               }`}
               style={{ left: contextMenuPosition.left, top: contextMenuPosition.top }}

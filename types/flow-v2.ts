@@ -206,7 +206,7 @@ export type RuntimeEvent =
   | { type: 'flow:start'; flowId: string }
   | { type: 'flow:complete'; status: 'success' | 'failed' | 'stopped'; duration: number; reportPath?: string }
   | { type: 'node:start'; nodeId: string; nodeType: string; nodeName?: string }
-  | { type: 'node:complete'; nodeId: string; duration: number; output?: unknown }
+  | { type: 'node:complete'; nodeId: string; duration: number; output?: unknown; resolvedParams?: Record<string, unknown> }
   | { type: 'node:error'; nodeId: string; error: string; willRetry: boolean }
   | { type: 'log'; entry: LogEntry }
   | { type: 'screenshot'; nodeId?: string; dataUrl: string }

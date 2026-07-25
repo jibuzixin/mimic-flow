@@ -57,6 +57,7 @@ interface WorkflowState {
   nodeExecutionStatus: Record<string, 'idle' | 'running' | 'success' | 'error'>;
   nodeErrors: Record<string, string>;
   nodeOutputs: Record<string, unknown>;
+  nodeResolvedParams: Record<string, Record<string, unknown>>;
   executionLogs: Array<{
     id: string;
     timestamp: number;
@@ -77,7 +78,8 @@ interface WorkflowState {
 
   setWorkflow: (wf: FlowSchema) => void;
   setSelectedNode: (id: string | null) => void;
-  addNode: (type: string, position?: { x: number; y: number }) => void;
+  addNode: (type: string, position?: { x: number; y: number }) => string | null;
+  addNodeAfter: (sourceNodeId: string, sourceHandle: string, nodeType: string) => string | null;
   updateNode: (nodeId: string, updates: Partial<FlowNode>) => void;
   updateNodeParams: (nodeId: string, params: Record<string, unknown>) => void;
   deleteNode: (nodeId: string) => void;
@@ -239,6 +241,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   nodeExecutionStatus: {},
   nodeErrors: {},
   nodeOutputs: {},
+  nodeResolvedParams: {},
   executionLogs: [],
   nodePositions: {},
   edges: [],
@@ -292,13 +295,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   addNode: (type, position) => {
     const config = getNodeConfig(type);
-    if (!config) return;
+    if (!config) return null;
 
     const wf = get().currentWorkflow;
-    if (!wf) return;
+    if (!wf) return null;
 
+    const newId = genNodeId();
     const newNode: FlowNode = {
-      id: genNodeId(),
+      id: newId,
       nodeType: type as FlowNodeType,
       nodeName: config.name,
       nodeParams: { ...config.defaultParams },
@@ -316,16 +320,17 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ...wf,
         nodes: [...wf.nodes, newNode],
       },
-      selectedNodeId: newNode.id,
+      selectedNodeId: newId,
       nodePositions: {
         ...get().nodePositions,
-        [newNode.id]: newPosition,
+        [newId]: newPosition,
       },
       isDirty: true,
       ...(shouldClearStatus ? {
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
 
@@ -340,6 +345,29 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
 
     get().pushHistory();
+    return newId;
+  },
+
+  addNodeAfter: (sourceNodeId, sourceHandle, nodeType) => {
+    const state = get();
+    const sourcePos = state.nodePositions[sourceNodeId];
+    if (!sourcePos) return null;
+
+    const newPosition = { x: sourcePos.x, y: sourcePos.y + 120 };
+    const newNodeId = get().addNode(nodeType, newPosition);
+    if (!newNodeId) return null;
+
+    const newEdge: Edge = {
+      id: `edge-${Date.now()}`,
+      source: sourceNodeId,
+      sourceHandle: sourceHandle || 'out',
+      target: newNodeId,
+      targetHandle: 'in',
+      type: 'custom',
+    };
+    get().addEdgeToStore(newEdge);
+    get().syncNextNodesFromEdges();
+    return newNodeId;
   },
 
   updateNode: (nodeId, updates) => {
@@ -359,6 +387,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
 
@@ -384,6 +413,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
 
@@ -411,6 +441,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
 
@@ -480,6 +511,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nodeExecutionStatus: {},
       nodeErrors: {},
       nodeOutputs: {},
+      nodeResolvedParams: {},
       executionLogs: [],
     });
   },
@@ -511,6 +543,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nodeExecutionStatus: initialStatus,
       nodeErrors: {},
       nodeOutputs: {},
+      nodeResolvedParams: {},
       executionLogs: [],
     });
 
@@ -563,12 +596,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           break;
         }
         case 'node:complete': {
-          const { nodeId, duration, output } = runtimeEvent;
+          const { nodeId, duration, output, resolvedParams } = runtimeEvent;
           const newErrors = { ...get().nodeErrors };
           delete newErrors[nodeId];
           const newOutputs = { ...get().nodeOutputs };
           if (output !== undefined) {
             newOutputs[nodeId] = output;
+          }
+          const newResolvedParams = { ...get().nodeResolvedParams };
+          if (resolvedParams) {
+            newResolvedParams[nodeId] = resolvedParams;
           }
           set({
             nodeExecutionStatus: {
@@ -577,6 +614,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             },
             nodeErrors: newErrors,
             nodeOutputs: newOutputs,
+            nodeResolvedParams: newResolvedParams,
           });
           const status = get();
           const node = status.currentWorkflow?.nodes.find((n: FlowNode) => n.id === nodeId);
@@ -821,6 +859,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
     get().pushHistory();
@@ -860,6 +899,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         nodeExecutionStatus: {},
         nodeErrors: {},
         nodeOutputs: {},
+        nodeResolvedParams: {},
       } : {}),
     });
     get().pushHistory();

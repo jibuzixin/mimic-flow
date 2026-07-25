@@ -408,11 +408,13 @@ export class FlowScheduler extends EventEmitter {
           data: { duration: state.endTime - state.startTime },
         });
 
+        const resolvedParams = this.resolveNodeParams(node.nodeParams as Record<string, unknown> || {});
         this.emit('event', {
           type: 'node:complete',
           nodeId,
           duration: state.endTime - state.startTime!,
           output: state.output,
+          resolvedParams,
         } as RuntimeEvent);
 
         if (continueNext) {
@@ -454,11 +456,13 @@ export class FlowScheduler extends EventEmitter {
           data: { duration: state.endTime - state.startTime },
         });
 
+        const resolvedParams = this.resolveNodeParams(node.nodeParams as Record<string, unknown> || {});
         this.emit('event', {
           type: 'node:complete',
           nodeId,
           duration: state.endTime - state.startTime!,
           output: state.output,
+          resolvedParams,
         } as RuntimeEvent);
 
         await this.executeNextNodes(node);
@@ -626,6 +630,14 @@ export class FlowScheduler extends EventEmitter {
     result = result.replace(/\u0000/g, '{');
     result = result.replace(/\u0001/g, '}');
 
+    return result;
+  }
+
+  private resolveNodeParams(params: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(params)) {
+      result[key] = interpolateValue(value, this.variablePool);
+    }
     return result;
   }
 
@@ -1540,11 +1552,13 @@ export class FlowScheduler extends EventEmitter {
         }
       }
 
+      const resolvedParams = this.resolveNodeParams(segNode.nodeParams as Record<string, unknown> || {});
       this.emit('event', {
         type: 'node:complete',
         nodeId: segNode.id,
         duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0,
         output: state?.output,
+        resolvedParams,
       } as RuntimeEvent);
 
       this.addLog({

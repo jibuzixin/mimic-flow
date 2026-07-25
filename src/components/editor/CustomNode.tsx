@@ -14,6 +14,9 @@ export interface CustomNodeData {
   executionStatus?: 'idle' | 'running' | 'success' | 'error';
   errorMessage?: string;
   validationWarnings?: string[];
+  nodeParams?: Record<string, unknown>;
+  resolvedParams?: Record<string, unknown>;
+  output?: unknown;
   [key: string]: unknown;
 }
 
@@ -37,10 +40,10 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const Icon = config?.icon;
   const color = config?.color || '#6b7280';
   const handles = useMemo(() => getNodeHandles(data.nodeType), [data.nodeType]);
-  const status = data.executionStatus || 'idle';
+  const executionStatus = data.executionStatus || 'idle';
   const errorMessage = data.errorMessage;
   const validationWarnings = data.validationWarnings || [];
-  const hasWarning = validationWarnings.length > 0 && status !== 'error';
+  const hasWarning = validationWarnings.length > 0 && executionStatus !== 'error';
   const edges = useEdges();
 
   const isLoopNode = data.nodeType === 'control.loop';
@@ -88,6 +91,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const isVarNode = data.nodeType === 'control.var';
 
   const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
+  const resolvedParams = data.resolvedParams as Record<string, unknown> | undefined;
+  const effectiveParams = (executionStatus === 'success' && resolvedParams) ? resolvedParams : nodeParams;
   const printResult = isVarNode && nodeParams?.printResult === true;
   const showContent = isLogNode || isEndNode || printResult;
 
@@ -102,7 +107,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const displayContent = output !== undefined ? output : contentMessage;
 
   const subtitle = useMemo(() => {
-    const params = nodeParams || {};
+    const params = effectiveParams || {};
     const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + '...' : s;
 
     switch (data.nodeType) {
@@ -216,7 +221,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       default:
         return config?.name || data.nodeType;
     }
-  }, [data.nodeType, nodeParams, config?.name]);
+  }, [data.nodeType, effectiveParams, config?.name]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -245,6 +250,20 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
     setSelectedNode(id);
   }, [id, setSelectedNode]);
 
+  const handleOutputClick = useCallback((e: React.MouseEvent, handleId: string) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.stopPropagation();
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent('workflow:quick-add', {
+      detail: {
+        nodeId: id,
+        handleId,
+        x: e.clientX,
+        y: e.clientY,
+      },
+    }));
+  }, [id]);
+
   return (
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
@@ -253,8 +272,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       className={`relative rounded-xl border-2 bg-white/90 backdrop-blur-sm shadow-lg transition-all ${
         selected
           ? 'border-blue-500 shadow-blue-500/30 ring-4 ring-blue-500/20'
-          : status !== 'idle'
-          ? statusBorder[status]
+          : executionStatus !== 'idle'
+          ? statusBorder[executionStatus]
           : 'border-gray-200 hover:border-gray-300 hover:shadow-xl'
       } ${isEditing ? 'nodrag' : ''}`}
       style={{
@@ -262,7 +281,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
         maxWidth: nodeWidth.max,
         width: 'auto',
         borderTopWidth: '4px',
-        borderTopColor: statusTopBorder[status],
+        borderTopColor: statusTopBorder[executionStatus],
       }}
       onClick={handleSelect}
     >
@@ -305,7 +324,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       ) : null}
 
       <div className="px-4 py-3 relative">
-        {status === 'error' && errorMessage && (
+        {executionStatus === 'error' && errorMessage && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -399,12 +418,15 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
       </div>
 
       {handles.outputs === 1 ? (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          id="out"
-          className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair"
-        />
+        <div className="relative">
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="out"
+            onClick={(e) => handleOutputClick(e, 'out')}
+            className="!w-3.5 !h-3.5 !bg-white !border-2 !border-indigo-500 !shadow-md cursor-crosshair hover:!w-5 hover:!h-5 hover:!border-indigo-400 transition-all"
+          />
+        </div>
       ) : handles.outputs > 1 ? (
         <div className="relative h-6">
           {handles.outputLabels.map((label, idx) => {
@@ -416,8 +438,9 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
                   type="source"
                   position={Position.Bottom}
                   id={label}
+                  onClick={(e) => handleOutputClick(e, label)}
                   style={{ bottom: '-8px', left: '50%', transform: 'translateX(-50%)' }}
-                  className="!w-3.5 !h-3.5 !bg-white !border-2 !shadow-md cursor-crosshair"
+                  className="!w-3.5 !h-3.5 !bg-white !border-2 !shadow-md cursor-crosshair hover:!w-5 hover:!h-5 transition-all"
                 />
                 <div
                   className="text-[10px] font-medium text-center mt-3 whitespace-nowrap"
