@@ -203,9 +203,25 @@ export const PropertyPanel: React.FC = () => {
       case 'number':
         return (
           <input
-            type="number"
-            value={Number(value ?? 0)}
-            onChange={(e) => handleParamChange(field.key, Number(e.target.value))}
+            type="text"
+            inputMode="decimal"
+            value={value === undefined || value === null ? '' : String(value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === '' || val === '-') {
+                handleParamChange(field.key, val);
+              } else if (!isNaN(Number(val))) {
+                handleParamChange(field.key, val);
+              }
+            }}
+            onBlur={(e) => {
+              const val = e.target.value;
+              if (val === '' || val === '-' || isNaN(Number(val))) {
+                handleParamChange(field.key, 0);
+              } else {
+                handleParamChange(field.key, Number(val));
+              }
+            }}
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
           />
         );
@@ -248,17 +264,29 @@ export const PropertyPanel: React.FC = () => {
           </button>
         );
 
-      case 'variable':
+      case 'variable': {
+        const valStr = String(value ?? '');
+        const isPureVar = /^\{\{\s*[^{}\s]+\s*\}\}$/.test(valStr) || /^[^{}\s]+$/.test(valStr);
+        const hasVarTemplate = valStr.includes('{{');
+        const showWarning = hasVarTemplate && !isPureVar;
         return (
-          <VariableInput
-            value={String(value ?? '')}
-            onChange={(v) => handleParamChange(field.key, v)}
-            placeholder={field.placeholder}
-            variables={variables}
-            globalVariables={globalVarNames}
-            nodeVariables={nodeOutputVars}
-          />
+          <div className="space-y-1.5">
+            <VariableInput
+              value={valStr}
+              onChange={(v) => handleParamChange(field.key, v)}
+              placeholder={field.placeholder}
+              variables={variables}
+              globalVariables={globalVarNames}
+              nodeVariables={nodeOutputVars}
+            />
+            {showWarning && (
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                ⚠️ 检测到混合文本和变量。条件判断仅取第一个变量的值进行比较，建议使用变量赋值节点先处理好再进行判断。
+              </div>
+            )}
+          </div>
         );
+      }
 
       case 'key-select':
         return (

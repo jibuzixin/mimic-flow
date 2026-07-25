@@ -285,7 +285,7 @@ export const VariablePanel: React.FC<VariablePanelProps> = ({ isOpen, onClose })
 
             <div className="p-3 border-t border-gray-100 bg-gray-50/50">
               <p className="text-xs text-gray-500 text-center">
-                💡 在节点输入框中使用 <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-indigo-600">{'{变量名}'}</code> 引用变量
+                💡 输入 <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-indigo-600">#</code> 快速选择变量，或用 <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-indigo-600">{'{{变量名}}'}</code> 引用
               </p>
             </div>
           </motion.div>

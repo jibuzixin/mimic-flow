@@ -680,6 +680,18 @@ export class FlowScheduler extends EventEmitter {
             }
           }
           setValue(parsed);
+        } else if (valueType === 'object') {
+          const rawStr = String(params.value ?? '{}');
+          try {
+            const parsed = JSON.parse(rawStr);
+            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+              setValue(parsed);
+            } else {
+              setValue({});
+            }
+          } catch {
+            setValue({});
+          }
         } else {
           setValue(String(interpolatedValue ?? ''));
         }
@@ -869,6 +881,82 @@ export class FlowScheduler extends EventEmitter {
           setValue(arr.join(separator));
         } else {
           setValue('');
+        }
+        break;
+      }
+      case 'objectGet': {
+        ensureInitialized();
+        const obj = getCurrentValue();
+        const path = String(interpolatedValue ?? '');
+        if (typeof obj === 'object' && obj !== null) {
+          setValue(resolveVarPath(obj as Record<string, unknown>, path));
+        } else {
+          setValue(undefined);
+        }
+        break;
+      }
+      case 'objectSet': {
+        ensureInitialized();
+        let obj = getCurrentValue();
+        const path = String(interpolatedValue ?? '');
+        const val = autoParseValue(interpolatedValue2);
+        if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+          obj = {};
+        }
+        const newObj = JSON.parse(JSON.stringify(obj));
+        const keys = path.split('.');
+        let current: any = newObj;
+        for (let i = 0; i < keys.length - 1; i++) {
+          const key = keys[i];
+          if (!current[key] || typeof current[key] !== 'object' || Array.isArray(current[key])) {
+            current[key] = {};
+          }
+          current = current[key];
+        }
+        current[keys[keys.length - 1]] = val;
+        setValue(newObj);
+        break;
+      }
+      case 'objectDelete': {
+        ensureInitialized();
+        let obj = getCurrentValue();
+        const path = String(interpolatedValue ?? '');
+        if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+          break;
+        }
+        const newObj = JSON.parse(JSON.stringify(obj));
+        const keys = path.split('.');
+        let current: any = newObj;
+        for (let i = 0; i < keys.length - 1; i++) {
+          const key = keys[i];
+          if (!current[key] || typeof current[key] !== 'object') {
+            break;
+          }
+          current = current[key];
+        }
+        if (keys.length > 0) {
+          delete current[keys[keys.length - 1]];
+        }
+        setValue(newObj);
+        break;
+      }
+      case 'objectKeys': {
+        ensureInitialized();
+        const obj = getCurrentValue();
+        if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+          setValue(Object.keys(obj));
+        } else {
+          setValue([]);
+        }
+        break;
+      }
+      case 'objectValues': {
+        ensureInitialized();
+        const obj = getCurrentValue();
+        if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+          setValue(Object.values(obj));
+        } else {
+          setValue([]);
         }
         break;
       }
