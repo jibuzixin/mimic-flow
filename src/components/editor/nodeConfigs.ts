@@ -40,8 +40,12 @@ export const nodeConfigs: NodeConfig[] = [
     icon: Flag,
     description: '工作流的起点，执行从这里开始',
     color: '#22c55e',
-    defaultParams: {},
-    propertyFields: [],
+    defaultParams: {
+      minimizeWindow: false,
+    },
+    propertyFields: [
+      { key: 'minimizeWindow', label: '执行时最小化窗口', type: 'switch', defaultValue: false, description: '工作流开始执行时自动最小化当前窗口' },
+    ],
   },
   {
     type: 'control.end',

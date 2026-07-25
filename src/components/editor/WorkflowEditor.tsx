@@ -74,6 +74,7 @@ function WorkflowEditorInner() {
   const [hideSensitive, setHideSensitive] = useState(false);
   const [editingName, setEditingName] = useState('');
   const isSyncingFromStore = useRef(false);
+  const lastMouseDownButton = useRef<number>(2);
 
   const {
     currentWorkflow,
@@ -386,6 +387,14 @@ function WorkflowEditorInner() {
     };
     window.addEventListener('workflow:quick-add', handleQuickAdd);
     return () => window.removeEventListener('workflow:quick-add', handleQuickAdd);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      lastMouseDownButton.current = e.button;
+    };
+    document.addEventListener('mousedown', handleMouseDown, true);
+    return () => document.removeEventListener('mousedown', handleMouseDown, true);
   }, []);
 
   useEffect(() => {
@@ -721,6 +730,7 @@ function WorkflowEditorInner() {
 
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
+      if (lastMouseDownButton.current !== 2) return;
       event.preventDefault();
       setContextMenuFilter('');
       setContextMenu({ x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY, mode: 'normal' });

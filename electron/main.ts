@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getStore } from './store.js';
@@ -268,12 +268,44 @@ ipcMain.handle('flow:stop', async (_event, runInstanceId: string) => {
 ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2) => {
   console.log('[flow-v2:run] Received flow run request:', flow?.flowMeta?.name);
   const webContents = event.sender;
+  const win = BrowserWindow.fromWebContents(webContents);
+
+  const startNode = flow.nodes.find((n) => n.nodeType === 'control.start');
+  const shouldMinimize = startNode?.nodeParams?.minimizeWindow === true;
+  if (shouldMinimize && win) {
+    win.minimize();
+  }
+
+  let flowName = flow.flowMeta?.name || '工作流';
 
   runFlowV2(flow, (evt: RuntimeEventV2) => {
     try {
       webContents.send('flow-v2:event', evt);
     } catch (e) {
       console.error('[flow-v2:run] Failed to send event to renderer:', e);
+    }
+
+    if (evt.type === 'flow:complete') {
+      const status = (evt as any).status;
+      const duration = (evt as any).duration || 0;
+      const durationSec = (duration / 1000).toFixed(1);
+      
+      let title = '';
+      let body = '';
+      if (status === 'success') {
+        title = '✅ 工作流执行成功';
+        body = `${flowName} 已完成，耗时 ${durationSec} 秒`;
+      } else if (status === 'failed') {
+        title = '❌ 工作流执行失败';
+        body = `${flowName} 执行失败，请查看日志`;
+      } else if (status === 'stopped') {
+        title = '⏹️ 工作流已停止';
+        body = `${flowName} 已被用户停止`;
+      }
+
+      if (Notification.isSupported() && title) {
+        new Notification({ title, body }).show();
+      }
     }
   }).catch((err) => {
     console.error('[flow-v2:run] Flow execution error:', err);
@@ -285,6 +317,13 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2) => {
         error: err instanceof Error ? err.message : String(err),
       });
     } catch {}
+
+    if (Notification.isSupported()) {
+      new Notification({
+        title: '❌ 工作流执行失败',
+        body: `${flowName} 执行失败: ${err instanceof Error ? err.message : String(err)}`,
+      }).show();
+    }
   });
 
   console.log('[flow-v2:run] Flow execution started in background');
