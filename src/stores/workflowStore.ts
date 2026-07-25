@@ -134,7 +134,7 @@ interface WorkflowState {
   saveDraftToStorage: () => void;
   loadDraftFromStorage: () => void;
 
-  loadFromStorage: () => void;
+  loadFromStorage: () => Promise<void>;
   saveToStorage: () => void;
 
   createEmptyWorkflow: (name?: string) => FlowSchema;
@@ -1018,16 +1018,36 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     get().pushHistory();
   },
 
-  loadFromStorage: () => {
+  loadFromStorage: async () => {
     let workflows: WorkflowRecord[] = [];
 
-    try {
-      const saved = localStorage.getItem(WORKFLOWS_KEY);
-      if (saved) {
-        workflows = JSON.parse(saved);
+    if (typeof window !== 'undefined' && window.mimic) {
+      try {
+        const fileWorkflows = await window.mimic.invoke('workflow:list');
+        if (Array.isArray(fileWorkflows) && fileWorkflows.length > 0) {
+          workflows = fileWorkflows as WorkflowRecord[];
+        }
+      } catch (e) {
+        console.warn('Failed to load workflows from file system:', e);
       }
-    } catch (e) {
-      console.warn('Failed to load workflows from storage:', e);
+    }
+
+    if (workflows.length === 0) {
+      try {
+        const saved = localStorage.getItem(WORKFLOWS_KEY);
+        if (saved) {
+          workflows = JSON.parse(saved);
+          if (workflows.length > 0 && typeof window !== 'undefined' && window.mimic) {
+            workflows.forEach(async (wf) => {
+              try {
+                await window.mimic.invoke('workflow:save', wf);
+              } catch {}
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load workflows from storage:', e);
+      }
     }
 
     if (workflows.length === 0) {
@@ -1436,6 +1456,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
 
     get().saveWorkflowsToStorage();
+    
+    if (typeof window !== 'undefined' && window.mimic) {
+      window.mimic.invoke('workflow:delete', id).catch((e) => {
+        console.warn('Failed to delete workflow from file system:', id, e);
+      });
+    }
   },
 
   duplicateWorkflow: (id) => {
@@ -1583,6 +1609,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(get().workflows));
     } catch (e) {
       console.warn('Failed to save workflows to storage:', e);
+    }
+    if (typeof window !== 'undefined' && window.mimic) {
+      get().workflows.forEach(async (wf) => {
+        try {
+          await window.mimic.invoke('workflow:save', wf);
+        } catch (e) {
+          console.warn('Failed to save workflow to file system:', wf.id, e);
+        }
+      });
     }
   },
 

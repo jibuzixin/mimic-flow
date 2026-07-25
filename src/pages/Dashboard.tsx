@@ -166,7 +166,7 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Layers className="w-3 h-3" /> 工作流数
             </p>
-            <p className="text-2xl font-semibold">{formatNumber(stats?.workflowCount ?? 0)}</p>
+            <p className="text-2xl font-semibold">{workflows.length}</p>
           </CardContent>
         </Card>
       </div>

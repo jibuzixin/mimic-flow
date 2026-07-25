@@ -12,7 +12,7 @@ import { runFlowV2, stopFlowV2, getFlowStatusV2, getV2Scheduler } from './runtim
 import { getExecutionRecordService } from './execution/ExecutionRecordService.js';
 import type { FlowSchema, FlowFileWrapper } from '../types/flow.js';
 import type { FlowSchema as FlowSchemaV2, RuntimeEvent as RuntimeEventV2 } from '../types/flow-v2.js';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import path from 'path';
 
 type StoreKey =
@@ -282,30 +282,80 @@ ipcMain.handle('app:get-default-paths', async () => {
   };
 });
 
+function getWorkflowsDir(): string {
+  const customPath = getStore().get('workflowSavePath') as string | undefined;
+  return customPath || join(app.getPath('userData'), 'workflows');
+}
+
+function ensureWorkflowsDir(): string {
+  const dir = getWorkflowsDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+function sanitizeFilename(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 100);
+}
+
 ipcMain.handle('workflow:list', async () => {
-  return getStore().get('workflows') || [];
+  const dir = ensureWorkflowsDir();
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  const workflows: unknown[] = [];
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dir, file), 'utf-8');
+      const data = JSON.parse(content);
+      if (data.id) {
+        workflows.push(data);
+      }
+    } catch (e) {
+      console.warn('[workflow:list] Failed to read workflow file:', file, e);
+    }
+  }
+  return workflows;
 });
 
 ipcMain.handle('workflow:get', async (_event, id: string) => {
-  const workflows = (getStore().get('workflows') || []) as any[];
-  return workflows.find((w) => w.id === id) || null;
+  const dir = ensureWorkflowsDir();
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dir, file), 'utf-8');
+      const data = JSON.parse(content);
+      if (data.id === id) {
+        return data;
+      }
+    } catch {}
+  }
+  return null;
 });
 
-ipcMain.handle('workflow:save', async (_event, workflow: unknown) => {
-  const workflows = (getStore().get('workflows') || []) as unknown[];
-  const index = workflows.findIndex((w: any) => w.id === (workflow as any).id);
-  if (index >= 0) {
-    workflows[index] = workflow;
-  } else {
-    workflows.push(workflow);
-  }
-  getStore().set('workflows', workflows);
+ipcMain.handle('workflow:save', async (_event, workflow: any) => {
+  const dir = ensureWorkflowsDir();
+  const id = workflow.id;
+  const name = sanitizeFilename(workflow.name || workflow.flowMeta?.name || id);
+  const filename = `${name}_${id}.json`;
+  const filePath = join(dir, filename);
+  
+  writeFileSync(filePath, JSON.stringify(workflow, null, 2), 'utf-8');
   return true;
 });
 
 ipcMain.handle('workflow:delete', async (_event, id: string) => {
-  const workflows = (getStore().get('workflows') || []) as any[];
-  getStore().set('workflows', workflows.filter((w) => w.id !== id));
+  const dir = ensureWorkflowsDir();
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dir, file), 'utf-8');
+      const data = JSON.parse(content);
+      if (data.id === id) {
+        unlinkSync(join(dir, file));
+        break;
+      }
+    } catch {}
+  }
   return true;
 });
 
