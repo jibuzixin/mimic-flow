@@ -44,6 +44,7 @@ import { VariablePanel } from './VariablePanel';
 import { getNodeHandles, CustomNode, type CustomNodeType } from './CustomNode';
 import { CustomEdge } from './CustomEdge';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { useAppStore } from '../../stores/appStore';
 import { getNodeConfig, nodeConfigs, type NodeConfig } from './nodeConfigs';
 import type { FlowSchema } from '../../../types/flow-v2';
 import { Button } from '../ui/button';
@@ -111,15 +112,188 @@ function WorkflowEditorInner() {
     importToCanvas,
   } = useWorkflowStore();
 
+  const { uiSettings } = useAppStore();
+
   const currentWorkflowId = useRef<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
+  const [contextMenuFilter, setContextMenuFilter] = useState('');
+
+  const validationWarnings = useMemo(() => {
+    const emptyResult = { byNode: {} as Record<string, string[]>, all: [] as any[], errorCount: 0, warningCount: 0 };
+    if (!uiSettings.enableValidation) return emptyResult;
+    if (!currentWorkflow) return emptyResult;
+
+    const byNode: Record<string, string[]> = {};
+    const all: { id: string; nodeId?: string; message: string; type: 'error' | 'warning' }[] = [];
+    const nodes = currentWorkflow.nodes;
+
+    if (nodes.length === 0) {
+      all.push({
+        id: 'empty-flow',
+        message: '工作流为空，没有任何节点',
+        type: 'error',
+      });
+      return { byNode, all, errorCount: 1, warningCount: 0 };
+    }
+
+    const startNodes = nodes.filter((n) => n.nodeType === 'control.start');
+    if (startNodes.length === 0) {
+      all.push({
+        id: 'no-start',
+        message: '缺少开始节点，工作流无法运行',
+        type: 'error',
+      });
+    }
+
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const outgoingEdges = new Map<string, string[]>();
+    storeEdges.forEach((e) => {
+      if (!outgoingEdges.has(e.source)) {
+        outgoingEdges.set(e.source, []);
+      }
+      outgoingEdges.get(e.source)!.push(e.target);
+    });
+
+    const reachableNodeIds = new Set<string>();
+    const queue = [...startNodes.map((n) => n.id)];
+    startNodes.forEach((n) => reachableNodeIds.add(n.id));
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      const next = outgoingEdges.get(nodeId) || [];
+      next.forEach((nextId) => {
+        if (!reachableNodeIds.has(nextId) && nodeMap.has(nextId)) {
+          reachableNodeIds.add(nextId);
+          queue.push(nextId);
+        }
+      });
+    }
+
+    const globalVarNames = new Set(Object.keys(currentWorkflow.globalVars || {}));
+    const assignedVarNames = new Set<string>();
+    const loopVarNames = new Set<string>();
+
+    nodes.forEach((node) => {
+      if (!reachableNodeIds.has(node.id)) return;
+      const params = node.nodeParams as any;
+      if (node.nodeType === 'control.var') {
+        if (params?.varName) {
+          assignedVarNames.add(String(params.varName));
+        }
+        if (params?.saveToNewVar && params?.outputVarName) {
+          assignedVarNames.add(String(params.outputVarName));
+        }
+      } else if (node.nodeType === 'control.loop') {
+        if (params?.loopType === 'for' && params?.iteratorVar) {
+          loopVarNames.add(String(params.iteratorVar));
+        } else if (params?.loopType === 'forEach' && params?.itemVar) {
+          loopVarNames.add(String(params.itemVar));
+        }
+      } else if (params?.outputVar) {
+        assignedVarNames.add(String(params.outputVar));
+      }
+    });
+
+    const allKnownVars = new Set([...globalVarNames, ...assignedVarNames, ...loopVarNames]);
+
+    const extractVarRefs = (str: string): string[] => {
+      const refs: string[] = [];
+      const regex = /\{\{([\u4e00-\u9fa5\w.]+)\}\}/g;
+      let match;
+      while ((match = regex.exec(str)) !== null) {
+        const fullPath = match[1];
+        const baseVar = fullPath.split('.')[0];
+        refs.push(baseVar);
+      }
+      return refs;
+    };
+
+    nodes.forEach((node) => {
+      if (!reachableNodeIds.has(node.id)) return;
+      const params = node.nodeParams as Record<string, unknown>;
+      if (!params) return;
+
+      const nodeWarnings = new Set<string>();
+
+      Object.values(params).forEach((val) => {
+        if (typeof val === 'string') {
+          const refs = extractVarRefs(val);
+          refs.forEach((ref) => {
+            if (!allKnownVars.has(ref) && ref !== '') {
+              const msg = `变量「${ref}」可能未定义`;
+              if (!nodeWarnings.has(msg)) {
+                nodeWarnings.add(msg);
+                if (!byNode[node.id]) byNode[node.id] = [];
+                byNode[node.id].push(msg);
+                all.push({
+                  id: `unknown-var-${node.id}-${ref}`,
+                  nodeId: node.id,
+                  message: msg,
+                  type: 'warning',
+                });
+              }
+            }
+          });
+        }
+      });
+    });
+
+    const errorCount = all.filter((w) => w.type === 'error').length;
+    const warningCount = all.filter((w) => w.type === 'warning').length;
+
+    return { byNode, all, errorCount, warningCount };
+  }, [currentWorkflow, storeEdges, uiSettings.enableValidation]);
+
+  const contextMenuPosition = useMemo(() => {
+    if (!contextMenu) return { top: 0, left: 0 };
+    const menuHeight = uiSettings.contextMenuMode === 'full' ? 360 : 320;
+    const menuWidth = uiSettings.contextMenuMode === 'full' ? 256 : 224;
+    let top = contextMenu.y;
+    let left = contextMenu.x;
+
+    if (top + menuHeight > window.innerHeight - 10) {
+      top = Math.max(10, contextMenu.y - menuHeight);
+    }
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = Math.max(10, window.innerWidth - menuWidth - 10);
+    }
+
+    return { top, left };
+  }, [contextMenu, uiSettings.contextMenuMode]);
+
   const contextMenuNodes = useMemo(() => {
+    const mode = uiSettings.contextMenuMode;
+
+    if (mode === 'full') {
+      const filter = contextMenuFilter.toLowerCase();
+      const filtered = nodeConfigs.filter(
+        (c) => !filter || c.name.toLowerCase().includes(filter) || c.type.toLowerCase().includes(filter)
+      );
+
+      const sort = uiSettings.fullMenuSort;
+      let sorted = [...filtered];
+      if (sort === 'name') {
+        sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+      } else if (sort === 'category') {
+        sorted.sort((a, b) => {
+          const catOrder = ['control', 'ai', 'data', 'browser'];
+          const aIdx = catOrder.indexOf(a.category);
+          const bIdx = catOrder.indexOf(b.category);
+          if (aIdx !== bIdx) return aIdx - bIdx;
+          return a.name.localeCompare(b.name, 'zh-CN');
+        });
+      }
+
+      return sorted.map((config) => ({ config, section: 'all' as const }));
+    }
+
     const result: { config: NodeConfig; section: 'recent' | 'pinned' }[] = [];
     const added = new Set<string>();
 
-    recentNodeTypes.forEach((type) => {
+    const recentCount = uiSettings.recentNodeCount || 5;
+    recentNodeTypes.slice(0, recentCount).forEach((type) => {
       const config = getNodeConfig(type);
       if (config && !added.has(type)) {
         result.push({ config, section: 'recent' });
@@ -127,16 +301,18 @@ function WorkflowEditorInner() {
       }
     });
 
-    pinnedNodeTypes.forEach((type) => {
-      const config = getNodeConfig(type);
-      if (config && !added.has(type)) {
-        result.push({ config, section: 'pinned' });
-        added.add(type);
-      }
-    });
+    if (uiSettings.showAllPinned) {
+      pinnedNodeTypes.forEach((type) => {
+        const config = getNodeConfig(type);
+        if (config && !added.has(type)) {
+          result.push({ config, section: 'pinned' });
+          added.add(type);
+        }
+      });
+    }
 
     return result;
-  }, [recentNodeTypes, pinnedNodeTypes]);
+  }, [recentNodeTypes, pinnedNodeTypes, uiSettings, contextMenuFilter]);
 
   useEffect(() => {
     if (!initialized) {
@@ -208,11 +384,13 @@ function WorkflowEditorInner() {
         const status = nodeExecutionStatus[node.id] || 'idle';
         const errorMsg = nodeErrors[node.id];
         const output = nodeOutputs[node.id];
+        const warnings = validationWarnings.byNode[node.id];
         const shortError = errorMsg ? simplifyError(errorMsg) : undefined;
         if (
           node.data.executionStatus === status &&
           node.data.errorMessage === shortError &&
-          node.data.output === output
+          node.data.output === output &&
+          node.data.validationWarnings === warnings
         ) {
           return node;
         }
@@ -223,11 +401,12 @@ function WorkflowEditorInner() {
             executionStatus: status,
             errorMessage: shortError,
             output,
+            validationWarnings: warnings,
           },
         };
       })
     );
-  }, [nodeExecutionStatus, nodeErrors, nodeOutputs, currentWorkflow, initialized, setNodes]);
+  }, [nodeExecutionStatus, nodeErrors, nodeOutputs, validationWarnings.byNode, currentWorkflow, initialized, setNodes]);
 
   useEffect(() => {
     if (!currentWorkflow || !initialized) return;
@@ -470,6 +649,7 @@ function WorkflowEditorInner() {
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
+      setContextMenuFilter('');
       setContextMenu({ x: (event as MouseEvent).clientX, y: (event as MouseEvent).clientY });
     },
     [],
@@ -491,10 +671,13 @@ function WorkflowEditorInner() {
   const handleRun = useCallback(() => {
     if (isRunning) {
       stopExecution();
-    } else {
-      startExecution();
+      return;
     }
-  }, [isRunning, startExecution, stopExecution]);
+    if (validationWarnings.errorCount > 0) {
+      return;
+    }
+    startExecution();
+  }, [isRunning, startExecution, stopExecution, validationWarnings.errorCount]);
 
   const handleSave = useCallback(() => {
     setSaveStatus('saving');
@@ -872,15 +1055,75 @@ function WorkflowEditorInner() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -5 }}
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-              className="fixed z-50 w-56 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl overflow-hidden"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
+              className={`fixed z-50 bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-2xl overflow-hidden ${
+                uiSettings.contextMenuMode === 'full' ? 'w-64' : 'w-56'
+              }`}
+              style={{ left: contextMenuPosition.left, top: contextMenuPosition.top }}
             >
+              {uiSettings.contextMenuMode === 'full' && (
+                <div className="p-2 border-b border-gray-100">
+                  <input
+                    type="text"
+                    value={contextMenuFilter}
+                    onChange={(e) => setContextMenuFilter(e.target.value)}
+                    placeholder="搜索节点..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
+                    autoFocus
+                  />
+                </div>
+              )}
               <div className="max-h-80 overflow-y-auto scrollbar-hide p-1.5">
                 {contextMenuNodes.length === 0 ? (
                   <div className="px-4 py-6 text-center">
-                    <p className="text-xs text-gray-400">暂无固定节点</p>
-                    <p className="text-[10px] text-gray-300 mt-1">在左侧节点库中点击图钉固定常用节点</p>
+                    <p className="text-xs text-gray-400">
+                      {uiSettings.contextMenuMode === 'full' ? '未找到匹配节点' : '暂无固定节点'}
+                    </p>
+                    {uiSettings.contextMenuMode === 'simple' && (
+                      <p className="text-[10px] text-gray-300 mt-1">在左侧节点库中点击图钉固定常用节点</p>
+                    )}
                   </div>
+                ) : uiSettings.contextMenuMode === 'full' && uiSettings.fullMenuSort === 'category' ? (
+                  <>
+                    {['control', 'ai', 'data', 'browser'].map((cat) => {
+                      const catNodes = contextMenuNodes.filter((n) => n.config.category === cat);
+                      if (catNodes.length === 0) return null;
+                      const catLabels: Record<string, string> = {
+                        control: '控制',
+                        ai: 'AI 操作',
+                        data: '数据',
+                        browser: '浏览器',
+                      };
+                      return (
+                        <div key={cat}>
+                          <div className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                            {catLabels[cat] || cat}
+                          </div>
+                          {catNodes.map(({ config }) => {
+                            const Icon = config.icon;
+                            return (
+                              <button
+                                key={config.type}
+                                onClick={() => handleAddNodeFromMenu(config.type)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-indigo-50 rounded-xl transition-colors group"
+                              >
+                                <div
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                  style={{ backgroundColor: `${config.color}15`, color: config.color }}
+                                >
+                                  {Icon && <Icon className="h-4 w-4" />}
+                                </div>
+                                <div className="flex-1 text-left">
+                                  <div className="text-xs font-medium text-gray-700 group-hover:text-indigo-700">
+                                    {config.name}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </>
                 ) : (
                   <>
                     {contextMenuNodes.some((n) => n.section === 'recent') && (
@@ -943,6 +1186,32 @@ function WorkflowEditorInner() {
                               </button>
                             );
                           })}
+                      </>
+                    )}
+                    {contextMenuNodes.every((n) => n.section === 'all') && uiSettings.fullMenuSort !== 'category' && (
+                      <>
+                        {contextMenuNodes.map(({ config }) => {
+                          const Icon = config.icon;
+                          return (
+                            <button
+                              key={config.type}
+                              onClick={() => handleAddNodeFromMenu(config.type)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-indigo-50 rounded-xl transition-colors group"
+                            >
+                              <div
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                style={{ backgroundColor: `${config.color}15`, color: config.color }}
+                              >
+                                {Icon && <Icon className="h-4 w-4" />}
+                              </div>
+                              <div className="flex-1 text-left">
+                                <div className="text-xs font-medium text-gray-700 group-hover:text-indigo-700">
+                                  {config.name}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </>
                     )}
                   </>

@@ -248,6 +248,9 @@ export const nodeConfigs: NodeConfig[] = [
       value: 0,
       value2: '',
       outputVar: '',
+      printResult: false,
+      saveToNewVar: false,
+      outputVarName: '',
     },
     propertyFields: [
       { key: 'varName', label: '变量名', type: 'var-name', placeholder: '例如: result, count, 计数器' },
@@ -340,6 +343,9 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'value', label: '值', type: 'switch', defaultValue: false, showWhen: { operation: 'set', setValueType: 'boolean' } },
       { key: 'value', label: '数组元素', type: 'textarea', defaultValue: '', description: '每行一个元素，数字直接写，文本不用加引号。输入 # 选择变量', showWhen: { operation: 'set', setValueType: 'array' } },
       { key: 'value', label: '对象 (JSON)', type: 'textarea', defaultValue: '{}', description: 'JSON 格式，如 {"name": "张三", "age": 18}', showWhen: { operation: 'set', setValueType: 'object' } },
+      { key: 'saveToNewVar', label: '输出到新变量', type: 'switch', defaultValue: false, description: '开启后不修改原变量，结果保存到新变量' },
+      { key: 'outputVarName', label: '新变量名', type: 'text', defaultValue: '', description: '默认 return_ 前缀 + 原变量名', showWhen: { saveToNewVar: true } },
+      { key: 'printResult', label: '打印返回值', type: 'switch', defaultValue: false, description: '执行后打印变量的当前值到日志' },
     ],
   },
   {

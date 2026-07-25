@@ -16,6 +16,11 @@ interface AppState {
     nodeWidthMultiplier: number;
     edgeStyle: 'bezier' | 'smoothstep' | 'straight';
     edgeAvoidNodes: boolean;
+    contextMenuMode: 'simple' | 'full';
+    recentNodeCount: number;
+    showAllPinned: boolean;
+    fullMenuSort: 'default' | 'name' | 'category';
+    enableValidation: boolean;
   };
   isLoading: boolean;
 
@@ -51,6 +56,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     nodeWidthMultiplier: 2,
     edgeStyle: 'bezier',
     edgeAvoidNodes: true,
+    contextMenuMode: 'simple',
+    recentNodeCount: 5,
+    showAllPinned: true,
+    fullMenuSort: 'default',
+    enableValidation: true,
   },
   isLoading: true,
 
@@ -82,7 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: defaultModelIds || getDefaultModelIds(),
       logSavePath: logSavePath || '',
       workflowSavePath: workflowSavePath || '',
-      uiSettings: uiSettings || { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true },
+      uiSettings: uiSettings || { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default' },
       isLoading: false,
     });
   },
@@ -145,7 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true },
     });
   },
 
@@ -159,7 +169,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true },
     });
   },
 }));

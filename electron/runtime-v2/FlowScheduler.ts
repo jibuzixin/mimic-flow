@@ -532,8 +532,21 @@ export class FlowScheduler extends EventEmitter {
       case 'control.end': {
         const { message } = node.nodeParams as any;
         let content = '';
-        if (message) {
-          content = String(interpolateValue(message, this.variablePool));
+        if (message && typeof message === 'string') {
+          const pureVarMatch = message.match(/^\s*\{\{\s*([^{}\s]+)\s*\}\}\s*$/);
+          if (pureVarMatch) {
+            const varName = pureVarMatch[1];
+            const value = resolveVarPath(this.variablePool, varName);
+            if (typeof value === 'object' && value !== null) {
+              content = `[${varName}] = ${JSON.stringify(value, null, 2)}`;
+            } else {
+              content = String(value ?? '(undefined)');
+            }
+          } else {
+            content = this.formatLogMessage(message);
+          }
+        } else if (message !== undefined && message !== null && typeof message !== 'string') {
+          content = JSON.stringify(message, null, 2);
         }
         const state = this.nodeStates.get(node.id);
         if (state) {
@@ -560,14 +573,24 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeLogNode(node: FlowNode): void {
-    const { message, var: varName } = node.nodeParams as any;
+    const { message } = node.nodeParams as any;
     let content = '';
 
-    if (varName) {
-      const value = resolveVarPath(this.variablePool, varName as string);
-      content = `[${varName}] = ${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}`;
-    } else if (message) {
-      content = String(interpolateValue(message, this.variablePool));
+    if (message && typeof message === 'string') {
+      const pureVarMatch = message.match(/^\s*\{\{\s*([^{}\s]+)\s*\}\}\s*$/);
+      if (pureVarMatch) {
+        const varName = pureVarMatch[1];
+        const value = resolveVarPath(this.variablePool, varName);
+        if (typeof value === 'object' && value !== null) {
+          content = `[${varName}] = ${JSON.stringify(value, null, 2)}`;
+        } else {
+          content = String(value ?? '(undefined)');
+        }
+      } else {
+        content = this.formatLogMessage(message);
+      }
+    } else if (message !== undefined && message !== null && typeof message !== 'string') {
+      content = JSON.stringify(message, null, 2);
     } else {
       content = '(日志内容为空)';
     }
@@ -585,17 +608,43 @@ export class FlowScheduler extends EventEmitter {
     });
   }
 
+  private formatLogMessage(message: string): string {
+    const pool = this.variablePool;
+    let result = message;
+
+    result = result.replace(/\\\{/g, '\u0000');
+    result = result.replace(/\\\}/g, '\u0001');
+
+    result = result.replace(/\{\{([\u4e00-\u9fa5\w.]+)\}\}/g, (_, path) => {
+      const value = resolveVarPath(pool, path);
+      if (typeof value === 'object' && value !== null) {
+        return JSON.stringify(value, null, 2);
+      }
+      return String(value ?? '');
+    });
+
+    result = result.replace(/\u0000/g, '{');
+    result = result.replace(/\u0001/g, '}');
+
+    return result;
+  }
+
   private executeVarNode(node: FlowNode): void {
     const params = node.nodeParams as any;
     const { varName, value, operation = 'set' } = params;
     const pool = this.variablePool;
 
+    let resultVal: unknown = undefined;
+    let initialized = false;
+
     const getCurrentValue = (): unknown => {
+      if (initialized) return resultVal;
       return resolveVarPath(pool, varName as string);
     };
 
     const setValue = (val: unknown) => {
-      pool[varName as string] = val;
+      resultVal = val;
+      initialized = true;
     };
 
     const autoParseValue = (val: unknown): unknown => {
@@ -622,7 +671,7 @@ export class FlowScheduler extends EventEmitter {
     const isArrayOp = ['arrayLength', 'arrayGet', 'arrayPush', 'arrayPop', 'arrayJoin'].includes(operation);
 
     const needsValue = !['toUpperCase', 'toLowerCase', 'trim', 'toInteger', 'abs', 'round', 'ceil', 'floor', 'toString', 'toNumber', 'arrayLength', 'arrayPop', 'strLength'].includes(operation);
-    const needsValue2 = ['substring', 'replace', 'charAt', 'arrayGet', 'arrayPush', 'arrayJoin', 'modulo', 'startsWith', 'endsWith', 'includes'].includes(operation);
+    const needsValue2 = ['substring', 'replace', 'charAt', 'arrayGet', 'arrayPush', 'arrayJoin', 'modulo', 'startsWith', 'endsWith', 'includes', 'objectSet'].includes(operation);
     const interpolatedValue = needsValue ? interpolateValue(value, this.variablePool) : undefined;
     const interpolatedValue2 = needsValue2 && params.value2 !== undefined ? interpolateValue(String(params.value2), this.variablePool) : undefined;
 
@@ -964,12 +1013,89 @@ export class FlowScheduler extends EventEmitter {
         setValue(interpolatedValue);
     }
 
+    const saveToNewVar = params.saveToNewVar === true;
+    let finalVarName = varName as string;
+
+    if (saveToNewVar) {
+      finalVarName = params.outputVarName && String(params.outputVarName).trim()
+        ? String(params.outputVarName).trim()
+        : `return_${varName}`;
+      const originalVal = resolveVarPath(pool, varName as string);
+      if (operation === 'set') {
+        // set 操作不需要原变量不变，结果存到新变量
+      } else {
+        // 其他操作：原变量保持不变，结果存到新变量
+      }
+    }
+
+    if (initialized || operation === 'set') {
+      pool[finalVarName] = resultVal;
+    } else if (!saveToNewVar) {
+      // 未初始化过，原变量保持原样
+    }
+
+    const opLabels: Record<string, string> = {
+      set: '赋值',
+      add: '加法',
+      subtract: '减法',
+      multiply: '乘法',
+      divide: '除法',
+      modulo: '取模',
+      abs: '绝对值',
+      round: '四舍五入',
+      ceil: '向上取整',
+      floor: '向下取整',
+      toNumber: '转数字',
+      toInteger: '转整数',
+      toString: '转字符串',
+      concat: '拼接',
+      toUpperCase: '转大写',
+      toLowerCase: '转小写',
+      trim: '去空格',
+      substring: '截取',
+      charAt: '取字符',
+      replace: '替换',
+      strLength: '长度',
+      startsWith: '开头匹配',
+      endsWith: '结尾匹配',
+      includes: '包含',
+      arrayLength: '数组长度',
+      arrayGet: '取元素',
+      arrayPush: '添加元素',
+      arrayPop: '移除元素',
+      arrayJoin: '数组合并',
+      objectGet: '获取属性',
+      objectSet: '设置属性',
+      objectDelete: '删除属性',
+      objectKeys: '获取键列表',
+      objectValues: '获取值列表',
+    };
+    const opLabel = opLabels[operation] || operation;
+
     this.addLog({
       level: 'debug',
       source: 'scheduler',
       nodeId: node.id,
-      message: `变量赋值: ${varName} = ${JSON.stringify(pool[varName as string])}`,
+      message: `变量赋值 [${opLabel}]: ${finalVarName} = ${JSON.stringify(resultVal)}`,
     });
+
+    if (params.printResult) {
+      const finalVal = pool[finalVarName];
+      const formatted = typeof finalVal === 'object' && finalVal !== null
+        ? JSON.stringify(finalVal, null, 2)
+        : String(finalVal);
+      const outputStr = `[${finalVarName}] = ${formatted}`;
+      const state = this.nodeStates.get(node.id);
+      if (state) {
+        state.output = outputStr;
+      }
+      this.addLog({
+        level: 'info',
+        source: 'scheduler',
+        nodeId: node.id,
+        message: `📤 [${opLabel}] ${outputStr}`,
+      });
+    }
   }
 
   private parseValue(str: string): unknown {

@@ -1087,6 +1087,146 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                   />
                 </button>
               </div>
+
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <Label className="text-sm font-medium">右键菜单模式</Label>
+                <p className="text-xs text-muted-foreground">
+                  画布右键时显示的节点菜单样式。
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'simple', label: '简洁模式', desc: '最近使用 + 固定节点' },
+                    { value: 'full', label: '全部节点', desc: '显示所有节点，可搜索' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() =>
+                        setLocalUiSettings((p) => ({
+                          ...p,
+                          contextMenuMode: opt.value as 'simple' | 'full',
+                        }))
+                      }
+                      className={cn(
+                        'rounded-xl border-2 py-3 text-sm font-medium transition-all text-left px-3',
+                        localUiSettings.contextMenuMode === opt.value
+                          ? 'border-violet-400 bg-violet-50 text-violet-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                      )}
+                    >
+                      <div>{opt.label}</div>
+                      <div className="text-[10px] font-normal text-muted-foreground mt-0.5">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {localUiSettings.contextMenuMode === 'simple' && (
+                <div className="space-y-4 pt-4 border-t border-border/40">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-medium">显示所有固定节点</Label>
+                      <p className="text-xs text-muted-foreground">
+                        开启后固定节点全部显示，关闭后仅显示最近使用节点。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLocalUiSettings((p) => ({ ...p, showAllPinned: !p.showAllPinned }))}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2',
+                        localUiSettings.showAllPinned ? 'bg-violet-500' : 'bg-gray-200'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform',
+                          localUiSettings.showAllPinned ? 'translate-x-5' : 'translate-x-0'
+                        )}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium">最近使用节点数量</Label>
+                      <span className="text-sm text-violet-600 font-medium">{localUiSettings.recentNodeCount} 个</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={localUiSettings.recentNodeCount}
+                      onChange={(e) =>
+                        setLocalUiSettings((p) => ({ ...p, recentNodeCount: Number(e.target.value) }))
+                      }
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>1</span>
+                      <span>10</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {localUiSettings.contextMenuMode === 'full' && (
+                <div className="space-y-3 pt-4 border-t border-border/40">
+                  <Label className="text-sm font-medium">节点排序方式</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'default', label: '默认' },
+                      { value: 'name', label: '按名称' },
+                      { value: 'category', label: '按分类' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() =>
+                          setLocalUiSettings((p) => ({
+                            ...p,
+                            fullMenuSort: opt.value as 'default' | 'name' | 'category',
+                          }))
+                        }
+                        className={cn(
+                          'rounded-xl border-2 py-2.5 text-sm font-medium transition-all',
+                          localUiSettings.fullMenuSort === opt.value
+                            ? 'border-violet-400 bg-violet-50 text-violet-700'
+                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">运行前检查</Label>
+                    <p className="text-xs text-muted-foreground">
+                      编辑时自动检查工作流，发现问题在节点上高亮显示。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalUiSettings((p) => ({ ...p, enableValidation: !p.enableValidation }))}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2',
+                      localUiSettings.enableValidation ? 'bg-violet-500' : 'bg-gray-200'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform',
+                        localUiSettings.enableValidation ? 'translate-x-5' : 'translate-x-0'
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

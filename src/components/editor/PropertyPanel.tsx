@@ -72,12 +72,13 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ text }) => {
 };
 
 export const PropertyPanel: React.FC = () => {
-  const { currentWorkflow, selectedNodeId, setSelectedNode, updateNodeParams, updateNode, deleteNode } =
+  const { currentWorkflow, selectedNodeId, setSelectedNode, updateNodeParams, updateNode, deleteNode, nodeOutputs } =
     useWorkflowStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const selectedNode = currentWorkflow?.nodes.find((n) => n.id === selectedNodeId);
   const config = selectedNode ? getNodeConfig(selectedNode.nodeType) : null;
+  const nodeOutput = selectedNodeId ? nodeOutputs[selectedNodeId] : undefined;
 
   const getPrecedingNodeVars = useCallback((): string[] => {
     if (!currentWorkflow || !selectedNodeId) return [];
@@ -121,20 +122,37 @@ export const PropertyPanel: React.FC = () => {
     }
 
     const nodeVars: string[] = [];
+    const seen = new Set<string>();
     prevNodeIds.forEach((nodeId) => {
       const node = nodeMap.get(nodeId);
       if (!node) return;
       const params = node.nodeParams as any;
       if (node.nodeType === 'control.var' && params?.varName) {
-        nodeVars.push(params.varName);
+        if (!seen.has(params.varName)) {
+          seen.add(params.varName);
+          nodeVars.push(params.varName);
+        }
+        if (params?.saveToNewVar && params?.outputVarName && !seen.has(params.outputVarName)) {
+          seen.add(params.outputVarName);
+          nodeVars.push(params.outputVarName);
+        }
       } else if (node.nodeType === 'control.loop') {
         if (params?.loopType === 'for' && params?.iteratorVar) {
-          nodeVars.push(params.iteratorVar);
+          if (!seen.has(params.iteratorVar)) {
+            seen.add(params.iteratorVar);
+            nodeVars.push(params.iteratorVar);
+          }
         } else if (params?.loopType === 'forEach' && params?.itemVar) {
-          nodeVars.push(params.itemVar);
+          if (!seen.has(params.itemVar)) {
+            seen.add(params.itemVar);
+            nodeVars.push(params.itemVar);
+          }
         }
       } else if (params?.outputVar) {
-        nodeVars.push(params.outputVar);
+        if (!seen.has(params.outputVar)) {
+          seen.add(params.outputVar);
+          nodeVars.push(params.outputVar);
+        }
       }
     });
 
@@ -163,7 +181,21 @@ export const PropertyPanel: React.FC = () => {
 
   const handleParamChange = (key: string, value: unknown) => {
     if (!selectedNode) return;
-    updateNodeParams(selectedNode.id, { [key]: value });
+    const params = { ...selectedNode.nodeParams, [key]: value };
+    if (key === 'saveToNewVar' && value === true) {
+      if (!params.outputVarName || String(params.outputVarName).trim() === '') {
+        const varName = params.varName ? String(params.varName) : '';
+        params.outputVarName = varName ? `return_${varName}` : 'return_value';
+      }
+    }
+    if (key === 'varName' && params.saveToNewVar) {
+      const currentOutput = String(params.outputVarName || '');
+      const newVarName = String(value || '');
+      if (currentOutput === '' || currentOutput.startsWith('return_')) {
+        params.outputVarName = newVarName ? `return_${newVarName}` : 'return_value';
+      }
+    }
+    updateNodeParams(selectedNode.id, params);
   };
 
   const handleNameChange = (name: string) => {
@@ -660,7 +692,25 @@ export const PropertyPanel: React.FC = () => {
 
                   {config!.propertyFields
                     .filter((field) => {
-                      if (!field.showWhen) return true;
+                      if (!field.showWhen) {
+                        if (selectedNode?.nodeType === 'control.var') {
+                          if (field.key === 'saveToNewVar' || field.key === 'outputVarName') {
+                            const op = selectedNode.nodeParams?.operation as string;
+                            const computeOps = [
+                              'add', 'subtract', 'multiply', 'divide', 'modulo',
+                              'abs', 'round', 'ceil', 'floor',
+                              'toNumber', 'toInteger', 'toString',
+                              'concat', 'toUpperCase', 'toLowerCase', 'trim',
+                              'substring', 'charAt', 'replace', 'strLength',
+                              'startsWith', 'endsWith', 'includes',
+                              'arrayLength', 'arrayGet', 'arrayJoin',
+                              'objectGet', 'objectKeys', 'objectValues',
+                            ];
+                            return computeOps.includes(op);
+                          }
+                        }
+                        return true;
+                      }
                       return Object.entries(field.showWhen).every(
                         ([key, value]) => selectedNode!.nodeParams?.[key] === value
                       );
@@ -703,6 +753,32 @@ export const PropertyPanel: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {(() => {
+                const nodeType = selectedNode?.nodeType;
+                const params = selectedNode?.nodeParams as any;
+                const hasOutput = nodeType === 'control.log' ||
+                  nodeType === 'control.end' ||
+                  (nodeType === 'control.var' && params?.printResult === true);
+                if (!hasOutput) return null;
+                return (
+                  <div className="pt-4 mt-4 border-t border-gray-100 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-gray-500" />
+                      <span className="text-xs font-semibold text-gray-700">输出内容</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 max-h-64 overflow-auto">
+                      {nodeOutput !== undefined && nodeOutput !== '' ? (
+                        <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
+                          {String(nodeOutput)}
+                        </pre>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">暂无输出，运行后显示</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="pt-4 mt-4 border-t border-gray-100">
                 <button

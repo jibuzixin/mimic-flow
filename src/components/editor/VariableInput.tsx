@@ -17,6 +17,7 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
   const [hashStartPos, setHashStartPos] = useState<number | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<'top' | 'bottom'>('bottom');
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -219,6 +220,22 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [value, multiline]);
 
+  useEffect(() => {
+    if (!showDropdown || !inputRef.current) return;
+
+    const inputRect = inputRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - inputRect.bottom;
+    const spaceAbove = inputRect.top;
+    const dropdownMaxHeight = 240;
+
+    if (spaceBelow < dropdownMaxHeight && spaceAbove > spaceBelow) {
+      setDropdownPosition('top');
+    } else {
+      setDropdownPosition('bottom');
+    }
+  }, [showDropdown]);
+
   const renderHighlightedValue = () => {
     if (!value) return null;
     
@@ -312,7 +329,10 @@ export const VariableInput: React.FC<VariableInputProps> = ({ value, onChange, p
             className="fixed z-[9999] w-64 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl"
             style={{
               left: inputRef.current ? inputRef.current.getBoundingClientRect().left : 0,
-              top: inputRef.current ? inputRef.current.getBoundingClientRect().bottom + 4 : 0,
+              ...(dropdownPosition === 'bottom'
+                ? { top: inputRef.current ? inputRef.current.getBoundingClientRect().bottom + 4 : 0 }
+                : { bottom: inputRef.current ? window.innerHeight - inputRef.current.getBoundingClientRect().top + 4 : 0 }
+              ),
             }}
           >
             {filteredGlobalVars.length > 0 && (

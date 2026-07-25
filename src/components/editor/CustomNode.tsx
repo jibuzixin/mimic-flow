@@ -13,6 +13,7 @@ export interface CustomNodeData {
   isSelected?: boolean;
   executionStatus?: 'idle' | 'running' | 'success' | 'error';
   errorMessage?: string;
+  validationWarnings?: string[];
   [key: string]: unknown;
 }
 
@@ -38,6 +39,8 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   const handles = useMemo(() => getNodeHandles(data.nodeType), [data.nodeType]);
   const status = data.executionStatus || 'idle';
   const errorMessage = data.errorMessage;
+  const validationWarnings = data.validationWarnings || [];
+  const hasWarning = validationWarnings.length > 0 && status !== 'error';
   const edges = useEdges();
 
   const isLoopNode = data.nodeType === 'control.loop';
@@ -62,14 +65,14 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
   }, [isLoopNode, edges, id]);
 
   const statusBorder = {
-    idle: '',
+    idle: hasWarning ? 'ring-4 ring-amber-400/40 border-amber-500' : '',
     running: 'ring-4 ring-amber-400/50 border-amber-500 animate-pulse',
     success: 'ring-4 ring-emerald-400/40 border-emerald-500',
     error: 'ring-4 ring-red-400/40 border-red-500',
   };
 
   const statusTopBorder = {
-    idle: color,
+    idle: hasWarning ? '#f59e0b' : color,
     running: '#f59e0b',
     success: '#10b981',
     error: '#ef4444',
@@ -82,7 +85,11 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
 
   const isLogNode = data.nodeType === 'control.log';
   const isEndNode = data.nodeType === 'control.end';
-  const showContent = isLogNode || isEndNode;
+  const isVarNode = data.nodeType === 'control.var';
+
+  const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
+  const printResult = isVarNode && nodeParams?.printResult === true;
+  const showContent = isLogNode || isEndNode || printResult;
 
   const nodeWidth = useMemo(() => {
     const baseWidth = showContent ? 280 : 220;
@@ -90,7 +97,6 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
     return { base: baseWidth, max: maxWidth };
   }, [uiSettings.nodeWidthMultiplier, showContent]);
 
-  const nodeParams = data.nodeParams as Record<string, unknown> | undefined;
   const contentMessage = nodeParams?.message as string | undefined;
   const output = data.output as string | undefined;
   const displayContent = output !== undefined ? output : contentMessage;
@@ -310,6 +316,28 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
               <TooltipContent side="top" align="end" sideOffset={8} className="max-w-xs text-xs z-[9999]">
                 <p className="font-medium text-red-600">执行失败</p>
                 <p className="text-gray-600 mt-1">{errorMessage}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {hasWarning && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute -top-2 -right-2 z-20 cursor-help">
+                  <div className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold fill-white">
+                    !
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="end" sideOffset={8} className="max-w-xs text-xs z-[9999]">
+                <p className="font-medium text-amber-600">检查发现 {validationWarnings.length} 个问题</p>
+                <div className="text-gray-600 mt-1 space-y-1">
+                  {validationWarnings.map((w, i) => (
+                    <p key={i}>• {w}</p>
+                  ))}
+                </div>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
