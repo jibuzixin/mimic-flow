@@ -433,7 +433,7 @@ function ModelSelect({
   );
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeToggle?: () => void; devMode?: boolean }) {
   const {
     models,
     defaultModelIds,
@@ -455,6 +455,7 @@ export default function SettingsPage() {
   const [localWorkflowPath, setLocalWorkflowPath] = useState(workflowSavePath);
   const [localUiSettings, setLocalUiSettings] = useState(uiSettings);
   const [defaultPaths, setDefaultPaths] = useState<{ log: string; workflow: string; userData: string } | null>(null);
+  const [titleClickCount, setTitleClickCount] = useState(0);
 
   useEffect(() => {
     const loadDefaults = async () => {
@@ -684,12 +685,35 @@ export default function SettingsPage() {
     </div>
   );
 
+  const handleTitleClick = () => {
+    const next = titleClickCount + 1;
+    if (next >= 5) {
+      setTitleClickCount(0);
+      if (onDevModeToggle) {
+        onDevModeToggle();
+      }
+    } else {
+      setTitleClickCount(next);
+      setTimeout(() => {
+        setTitleClickCount((c) => (c === next ? 0 : c));
+      }, 2000);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-24">
       <section className="space-y-2">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">设置</h1>
-          <p className="text-muted-foreground">配置模型、引擎、存储路径等。</p>
+          <h1
+            className="text-3xl font-semibold tracking-tight cursor-text select-text"
+            onClick={handleTitleClick}
+          >
+            设置
+          </h1>
+          <p className="text-muted-foreground">
+            配置模型、引擎、存储路径等。
+            {devMode && <span className="ml-2 text-xs text-violet-500">开发者模式</span>}
+          </p>
         </div>
       </section>
 

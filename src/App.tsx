@@ -1,39 +1,36 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Video,
   Workflow,
-  Play,
   Settings,
   PanelLeft,
   Sparkles,
   Terminal,
   FileJson,
 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from './lib/utils';
 import { Button } from './components/ui/button';
 import { useAppStore } from './stores/appStore';
 import Dashboard from './pages/Dashboard';
-import Recorder from './pages/Recorder';
 import WorkflowList from './pages/WorkflowList';
 import WorkflowEditor from './pages/WorkflowEditor';
-import Executor from './pages/Executor';
 import Logs from './pages/Logs';
 import FlowTester from './pages/FlowTester';
 import SettingsPage from './pages/Settings';
-import TestPage from './pages/TestPage';
-import { TestReactFlow } from './components/editor/TestReactFlow';
-import { ErrorBoundary } from './components/ErrorBoundary';
 
-const navItems = [
+type NavItem = {
+  path: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+};
+
+const navItems: NavItem[] = [
   { path: '/', label: '仪表盘', icon: LayoutDashboard, end: true },
-  { path: '/recorder', label: '录制 / 解析', icon: Video },
   { path: '/workflows', label: '工作流库', icon: Workflow, end: true },
   { path: '/workflows/editor', label: '流程编排', icon: Sparkles },
-  { path: '/executor', label: '执行', icon: Play },
   { path: '/logs', label: '日志', icon: Terminal },
-  { path: '/flow-tester', label: 'Flow Tester', icon: FileJson },
   { path: '/settings', label: '设置', icon: Settings },
 ];
 
@@ -46,7 +43,7 @@ function TitleBar() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ navItems }: { navItems: NavItem[] }) {
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
   const isMac = window.mimic?.platform === 'darwin';
 
@@ -109,8 +106,9 @@ function Sidebar() {
 }
 
 function AppContent() {
-  const { sidebarCollapsed, isLoading, init } = useAppStore();
+  const { isLoading, init } = useAppStore();
   const location = useLocation();
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     init();
@@ -126,23 +124,26 @@ function AppContent() {
 
   const isFullPage = location.pathname === '/workflows/editor';
 
+  const navItemsWithDev = [...navItems];
+  if (devMode) {
+    navItemsWithDev.splice(navItemsWithDev.length - 1, 0, { path: '/flow-tester', label: 'Flow Tester', icon: FileJson });
+  }
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-slate-50/80 via-white to-violet-50/40">
       <TitleBar />
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar />
+        <Sidebar navItems={navItemsWithDev} />
         <main
           className={isFullPage ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto p-8'}
         >
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/recorder" element={<Recorder />} />
             <Route path="/workflows" element={<WorkflowList />} />
             <Route path="/workflows/editor" element={<WorkflowEditor />} />
-            <Route path="/executor" element={<Executor />} />
             <Route path="/logs" element={<Logs />} />
-            <Route path="/flow-tester" element={<FlowTester />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            {devMode && <Route path="/flow-tester" element={<FlowTester />} />}
+            <Route path="/settings" element={<SettingsPage onDevModeToggle={() => setDevMode((v) => !v)} devMode={devMode} />} />
           </Routes>
         </main>
       </div>
