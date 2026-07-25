@@ -1,96 +1,133 @@
-import { useEffect } from 'react';
-import { useAppStore } from '../stores/appStore';
-import { useUsageStore } from '../stores/usageStore';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Video, Workflow, Play, Sparkles, ArrowRight, RefreshCw, Coins, BarChart3, Activity, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import type { ModelUsageRecord } from '../../types';
+import {
+  Play,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Activity,
+  ArrowRight,
+  RefreshCw,
+  Layers,
+  Zap,
+  FileText,
+  Edit3,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { invoke } from '../lib/api';
+import { cn } from '../lib/utils';
+import { useWorkflowStore } from '../stores/workflowStore';
+
+interface ExecutionRecord {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  status: 'success' | 'failed' | 'stopped' | 'running';
+  startTime: number;
+  endTime: number;
+  duration: number;
+  nodeTotal: number;
+  nodeSuccess: number;
+  nodeFailed: number;
+  hasMidsceneReport: boolean;
+}
+
+interface DashboardStats {
+  totalExecutions: number;
+  successCount: number;
+  failedCount: number;
+  successRate: number;
+  workflowCount: number;
+  recentExecutions: ExecutionRecord[];
+  executionTrend: Array<{ date: string; total: number; success: number; failed: number }>;
+}
 
 const features = [
-  { title: '视频模仿', desc: '上传或录制视频，让 AI 解析并生成可执行工作流。', icon: Video, path: '/recorder', color: 'from-violet-400 to-fuchsia-400' },
-  { title: '事件监听', desc: '录制鼠标键盘操作，生成可编排的自动化流程。', icon: Workflow, path: '/recorder', color: 'from-sky-400 to-cyan-400' },
-  { title: '你说我做', desc: '用自然语言指挥 AI 一步步完成操作。', icon: Sparkles, path: '/executor', color: 'from-amber-400 to-orange-400' },
+  { title: '工作流编排', desc: '可视化编辑器，拖拽式构建自动化流程。', icon: Layers, path: '/workflows', color: 'from-violet-400 to-fuchsia-400' },
+  { title: '执行日志', desc: '查看历史执行记录、详细日志和 AI 报告。', icon: FileText, path: '/logs', color: 'from-sky-400 to-cyan-400' },
+  { title: '设置中心', desc: '配置模型、外观、存储路径等系统设置。', icon: Zap, path: '/settings', color: 'from-amber-400 to-orange-400' },
 ];
 
 function formatNumber(n: number) {
   return n.toLocaleString('zh-CN');
 }
 
-function formatCurrency(n: number, currency: 'CNY' | 'USD') {
-  const symbol = currency === 'CNY' ? '¥' : '$';
-  return `${symbol}${n.toFixed(4)}`;
+function formatDuration(ms: number) {
+  if (ms < 1000) return `${ms}ms`;
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)}秒`;
+  const min = Math.floor(sec / 60);
+  const s = (sec % 60).toFixed(0);
+  return `${min}分${s}秒`;
 }
 
 function formatTime(ts: number) {
-  return new Date(ts).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(ts).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-function CostLineChart({ records }: { records: ModelUsageRecord[] }) {
-  if (records.length < 2) {
-    return (
-      <div className="h-32 flex items-center justify-center text-sm text-muted-foreground bg-white/40 rounded-xl">
-        数据不足，无法生成趋势图
-      </div>
-    );
+function getStatusIcon(status: ExecutionRecord['status']) {
+  switch (status) {
+    case 'success':
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+    case 'failed':
+      return <XCircle className="w-4 h-4 text-rose-500" />;
+    case 'stopped':
+      return <Clock className="w-4 h-4 text-amber-500" />;
+    case 'running':
+      return <Play className="w-4 h-4 text-sky-500 animate-pulse" />;
   }
-
-  const data = [...records].reverse().slice(-20);
-  const max = Math.max(...data.map((d) => d.cost), 0.001);
-  const width = 100;
-  const height = 40;
-  const points = data
-    .map((d, i) => {
-      const x = (i / (data.length - 1)) * width;
-      const y = height - (d.cost / max) * height;
-      return `${x},${y}`;
-    })
-    .join(' ');
-
-  return (
-    <div className="w-full h-32 bg-white/40 rounded-xl p-4">
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="w-full h-full overflow-visible">
-        <defs>
-          <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgba(139, 92, 246, 0.25)" />
-            <stop offset="100%" stopColor="rgba(139, 92, 246, 0)" />
-          </linearGradient>
-        </defs>
-        <polyline
-          fill="none"
-          stroke="rgb(139, 92, 246)"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={points}
-        />
-        <polygon fill="url(#lineGradient)" points={`0,${height} ${points} ${width},${height}`} />
-      </svg>
-    </div>
-  );
 }
 
 export default function Dashboard() {
-  const { platform, modelProvider } = useAppStore();
-  const { stats, load, refresh } = useUsageStore();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { workflows, exportWorkflow } = useWorkflowStore();
+
+  const loadStats = async () => {
+    setLoading(true);
+    const res = await invoke<any>('execution:stats');
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+    setLoading(false);
+  };
+
+  const handleRunWorkflow = async (workflowId: string, _workflowName: string) => {
+    try {
+      const workflow = workflows.find((w) => w.id === workflowId);
+      if (!workflow) {
+        alert('工作流不存在');
+        return;
+      }
+      const flowSchema = exportWorkflow(workflowId);
+      const runRes = await window.mimic?.invoke('flow-v2:run', flowSchema, { workflowId });
+      if ((runRes as any)?.success) {
+        setTimeout(loadStats, 500);
+      } else {
+        alert('启动失败: ' + ((runRes as any)?.error || '未知错误'));
+      }
+    } catch (e) {
+      alert('启动失败: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  };
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadStats();
+  }, []);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <section className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight">仪表盘</h1>
-        <p className="text-muted-foreground">
-          当前平台：<Badge variant="secondary">{platform}</Badge>
-          {modelProvider?.apiKey && modelProvider?.multimodalModel?.model && (
-            <span className="ml-3">
-              已配置多模态模型：<Badge className="bg-violet-100 text-violet-700 hover:bg-violet-100">{modelProvider.multimodalModel.model}</Badge>
-            </span>
-          )}
-        </p>
+        <p className="text-muted-foreground">总览执行统计和最近工作流动态</p>
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -115,85 +152,126 @@ export default function Dashboard() {
         ))}
       </div>
 
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
+          <CardContent className="p-4 space-y-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Activity className="w-3 h-3" /> 总执行次数
+            </p>
+            <p className="text-2xl font-semibold">{formatNumber(stats?.totalExecutions ?? 0)}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
+          <CardContent className="p-4 space-y-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3 text-emerald-500" /> 成功率
+            </p>
+            <p className="text-2xl font-semibold text-emerald-600">
+              {stats && stats.totalExecutions > 0 ? `${Math.round(stats.successRate * 100)}%` : '—'}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
+          <CardContent className="p-4 space-y-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Layers className="w-3 h-3" /> 工作流数
+            </p>
+            <p className="text-2xl font-semibold">{formatNumber(stats?.workflowCount ?? 0)}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
+          <CardContent className="p-4 space-y-1">
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <XCircle className="w-3 h-3 text-rose-500" /> 失败次数
+            </p>
+            <p className="text-2xl font-semibold text-rose-600">{formatNumber(stats?.failedCount ?? 0)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-violet-500" />
-              模型使用统计
+              <Play className="w-5 h-5 text-violet-500" />
+              最近执行
             </CardTitle>
-            <CardDescription>基于原始响应 usage 字段粗略估算，仅供参考。</CardDescription>
+            <CardDescription>查看最近 10 条执行记录</CardDescription>
           </div>
-          <Button variant="ghost" size="icon" onClick={refresh}>
-            <RefreshCw className="w-4 h-4" />
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/logs">
+              查看全部
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Link>
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="rounded-xl bg-white/50 p-4 space-y-1">
-              <p className="text-xs text-muted-foreground flex items-center gap-1"><Activity className="w-3 h-3" /> 总请求</p>
-              <p className="text-2xl font-semibold">{formatNumber(stats?.totalRequests ?? 0)}</p>
-            </div>
-            <div className="rounded-xl bg-white/50 p-4 space-y-1">
-              <p className="text-xs text-muted-foreground flex items-center gap-1"><Coins className="w-3 h-3" /> 总花费</p>
-              <p className="text-2xl font-semibold">{formatCurrency(stats?.totalCost ?? 0, stats?.primaryCurrency ?? 'CNY')}</p>
-            </div>
-            <div className="rounded-xl bg-white/50 p-4 space-y-1">
-              <p className="text-xs text-muted-foreground">总 Tokens</p>
-              <p className="text-2xl font-semibold">{formatNumber(stats?.totalTokens ?? 0)}</p>
-            </div>
-            <div className="rounded-xl bg-white/50 p-4 space-y-1">
-              <p className="text-xs text-muted-foreground">已统计请求</p>
-              <p className="text-2xl font-semibold">{formatNumber(stats?.usageKnownRequests ?? 0)}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Clock className="w-4 h-4 text-sky-500" />
-                最近请求
-              </h4>
-              {stats && stats.recentRecords.length > 0 ? (
-                <div className="space-y-2 max-h-[220px] overflow-auto pr-1">
-                  {stats.recentRecords.map((r) => (
-                    <div key={r.id} className="flex items-center justify-between rounded-xl bg-white/50 px-3 py-2 text-sm">
-                      <div className="space-y-0.5">
-                        <p className="font-medium">{r.model || '未知模型'}</p>
-                        <p className="text-xs text-muted-foreground">{formatTime(r.timestamp)} · {r.feature}</p>
-                      </div>
-                      <div className="text-right space-y-0.5">
-                        <p className="font-medium">{formatCurrency(r.cost, r.currency)}</p>
-                        <p className="text-xs text-muted-foreground">{formatNumber(r.usage.totalTokens)} tokens</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">暂无使用记录。</p>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">单次请求花费趋势</h4>
-              <CostLineChart records={stats?.recentRecords ?? []} />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-0 shadow-soft bg-white/70 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Play className="w-5 h-5 text-violet-500" />
-            最近工作流
-          </CardTitle>
-          <CardDescription>暂无工作流，去录制或解析一个吧。</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button asChild>
-            <Link to="/workflows">查看全部工作流</Link>
-          </Button>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">加载中...</div>
+          ) : !stats?.recentExecutions || stats.recentExecutions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              暂无执行记录，去创建工作流试试吧
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stats.recentExecutions.map((record) => (
+                <div
+                  key={record.id}
+                  className="w-full flex items-center justify-between rounded-xl bg-white/50 px-4 py-3 text-sm hover:bg-white/80 transition-all hover:shadow-soft group"
+                >
+                  <button
+                    onClick={() => navigate(`/logs?id=${record.id}`)}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                  >
+                    {getStatusIcon(record.status)}
+                    <div className="text-left min-w-0">
+                      <p className="font-medium truncate">{record.workflowName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatTime(record.startTime)} · {formatDuration(record.duration)}
+                      </p>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'text-[11px]',
+                        record.status === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                        record.status === 'failed' && 'border-rose-200 bg-rose-50 text-rose-700',
+                        record.status === 'stopped' && 'border-amber-200 bg-amber-50 text-amber-700'
+                      )}
+                    >
+                      {record.status === 'success' ? '成功' : record.status === 'failed' ? '失败' : '已停止'}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRunWorkflow(record.workflowId, record.workflowName);
+                      }}
+                      title="运行"
+                    >
+                      <Play className="w-3.5 h-3.5 text-emerald-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/workflows/editor?id=${record.workflowId}`);
+                      }}
+                      title="编辑"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-violet-600" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

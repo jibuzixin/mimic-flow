@@ -1,129 +1,222 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Switch } from '../components/ui/switch';
-import { Label } from '../components/ui/label';
-
+import {
+  List,
+  FileText,
+  Clock,
+  Trash2,
+  ExternalLink,
+  ChevronRight,
+  Search,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  StopCircle,
+  PlayCircle,
+} from 'lucide-react';
 import { invoke } from '../lib/api';
 import { cn } from '../lib/utils';
-import { Terminal, RotateCcw, FileText, Clock, Search, Download, Trash2, AlertCircle } from 'lucide-react';
+
+interface ExecutionRecord {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  status: 'success' | 'failed' | 'stopped' | 'running';
+  startTime: number;
+  endTime: number;
+  duration: number;
+  nodeTotal: number;
+  nodeSuccess: number;
+  nodeFailed: number;
+  hasMidsceneReport: boolean;
+}
 
 interface LogEntry {
-  timestamp: string;
-  level: 'debug' | 'info' | 'warn' | 'error';
+  timestamp: number;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  source: 'scheduler' | 'engine' | 'node' | 'variable';
   message: string;
-  meta?: Record<string, unknown>;
+  nodeId?: string;
+  nodeName?: string;
+  data?: Record<string, unknown>;
 }
 
-interface LogFile {
-  name: string;
-  path: string;
-  size: number;
-  mtime: number;
+interface ExecutionDetail extends ExecutionRecord {
+  logs: LogEntry[];
+  midsceneReportPath?: string;
+  midsceneReportUrl?: string;
 }
 
-interface ReadResult {
-  entries: LogEntry[];
-  total: number;
+function formatDuration(ms: number) {
+  if (ms < 1000) return `${ms}ms`;
+  const sec = ms / 1000;
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const min = Math.floor(sec / 60);
+  const s = (sec % 60).toFixed(0);
+  return `${min}m ${s}s`;
 }
 
-interface IpcResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: { code: string; message: string };
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
-const PAGE_SIZE = 300;
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString('zh-CN', { hour12: false });
-  } catch {
-    return iso;
+function getStatusIcon(status: ExecutionRecord['status']) {
+  switch (status) {
+    case 'success':
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+    case 'failed':
+      return <XCircle className="w-4 h-4 text-rose-500" />;
+    case 'stopped':
+      return <StopCircle className="w-4 h-4 text-amber-500" />;
+    case 'running':
+      return <PlayCircle className="w-4 h-4 text-sky-500 animate-pulse" />;
   }
 }
 
+function getStatusLabel(status: ExecutionRecord['status']) {
+  switch (status) {
+    case 'success':
+      return '成功';
+    case 'failed':
+      return '失败';
+    case 'stopped':
+      return '已停止';
+    case 'running':
+      return '运行中';
+  }
+}
+
+function groupByDate(items: ExecutionRecord[]) {
+  const groups: Record<string, ExecutionRecord[]> = {};
+  for (const item of items) {
+    const date = new Date(item.startTime).toLocaleDateString('zh-CN');
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(item);
+  }
+  return Object.entries(groups).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime());
+}
+
 export default function Logs() {
-  const [files, setFiles] = useState<LogFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [result, setResult] = useState<ReadResult>({ entries: [], total: 0 });
-  const [offset, setOffset] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [records, setRecords] = useState<ExecutionRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('id'));
+  const [detail, setDetail] = useState<ExecutionDetail | null>(null);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [levelFilter, setLevelFilter] = useState<'all' | LogEntry['level']>('all');
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  const loadFiles = async () => {
-    const res = await invoke<IpcResponse<LogFile[]>>('logs:list-files');
-    if (res.success && res.data) {
-      setFiles(res.data);
-      if (!selectedFile && res.data.length > 0) {
-        setSelectedFile(res.data[0].path);
-      }
-    }
-  };
-
-  const loadLogs = async (targetOffset = 0) => {
-    const file = selectedFile || files[0]?.path;
-    if (!file) return;
+  const loadRecords = async () => {
     setLoading(true);
-    const res = await invoke<IpcResponse<ReadResult>>('logs:read-file', file, PAGE_SIZE, targetOffset);
+    const res = await invoke<any>('execution:list', { page: 1, pageSize: 50 });
     if (res.success && res.data) {
-      setResult(res.data);
-      setOffset(targetOffset);
+      setRecords(res.data.items || []);
+      if (!selectedId && res.data.items?.length > 0) {
+        setSelectedId(res.data.items[0].id);
+      }
     }
     setLoading(false);
   };
 
+  const loadDetail = async (id: string) => {
+    setDetailLoading(true);
+    const res = await invoke<any>('execution:get', id);
+    if (res.success && res.data) {
+      setDetail(res.data);
+    }
+    setDetailLoading(false);
+  };
+
   useEffect(() => {
-    loadFiles();
+    loadRecords();
   }, []);
 
   useEffect(() => {
-    loadLogs(0);
-  }, [selectedFile]);
+    if (selectedId) {
+      setSearchParams({ id: selectedId }, { replace: true });
+      loadDetail(selectedId);
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [selectedId]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const timer = setInterval(() => {
-      loadFiles();
-      loadLogs(0);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [autoRefresh, selectedFile]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [result.entries]);
-
-  const filteredEntries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return result.entries.filter((entry) => {
-      if (levelFilter !== 'all' && entry.level !== levelFilter) return false;
-      if (!q) return true;
-      const text = `${entry.message} ${JSON.stringify(entry.meta ?? {})}`.toLowerCase();
-      return text.includes(q);
+  const filteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        return r.workflowName.toLowerCase().includes(q);
+      }
+      return true;
     });
-  }, [result.entries, search, levelFilter]);
+  }, [records, search, filterStatus]);
 
-  const handleExport = () => {
-    const blob = new Blob([JSON.stringify(filteredEntries, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `logs-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const groupedRecords = useMemo(() => groupByDate(filteredRecords), [filteredRecords]);
+
+  const nodeLevelLogs = useMemo(() => {
+    if (!detail?.logs) return [];
+    
+    const filtered = detail.logs.filter((log) => {
+      const msg = log.message;
+      return (
+        msg.includes('开始执行节点') ||
+        msg.includes('节点执行完成') ||
+        msg.includes('节点执行失败') ||
+        msg.includes('📤') ||
+        msg.includes('📢') ||
+        msg.includes('🔄') ||
+        msg.includes('▶️') ||
+        msg.includes('✓') ||
+        msg.includes('❌') ||
+        msg.includes('⏱️') ||
+        msg.includes('工作流')
+      );
+    });
+    
+    const seen = new Set<string>();
+    return filtered.filter((log) => {
+      const msg = log.message;
+      const nodeId = (log as any).nodeId || '';
+      
+      if (msg.includes('开始执行节点')) {
+        const key = `start-${nodeId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }
+      if (msg.includes('节点执行完成')) {
+        const key = `end-${nodeId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }
+      return true;
+    });
+  }, [detail?.logs]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这条执行记录吗？')) return;
+    await invoke<any>('execution:delete', id);
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+    if (selectedId === id) {
+      setSelectedId(null);
+      setDetail(null);
+    }
+  };
+
+  const handleOpenReport = () => {
+    if (selectedId) {
+      invoke<any>('execution:openReport', selectedId);
+    }
   };
 
   return (
@@ -131,138 +224,239 @@ export default function Logs() {
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Terminal className="w-6 h-6 text-violet-500" />
-            日志中心
+            <List className="w-6 h-6 text-violet-500" />
+            执行日志
           </h1>
-          <p className="text-sm text-muted-foreground">查看、搜索和导出应用运行日志</p>
+          <p className="text-sm text-muted-foreground">查看工作流的执行记录和详细日志</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 mr-2">
-            <Switch id="auto-refresh" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            <Label htmlFor="auto-refresh" className="text-sm text-muted-foreground">自动刷新</Label>
+          <div className="relative">
+            <Search className="w-4 h-4 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="搜索工作流名称..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-8 pr-3 text-sm border rounded-lg w-48 bg-white/60 focus:outline-none focus:ring-2 focus:ring-violet-200"
+            />
           </div>
-          <Button variant="outline" size="sm" onClick={() => { loadFiles(); loadLogs(0); }}>
-            <RotateCcw className="w-4 h-4 mr-1.5" />
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="h-9 px-3 text-sm border rounded-lg bg-white/60 focus:outline-none focus:ring-2 focus:ring-violet-200"
+          >
+            <option value="all">全部状态</option>
+            <option value="success">成功</option>
+            <option value="failed">失败</option>
+            <option value="stopped">已停止</option>
+          </select>
+          <Button variant="outline" size="sm" onClick={loadRecords}>
+            <RefreshCw className="w-4 h-4 mr-1.5" />
             刷新
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-1.5" />
-            导出
           </Button>
         </div>
       </div>
 
       <div className="flex-1 flex gap-4 min-h-0">
-        <Card className="w-64 shrink-0 border-0 shadow-soft bg-white/70 backdrop-blur-sm flex flex-col">
+        {/* 左侧：执行记录列表 */}
+        <Card className="w-72 shrink-0 border-0 shadow-soft bg-white/70 backdrop-blur-sm flex flex-col">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <FileText className="w-4 h-4 text-violet-500" />
-              日志文件
+              执行记录
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto space-y-2">
-            {files.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-8">暂无日志文件</div>
+          <CardContent className="flex-1 overflow-y-auto space-y-4">
+            {loading ? (
+              <div className="text-sm text-muted-foreground text-center py-8">加载中...</div>
+            ) : filteredRecords.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-8">暂无执行记录</div>
             ) : (
-              files.map((file) => (
-                <button
-                  key={file.path}
-                  onClick={() => setSelectedFile(file.path)}
-                  className={cn(
-                    'w-full text-left rounded-xl border p-3 transition-all hover:shadow-soft',
-                    selectedFile === file.path
-                      ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200'
-                      : 'bg-white/50 border-transparent hover:bg-white/80'
-                  )}
-                >
-                  <p className="text-xs font-medium truncate">{file.name}</p>
-                  <div className="flex items-center justify-between mt-1 text-[11px] text-muted-foreground">
-                    <span>{formatBytes(file.size)}</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(new Date(file.mtime).toISOString())}</span>
+              groupedRecords.map(([date, items]) => (
+                <div key={date}>
+                  <div className="text-xs font-medium text-muted-foreground mb-2 px-1">{date}</div>
+                  <div className="space-y-2">
+                    {items.map((record) => (
+                      <button
+                        key={record.id}
+                        onClick={() => setSelectedId(record.id)}
+                        className={cn(
+                          'w-full text-left rounded-xl border p-3 transition-all hover:shadow-soft group',
+                          selectedId === record.id
+                            ? 'bg-violet-50 border-violet-200 ring-1 ring-violet-200'
+                            : 'bg-white/50 border-transparent hover:bg-white/80'
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {getStatusIcon(record.status)}
+                            <span className="text-sm font-medium truncate">{record.workflowName}</span>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(record.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-rose-100 rounded"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDuration(record.duration)}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[10px] h-5 px-1.5',
+                              record.status === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                              record.status === 'failed' && 'border-rose-200 bg-rose-50 text-rose-700',
+                              record.status === 'stopped' && 'border-amber-200 bg-amber-50 text-amber-700'
+                            )}
+                          >
+                            {getStatusLabel(record.status)}
+                          </Badge>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground/70 mt-1">
+                          {new Date(record.startTime).toLocaleTimeString('zh-CN', { hour12: false })}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </button>
+                </div>
               ))
             )}
           </CardContent>
         </Card>
 
+        {/* 右侧：详情 */}
         <Card className="flex-1 border-0 shadow-soft bg-white/70 backdrop-blur-sm flex flex-col min-w-0">
-          <CardHeader className="pb-3 border-b border-border/30">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2 flex-1">
-                <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-                <Input
-                  placeholder="搜索日志内容、消息或元数据..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="bg-white/60 h-9 text-sm"
-                />
-              </div>
-              <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as typeof levelFilter)}>
-                <SelectTrigger className="w-32 bg-white/60 h-9 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部级别</SelectItem>
-                  <SelectItem value="debug">Debug</SelectItem>
-                  <SelectItem value="info">Info</SelectItem>
-                  <SelectItem value="warn">Warn</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <CardDescription className="text-xs pt-2">
-              共 {result.total} 条日志，当前显示 {filteredEntries.length} 条
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-hidden p-0">
-            <div className="h-full overflow-y-auto p-4">
-              {filteredEntries.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-2">
-                  <AlertCircle className="w-8 h-8 opacity-40" />
-                  <p className="text-sm">暂无匹配日志</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredEntries.map((entry, idx) => (
-                    <div
-                      key={`${entry.timestamp}-${idx}`}
-                      className={cn(
-                        'rounded-xl border p-3 text-xs font-mono',
-                        entry.level === 'error' && 'bg-rose-50 border-rose-100 text-rose-800',
-                        entry.level === 'warn' && 'bg-amber-50 border-amber-100 text-amber-800',
-                        entry.level === 'info' && 'bg-slate-50 border-slate-100 text-slate-700',
-                        entry.level === 'debug' && 'bg-violet-50/50 border-violet-100 text-violet-700'
-                      )}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[10px] h-5 px-1.5',
-                            entry.level === 'error' && 'border-rose-200 bg-rose-100 text-rose-700',
-                            entry.level === 'warn' && 'border-amber-200 bg-amber-100 text-amber-700',
-                            entry.level === 'info' && 'border-slate-200 bg-slate-100 text-slate-700',
-                            entry.level === 'debug' && 'border-violet-200 bg-violet-100 text-violet-700'
-                          )}
-                        >
-                          {entry.level.toUpperCase()}
-                        </Badge>
-                        <span className="opacity-60">{new Date(entry.timestamp).toLocaleString('zh-CN', { hour12: false })}</span>
-                      </div>
-                      <div className="whitespace-pre-wrap break-words">{entry.message}</div>
-                      {entry.meta && Object.keys(entry.meta).length > 0 && (
-                        <pre className="mt-2 p-2 rounded-lg bg-white/60 overflow-x-auto text-[11px]">
-                          {JSON.stringify(entry.meta, null, 2)}
-                        </pre>
-                      )}
+          {detail ? (
+            <>
+              <CardHeader className="pb-3 border-b border-border/30">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(detail.status)}
+                      <h2 className="text-lg font-semibold">{detail.workflowName}</h2>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          detail.status === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                          detail.status === 'failed' && 'border-rose-200 bg-rose-50 text-rose-700',
+                          detail.status === 'stopped' && 'border-amber-200 bg-amber-50 text-amber-700'
+                        )}
+                      >
+                        {getStatusLabel(detail.status)}
+                      </Badge>
                     </div>
-                  ))}
-                  <div ref={bottomRef} />
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span>开始：{formatTime(detail.startTime)}</span>
+                      <span>耗时：{formatDuration(detail.duration)}</span>
+                      <span>
+                        节点：{detail.nodeSuccess}/{detail.nodeTotal}
+                        {detail.nodeFailed > 0 && <span className="text-rose-500"> ({detail.nodeFailed}失败)</span>}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {detail.hasMidsceneReport && (
+                      <Button variant="outline" size="sm" onClick={handleOpenReport}>
+                        <ExternalLink className="w-4 h-4 mr-1.5" />
+                        查看报告
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              )}
+              </CardHeader>
+
+              <CardContent className="flex-1 overflow-hidden p-0">
+                <div className="h-full overflow-y-auto p-4">
+                    {nodeLevelLogs.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                        暂无日志
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {nodeLevelLogs.map((log, idx) => {
+                          const isNodeStart = log.message.includes('开始执行节点');
+                          const isNodeEnd =
+                            log.message.includes('节点执行完成') || log.message.includes('节点执行失败');
+                          const isVariable = log.message.includes('📤') || log.message.includes('📢');
+                          const isWorkflowStart = log.message.includes('▶️') || log.message.includes('工作流开始');
+                          const isWorkflowEnd = log.message.includes('🏁') || log.message.includes('工作流结束') || log.message.includes('工作流执行成功') || log.message.includes('工作流执行失败');
+                          const isSleep = log.message.includes('⏱️');
+                          
+                          const showData = log.data && Object.keys(log.data as any).length > 0 && !isNodeEnd;
+                          
+                          let displayMessage = log.message;
+                          const data = log.data as any;
+                          if (isNodeEnd && data?.duration !== undefined && data?.duration !== null) {
+                            const dur = Number(data.duration);
+                            const durStr = dur < 1000 ? `${dur}ms` : `${(dur / 1000).toFixed(1)}s`;
+                            displayMessage = log.message.replace('节点执行完成', '节点完成').replace('节点执行失败', '节点失败');
+                            displayMessage += ` (${durStr})`;
+                          }
+                          if (isNodeStart) {
+                            displayMessage = log.message.replace('开始执行节点', '▶ 开始');
+                          }
+                          if (isWorkflowStart && log.message.includes('工作流开始执行')) {
+                            displayMessage = '▶️ 工作流开始执行';
+                          }
+                          if (log.message === '工作流执行成功') {
+                            displayMessage = '✅ 工作流执行成功';
+                          }
+
+                          return (
+                            <div
+                              key={idx}
+                              className={cn(
+                                'text-sm rounded-lg border p-2.5',
+                                log.level === 'error' && 'bg-rose-50 border-rose-100 text-rose-800',
+                                log.level === 'warn' && 'bg-amber-50 border-amber-100 text-amber-800',
+                                log.level === 'info' && !isNodeStart && !isNodeEnd && !isVariable && !isWorkflowStart && !isWorkflowEnd && !isSleep && 'bg-slate-50 border-slate-100 text-slate-700',
+                                isNodeStart && 'bg-sky-50 border-sky-100 text-sky-800',
+                                isNodeEnd && log.level === 'info' && 'bg-emerald-50 border-emerald-100 text-emerald-800',
+                                isVariable && 'bg-violet-50/50 border-violet-100 text-violet-800',
+                                isWorkflowStart && 'bg-indigo-50 border-indigo-100 text-indigo-800',
+                                isWorkflowEnd && 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium',
+                                isSleep && 'bg-amber-50 border-amber-100 text-amber-800'
+                              )}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] opacity-60 font-mono">
+                                  {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false })}
+                                </span>
+                                {(log as any).nodeName && (
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                    {(log as any).nodeName}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="font-medium text-sm">{displayMessage}</div>
+                              {showData && (
+                                <pre className="mt-1.5 p-2 rounded bg-white/60 text-xs overflow-x-auto">
+                                  {JSON.stringify(log.data, null, 2)}
+                                </pre>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+              </CardContent>
+            </>
+          ) : detailLoading ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">加载中...</div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+              <ChevronRight className="w-12 h-12 opacity-20 mb-2" />
+              <p className="text-sm">选择左侧记录查看详情</p>
             </div>
-          </CardContent>
+          )}
         </Card>
       </div>
     </div>

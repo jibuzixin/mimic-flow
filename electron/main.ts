@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol } from 'electron';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, relative } from 'path';
 import { getStore } from './store.js';
 import { getLogger } from './logger.js';
 import { aiChat, getUsageStatistics, resetUsageStatistics } from './ai/index.js';
@@ -8,10 +8,12 @@ import { parseVideo } from './video/index.js';
 import { registerRecorderIpc } from './recorder.js';
 import { FlowRuntimeService } from './runtime/FlowRuntimeService.js';
 import { MidsceneAdapter } from './midscene/adapter.js';
-import { runFlowV2, stopFlowV2, getFlowStatusV2 } from './runtime-v2/FlowRuntimeService.js';
+import { runFlowV2, stopFlowV2, getFlowStatusV2, getV2Scheduler } from './runtime-v2/FlowRuntimeService.js';
+import { getExecutionRecordService } from './execution/ExecutionRecordService.js';
 import type { FlowSchema, FlowFileWrapper } from '../types/flow.js';
 import type { FlowSchema as FlowSchemaV2, RuntimeEvent as RuntimeEventV2 } from '../types/flow-v2.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
+import path from 'path';
 
 type StoreKey =
   | 'modelProvider'
@@ -87,8 +89,64 @@ function createMainWindow() {
   return mainWindow;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   getLogger().info('App ready', { platform: process.platform, version: app.getVersion() });
+  try {
+    const customLogPath = getStore().get('logSavePath') as string | undefined;
+    await getExecutionRecordService().init(customLogPath || undefined);
+    getLogger().info('ExecutionRecordService initialized', { baseDir: getExecutionRecordService().getBaseDir() });
+  } catch (e) {
+    getLogger().error('Failed to initialize ExecutionRecordService', { error: e instanceof Error ? e.message : String(e) });
+  }
+
+  protocol.handle('midscene-report', (request) => {
+    try {
+      const url = new URL(request.url);
+      const relativePath = decodeURIComponent(url.pathname.replace(/^\//, ''));
+      const baseDir = getExecutionRecordService().getBaseDir();
+      const resolvedPath = path.resolve(baseDir, relativePath);
+      
+      if (!resolvedPath.startsWith(baseDir)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      
+      if (!existsSync(resolvedPath)) {
+        return new Response('Not Found', { status: 404 });
+      }
+      
+      const stat = statSync(resolvedPath);
+      if (stat.isDirectory()) {
+        return new Response('Not Found', { status: 404 });
+      }
+      
+      const ext = path.extname(resolvedPath).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.html': 'text/html; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.ttf': 'font/ttf',
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      
+      const data = readFileSync(resolvedPath);
+      return new Response(data, {
+        status: 200,
+        headers: { 'Content-Type': contentType },
+      });
+    } catch (e) {
+      console.error('[midscene-report] protocol error:', e);
+      return new Response('Internal Server Error', { status: 500 });
+    }
+  });
+
   registerRecorderIpc();
   createMainWindow();
 
@@ -228,6 +286,11 @@ ipcMain.handle('workflow:list', async () => {
   return getStore().get('workflows') || [];
 });
 
+ipcMain.handle('workflow:get', async (_event, id: string) => {
+  const workflows = (getStore().get('workflows') || []) as any[];
+  return workflows.find((w) => w.id === id) || null;
+});
+
 ipcMain.handle('workflow:save', async (_event, workflow: unknown) => {
   const workflows = (getStore().get('workflows') || []) as unknown[];
   const index = workflows.findIndex((w: any) => w.id === (workflow as any).id);
@@ -265,7 +328,7 @@ ipcMain.handle('flow:stop', async (_event, runInstanceId: string) => {
 });
 
 // ========== v2 工作流运行时 IPC ==========
-ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2) => {
+ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { workflowId?: string }) => {
   console.log('[flow-v2:run] Received flow run request:', flow?.flowMeta?.name);
   const webContents = event.sender;
   const win = BrowserWindow.fromWebContents(webContents);
@@ -277,6 +340,7 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2) => {
   }
 
   let flowName = flow.flowMeta?.name || '工作流';
+  let wfId = options?.workflowId || flowName;
 
   runFlowV2(flow, (evt: RuntimeEventV2) => {
     try {
@@ -289,6 +353,33 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2) => {
       const status = (evt as any).status;
       const duration = (evt as any).duration || 0;
       const durationSec = (duration / 1000).toFixed(1);
+      const logs = (evt as any).logs || [];
+      const nodeStats = (evt as any).nodeStats || { total: 0, success: 0, failed: 0 };
+      const reportPath = (evt as any).reportPath;
+      
+      try {
+        getExecutionRecordService().saveExecution(
+          {
+            workflowId: wfId,
+            workflowName: flowName,
+            status,
+            startTime: Date.now() - duration,
+            endTime: Date.now(),
+            duration,
+            nodeTotal: nodeStats.total,
+            nodeSuccess: nodeStats.success,
+            nodeFailed: nodeStats.failed,
+            tokenInput: 0,
+            tokenOutput: 0,
+            tokenTotal: 0,
+            cost: 0,
+          },
+          logs,
+          reportPath || undefined,
+        );
+      } catch (e) {
+        console.error('[flow-v2:run] Failed to save execution record:', e);
+      }
       
       let title = '';
       let body = '';
@@ -338,6 +429,100 @@ ipcMain.handle('flow-v2:stop', async () => {
 
 ipcMain.handle('flow-v2:status', async () => {
   return getFlowStatusV2();
+});
+
+// ========== 执行记录 IPC ==========
+ipcMain.handle('execution:list', async (_event, query?: any) => {
+  try {
+    const result = getExecutionRecordService().listExecutions(query || {});
+    return { success: true, data: result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:get', async (_event, id: string) => {
+  try {
+    const detail = getExecutionRecordService().getExecution(id);
+    return { success: true, data: detail };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:delete', async (_event, id: string) => {
+  try {
+    const result = getExecutionRecordService().deleteExecution(id);
+    return { success: true, data: result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:clear', async (_event, days: number) => {
+  try {
+    const count = getExecutionRecordService().clearOldExecutions(days);
+    return { success: true, data: { count } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:stats', async () => {
+  try {
+    const stats = getExecutionRecordService().getDashboardStats();
+    return { success: true, data: stats };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:reportPath', async (_event, id: string) => {
+  try {
+    const path = getExecutionRecordService().getMidsceneReportPath(id);
+    return { success: true, data: path };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:openReport', async (_event, id: string) => {
+  try {
+    const path = getExecutionRecordService().getMidsceneReportPath(id);
+    if (path) {
+      shell.openExternal(`file://${path}`);
+    }
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:getBaseDir', async () => {
+  try {
+    const dir = getExecutionRecordService().getBaseDir();
+    return { success: true, data: dir };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+});
+
+ipcMain.handle('execution:setBaseDir', async (_event, dir: string) => {
+  try {
+    await getExecutionRecordService().setBaseDir(dir);
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
 });
 
 // ========== 流程文件 IPC ==========

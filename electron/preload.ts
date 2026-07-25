@@ -42,7 +42,15 @@ export type IpcChannel =
   | 'flow-v2:stop'
   | 'flow-v2:status'
   | 'shell:open-path'
-  | 'app:get-default-paths';
+  | 'app:get-default-paths'
+  | 'execution:list'
+  | 'execution:get'
+  | 'execution:delete'
+  | 'execution:clear'
+  | 'execution:stats'
+  | 'execution:reportPath'
+  | 'execution:openReport'
+  | 'execution:getBaseDir';
 
 const api = {
   platform: process.platform,

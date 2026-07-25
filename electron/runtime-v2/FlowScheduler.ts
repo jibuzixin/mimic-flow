@@ -332,11 +332,17 @@ export class FlowScheduler extends EventEmitter {
     } finally {
       const reportPath = this.getFinalReportPath();
       console.log('[FlowScheduler] Flow finished, status:', this.status, 'reportPath:', reportPath);
+      
+      const nodeStats = this.getNodeStats();
+      const logs = this.getLogs();
+      
       this.emit('event', {
         type: 'flow:complete',
         status: this.status as 'success' | 'failed' | 'stopped',
         duration: Date.now() - this.startTime,
         reportPath,
+        logs,
+        nodeStats,
       } as RuntimeEvent);
 
       if ((this.status as FlowStatus) === 'stopped') {
@@ -353,6 +359,24 @@ export class FlowScheduler extends EventEmitter {
     this.abortController?.abort();
     this.addLog({ level: 'warn', source: 'scheduler', message: '工作流被用户停止' });
     this.engineRegistry.disposeAll().catch(console.error);
+  }
+
+  getNodeStats(): { total: number; success: number; failed: number } {
+    let total = 0;
+    let success = 0;
+    let failed = 0;
+    for (const [, state] of this.nodeStates) {
+      if (state.status === 'success') {
+        total++;
+        success++;
+      } else if (state.status === 'failed') {
+        total++;
+        failed++;
+      } else if (state.status !== 'pending') {
+        total++;
+      }
+    }
+    return { total, success, failed };
   }
 
   private async executeNode(nodeId: string): Promise<void> {
@@ -373,12 +397,15 @@ export class FlowScheduler extends EventEmitter {
     state.status = 'running';
     state.startTime = Date.now();
 
-    this.addLog({
-      level: 'info',
-      source: 'scheduler',
-      nodeId,
-      message: `开始执行节点: ${node.nodeName || node.nodeType}`,
-    });
+    const isEngineNode = !isControlNode(node.nodeType) && !isSleepNode(node.nodeType);
+    if (!isEngineNode) {
+      this.addLog({
+        level: 'info',
+        source: 'scheduler',
+        nodeId,
+        message: `开始执行节点: ${node.nodeName || node.nodeType}`,
+      });
+    }
 
     this.emit('event', {
       type: 'node:start',

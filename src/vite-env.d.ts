@@ -42,7 +42,16 @@ type MimicIpcChannel =
   | 'flow-v2:stop'
   | 'flow-v2:status'
   | 'shell:open-path'
-  | 'app:get-default-paths';
+  | 'app:get-default-paths'
+  | 'execution:list'
+  | 'execution:get'
+  | 'execution:delete'
+  | 'execution:clear'
+  | 'execution:stats'
+  | 'execution:reportPath'
+  | 'execution:openReport'
+  | 'execution:getBaseDir'
+  | 'execution:setBaseDir';
 
 declare global {
   interface Window {

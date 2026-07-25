@@ -571,7 +571,10 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
 
       await setModels(localModels);
       await setDefaultModelIds(nextDefaultIds);
-      await setLogSavePath(localLogPath);
+      if (localLogPath !== logSavePath) {
+        await invoke('execution:setBaseDir', localLogPath);
+        await setLogSavePath(localLogPath);
+      }
       await setWorkflowSavePath(localWorkflowPath);
       await setUiSettings(localUiSettings);
       await invoke('config:set', { globalRuntimeOption: localRuntimeOption });
@@ -1285,9 +1288,58 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                 <Database className="w-5 h-5 text-rose-500" />
                 数据管理
               </CardTitle>
-              <CardDescription>重置设置或清理所有数据。</CardDescription>
+              <CardDescription>重置设置或清理数据。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+              <div className="flex items-center justify-between rounded-xl border border-border/40 p-4">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-sky-500" />
+                    <span className="text-sm font-medium">清理执行日志</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    清理指定天数之前的执行日志和报告，释放存储空间
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    className="h-9 px-3 text-sm border rounded-lg bg-white"
+                    defaultValue="30"
+                    id="clearLogDays"
+                  >
+                    <option value="7">7 天前</option>
+                    <option value="30">30 天前</option>
+                    <option value="90">90 天前</option>
+                    <option value="0">全部</option>
+                  </select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const select = document.getElementById('clearLogDays') as HTMLSelectElement;
+                      const days = Number(select.value);
+                      const msg = days === 0
+                        ? '确定要清理所有执行日志吗？此操作不可撤销。'
+                        : `确定要清理 ${days} 天前的执行日志吗？此操作不可撤销。`;
+                      if (!confirm(msg)) return;
+                      try {
+                        const res = await invoke<any>('execution:clear', days);
+                        if (res.success) {
+                          setStatus({ type: 'success', message: `已清理 ${res.data.count} 条执行记录` });
+                        } else {
+                          setStatus({ type: 'error', message: res.error || '清理失败' });
+                        }
+                      } catch (e) {
+                        setStatus({ type: 'error', message: '清理失败' });
+                      }
+                      setTimeout(() => setStatus(null), 2000);
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1.5" /> 清理
+                  </Button>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between rounded-xl border border-border/40 p-4">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
