@@ -49,12 +49,40 @@ export default function WorkflowList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [showGradientPicker, setShowGradientPicker] = useState(false);
   const [renameDialog, setRenameDialog] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRect = useRef<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (activeMenu && menuRef.current && menuTriggerRect.current) {
+      const menuEl = menuRef.current;
+      const menuHeight = menuEl.offsetHeight;
+      const triggerRect = menuTriggerRect.current;
+      const spaceBelow = window.innerHeight - triggerRect.bottom - 4;
+      
+      let newTop = triggerRect.bottom + 4;
+      if (spaceBelow < menuHeight && triggerRect.top - 4 > menuHeight) {
+        newTop = triggerRect.top - menuHeight - 4;
+      }
+      
+      setMenuPosition({
+        top: newTop,
+        right: window.innerWidth - triggerRect.right,
+      });
+      
+      requestAnimationFrame(() => {
+        setMenuVisible(true);
+      });
+    } else {
+      setMenuVisible(false);
+    }
+  }, [activeMenu]);
 
   useEffect(() => {
     loadFromStorage();
@@ -307,6 +335,7 @@ export default function WorkflowList() {
                           setMenuPosition(null);
                         } else {
                           const rect = e.currentTarget.getBoundingClientRect();
+                          menuTriggerRect.current = rect;
                           setMenuPosition({
                             top: rect.bottom + 4,
                             right: window.innerWidth - rect.right,
@@ -335,7 +364,10 @@ export default function WorkflowList() {
             }}
           />
           <div
-            className="fixed w-36 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1"
+            ref={menuRef}
+            className={`fixed w-36 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 py-1 transition-all duration-150 ease-out ${
+              menuVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'
+            }`}
             style={{
               top: `${menuPosition.top}px`,
               right: `${menuPosition.right}px`,
