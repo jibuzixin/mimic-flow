@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
 import {
   List,
   FileText,
@@ -16,6 +17,7 @@ import {
   XCircle,
   StopCircle,
   PlayCircle,
+  ChevronUp,
 } from 'lucide-react';
 import { invoke } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -114,6 +116,9 @@ export default function Logs() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [logSearch, setLogSearch] = useState('');
+  const [showLogScrollTop, setShowLogScrollTop] = useState(false);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const loadRecords = async () => {
     setLoading(true);
@@ -202,6 +207,28 @@ export default function Logs() {
       return true;
     });
   }, [detail?.logs]);
+
+  const filteredLogs = useMemo(() => {
+    if (!logSearch.trim()) return nodeLevelLogs;
+    const keyword = logSearch.toLowerCase();
+    return nodeLevelLogs.filter((log) => {
+      if (log.message.toLowerCase().includes(keyword)) return true;
+      if (log.data) {
+        try {
+          return JSON.stringify(log.data).toLowerCase().includes(keyword);
+        } catch (e) {
+          return false;
+        }
+      }
+      return false;
+    });
+  }, [nodeLevelLogs, logSearch]);
+
+  const scrollLogToTop = () => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定要删除这条执行记录吗？')) return;
@@ -362,25 +389,40 @@ export default function Logs() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <div className="relative w-48">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        value={logSearch}
+                        onChange={(e) => setLogSearch(e.target.value)}
+                        placeholder="搜索日志..."
+                        className="h-8 pl-8 pr-3 text-xs bg-white"
+                      />
+                    </div>
                     {detail.hasMidsceneReport && (
                       <Button variant="outline" size="sm" onClick={handleOpenReport}>
                         <ExternalLink className="w-4 h-4 mr-1.5" />
-                        查看报告
+                        浏览器查看报告
                       </Button>
                     )}
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent className="flex-1 overflow-hidden p-0">
-                <div className="h-full overflow-y-auto p-4">
-                    {nodeLevelLogs.length === 0 ? (
+              <CardContent className="flex-1 overflow-hidden p-0 relative">
+                <div
+                  ref={logContainerRef}
+                  className="h-full overflow-y-auto p-4"
+                  onScroll={(e) => {
+                    setShowLogScrollTop(e.currentTarget.scrollTop > 300);
+                  }}
+                >
+                    {filteredLogs.length === 0 ? (
                       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                        暂无日志
+                        {logSearch ? '没有匹配的日志' : '暂无日志'}
                       </div>
                     ) : (
                       <div className="space-y-1.5">
-                        {nodeLevelLogs.map((log, idx) => {
+                        {filteredLogs.map((log, idx) => {
                           const isNodeStart = log.message.includes('开始执行节点');
                           const isNodeEnd =
                             log.message.includes('节点执行完成') || log.message.includes('节点执行失败');
@@ -447,6 +489,16 @@ export default function Logs() {
                       </div>
                     )}
                   </div>
+
+                  {showLogScrollTop && (
+                    <button
+                      onClick={scrollLogToTop}
+                      className="absolute bottom-4 right-4 z-10 w-9 h-9 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-all hover:shadow-xl active:scale-95"
+                      title="回到顶部"
+                    >
+                      <ChevronUp className="w-4 h-4 text-gray-600" />
+                    </button>
+                  )}
               </CardContent>
             </>
           ) : detailLoading ? (

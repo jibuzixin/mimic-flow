@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -56,6 +56,104 @@ const TAG_COLORS: Record<ModelTag, string> = {
   text: 'bg-sky-100 text-sky-700 border-sky-200',
   asr: 'bg-amber-100 text-amber-700 border-amber-200',
   tts: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+};
+
+interface ProviderPreset {
+  value: string;
+  label: string;
+  baseUrl: string;
+  modelFamilies: { value: string; label: string; defaultModelName?: string }[];
+  defaultModelFamily: string;
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    value: 'doubao',
+    label: '火山引擎（豆包）',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    modelFamilies: [
+      { value: 'doubao-vision', label: 'Doubao Seed 1.6 Vision（推荐）', defaultModelName: 'doubao-seed-1.6-vision' },
+      { value: 'vlm-ui-tars-doubao-1.5', label: 'UI-TARS Doubao 1.5', defaultModelName: 'doubao-1.5-ui-tars' },
+    ],
+    defaultModelFamily: 'doubao-vision',
+  },
+  {
+    value: 'qwen',
+    label: '阿里云（通义千问）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    modelFamilies: [
+      { value: 'qwen3-vl', label: 'Qwen3-VL（推荐）', defaultModelName: 'qwen3-vl-plus' },
+      { value: 'qwen2.5-vl', label: 'Qwen2.5-VL', defaultModelName: 'qwen-vl-max-latest' },
+    ],
+    defaultModelFamily: 'qwen3-vl',
+  },
+  {
+    value: 'zhipu',
+    label: '智谱 AI',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    modelFamilies: [
+      { value: 'glm-v', label: 'GLM-V（推荐）', defaultModelName: 'glm-4.6v' },
+      { value: 'auto-glm', label: 'AutoGLM（中文）', defaultModelName: 'autoglm-phone' },
+      { value: 'auto-glm-multilingual', label: 'AutoGLM（多语言）', defaultModelName: 'autoglm-phone' },
+    ],
+    defaultModelFamily: 'glm-v',
+  },
+  {
+    value: 'google',
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    modelFamilies: [
+      { value: 'gemini', label: 'Gemini 3 系列', defaultModelName: 'gemini-3.0-pro' },
+    ],
+    defaultModelFamily: 'gemini',
+  },
+  {
+    value: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    modelFamilies: [
+      { value: 'gpt-5', label: 'GPT-5 系列（Planning/Insight）' },
+    ],
+    defaultModelFamily: 'gpt-5',
+  },
+  {
+    value: 'moonshot',
+    label: '月之暗面（Kimi）',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    modelFamilies: [
+      { value: 'kimi', label: 'Kimi 系列' },
+    ],
+    defaultModelFamily: 'kimi',
+  },
+  {
+    value: 'xiaomi',
+    label: '小米（MiMo）',
+    baseUrl: 'https://api.xiaomi.com/v1',
+    modelFamilies: [
+      { value: 'xiaomi-mimo', label: 'MiMo 系列' },
+    ],
+    defaultModelFamily: 'xiaomi-mimo',
+  },
+  {
+    value: 'anthropic',
+    label: 'Anthropic（Claude）',
+    baseUrl: 'https://api.anthropic.com/v1',
+    modelFamilies: [
+      { value: 'claude', label: 'Claude 系列' },
+    ],
+    defaultModelFamily: 'claude',
+  },
+  {
+    value: 'custom',
+    label: '自定义',
+    baseUrl: '',
+    modelFamilies: [],
+    defaultModelFamily: '',
+  },
+];
+
+const getProviderPreset = (provider: string) => {
+  return PROVIDER_PRESETS.find((p) => p.value === provider);
 };
 
 function PricingEditor({
@@ -177,6 +275,26 @@ function ModelCard({
   const primaryMeta = MODEL_TAG_META[primaryTag];
   const PrimaryIcon = TAG_ICONS[primaryTag];
 
+  const providerPreset = getProviderPreset(model.provider);
+  const modelFamilies = providerPreset?.modelFamilies || [];
+  const isPresetFamily = modelFamilies.some((f) => f.value === model.modelFamily);
+
+  const handleProviderChange = (provider: string) => {
+    const preset = getProviderPreset(provider);
+    if (preset) {
+      const newModel: ModelProfile = { ...model, provider };
+      newModel.baseUrl = preset.baseUrl;
+      newModel.modelFamily = preset.defaultModelFamily;
+      const defaultFamily = preset.modelFamilies.find((f) => f.value === preset.defaultModelFamily);
+      if (defaultFamily?.defaultModelName && !model.modelId) {
+        newModel.modelId = defaultFamily.defaultModelName;
+      }
+      onChange(newModel);
+    } else {
+      onChange({ ...model, provider });
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-border/40 bg-white overflow-hidden">
       <div
@@ -255,27 +373,80 @@ function ModelCard({
                 <Label className="text-xs text-muted-foreground">Provider</Label>
                 <Select
                   value={model.provider}
-                  onValueChange={(v) => onChange({ ...model, provider: v })}
+                  onValueChange={handleProviderChange}
                 >
                   <SelectTrigger className="bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="doubao">豆包</SelectItem>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="custom">自定义</SelectItem>
+                    {PROVIDER_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">模型系列</Label>
-                <Input
-                  value={model.modelFamily || ''}
-                  onChange={(e) => onChange({ ...model, modelFamily: e.target.value })}
-                  placeholder="例如：doubao-seed"
-                  className="bg-white"
-                />
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  模型系列
+                  <span className="text-[10px] text-muted-foreground/70 font-normal">
+                    Midscene 视觉定位
+                  </span>
+                </Label>
+                {modelFamilies.length > 0 ? (
+                  <Select
+                    value={model.modelFamily || modelFamilies[0].value}
+                    onValueChange={(v) => {
+                      if (v === '__custom__') {
+                        onChange({ ...model, modelFamily: '' });
+                      } else {
+                        const family = modelFamilies.find((f) => f.value === v);
+                        const newModel: ModelProfile = { ...model, modelFamily: v };
+                        if (family?.defaultModelName && !model.modelId) {
+                          newModel.modelId = family.defaultModelName;
+                        }
+                        onChange(newModel);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modelFamilies.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          <div className="flex items-center gap-2">
+                            <span>{f.label}</span>
+                            <span className="text-xs text-muted-foreground">{f.value}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__">
+                        <span className="text-muted-foreground">自定义...</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={model.modelFamily || ''}
+                    onChange={(e) => onChange({ ...model, modelFamily: e.target.value })}
+                    placeholder="输入模型系列，如 doubao-vision"
+                    className="bg-white"
+                  />
+                )}
+                <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
+                  指定 Midscene 使用的视觉定位模型系列。不同模型系列对应不同的定位策略，
+                  影响识别准确率和稳定性。
+                  <a
+                    href="https://midscenejs.com/zh/model-strategy.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sky-600 hover:text-sky-700 hover:underline ml-1"
+                  >
+                    查看 Midscene 模型说明 →
+                  </a>
+                </p>
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
@@ -349,7 +520,9 @@ function ModelCard({
               <div className="flex items-center justify-between rounded-xl bg-gray-50 p-3">
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium">Deep Think / 推理</Label>
-                  <p className="text-xs text-muted-foreground">启用深度思考模式</p>
+                  <p className="text-xs text-muted-foreground">
+                    Midscene 深度思考模式，提升复杂场景的定位准确性
+                  </p>
                 </div>
                 <Switch
                   checked={model.reasoningEnabled ?? false}
@@ -358,24 +531,16 @@ function ModelCard({
               </div>
               <div className="flex items-center justify-between rounded-xl bg-gray-50 p-3">
                 <div className="space-y-0.5">
-                  <Label className="text-sm font-medium">启用缓存</Label>
-                  <p className="text-xs text-muted-foreground">允许缓存规划结果</p>
+                  <Label className="text-sm font-medium">启用缓存规划</Label>
+                  <p className="text-xs text-muted-foreground">
+                    缓存 Midscene AI 规划结果，相同步骤重复执行时加速
+                  </p>
                 </div>
                 <Switch
                   checked={model.cacheable ?? true}
                   onCheckedChange={(v) => onChange({ ...model, cacheable: v })}
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                <Coins className="w-3 h-3" /> 价格配置
-              </Label>
-              <PricingEditor
-                pricing={model.pricing}
-                onChange={(p) => onChange({ ...model, pricing: p })}
-              />
             </div>
           </div>
         </div>
@@ -476,6 +641,26 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   const [activeTab, setActiveTab] = useState('simple');
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (main) {
+      scrollContainerRef.current = main as HTMLElement;
+      const onScroll = () => {
+        setShowScrollTop((main as HTMLElement).scrollTop > 300);
+      };
+      main.addEventListener('scroll', onScroll);
+      return () => main.removeEventListener('scroll', onScroll);
+    }
+  }, []);
+
+  const scrollToTop = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     setLocalModels(models.length ? models : []);
@@ -517,7 +702,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
       baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
       apiKey: '',
       modelId: '',
-      modelFamily: 'doubao-seed',
+      modelFamily: 'doubao-vision',
       enabled: true,
       pricing: { inputPricePer1K: 0, outputPricePer1K: 0, currency: 'CNY' },
       timeout: 60000,
@@ -721,23 +906,25 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
       </section>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-white shadow-sm">
-          <TabsTrigger value="simple" className="gap-2">
-            <Zap className="w-4 h-4" /> 简单设置
-          </TabsTrigger>
-          <TabsTrigger value="models" className="gap-2">
-            <Boxes className="w-4 h-4" /> 模型库
-          </TabsTrigger>
-          <TabsTrigger value="advanced" className="gap-2">
-            <SettingsIcon className="w-4 h-4" /> 高级设置
-          </TabsTrigger>
-          <TabsTrigger value="appearance" className="gap-2">
-            <Palette className="w-4 h-4" /> 外观设置
-          </TabsTrigger>
-          <TabsTrigger value="storage" className="gap-2">
-            <HardDrive className="w-4 h-4" /> 存储设置
-          </TabsTrigger>
-        </TabsList>
+        <div className="sticky top-0 z-10 -mx-2 px-2 pt-2 pb-3 bg-gradient-to-b from-slate-50/80 via-slate-50/90 to-transparent backdrop-blur-sm">
+          <TabsList className="bg-white shadow-sm">
+            <TabsTrigger value="simple" className="gap-2">
+              <Zap className="w-4 h-4" /> 简单设置
+            </TabsTrigger>
+            <TabsTrigger value="models" className="gap-2">
+              <Boxes className="w-4 h-4" /> 模型库
+            </TabsTrigger>
+            <TabsTrigger value="advanced" className="gap-2">
+              <SettingsIcon className="w-4 h-4" /> 高级设置
+            </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="w-4 h-4" /> 外观设置
+            </TabsTrigger>
+            <TabsTrigger value="storage" className="gap-2">
+              <HardDrive className="w-4 h-4" /> 存储设置
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="simple" className="space-y-4 mt-4">
           <Card className="border-0 shadow-sm bg-white">
@@ -1416,6 +1603,16 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
             </div>
           </div>
         </div>
+      )}
+
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-20 right-6 z-50 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-all hover:shadow-xl active:scale-95"
+          title="回到顶部"
+        >
+          <ChevronUp className="w-5 h-5 text-gray-600" />
+        </button>
       )}
     </div>
   );
