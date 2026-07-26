@@ -207,6 +207,11 @@ Midscene 是一个基于 AI 视觉的网页自动化引擎，你只需要用自�
 
 欢迎提交 Issue 和 Pull Request！
 
+## 📝 致谢
+
+- [midscene](https://midscenejs.com/zh/) 作为 AI 执行引擎的支持；
+- [UI-TARS](https://github.com/bytedance/ui-tars) 代码学习；
+
 ## 📄 开源协议
 
 [MIT License](LICENSE)

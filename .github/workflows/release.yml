@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
   ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
@@ -53,6 +56,9 @@ jobs:
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: List release files
+        run: ls -la release/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -64,6 +70,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,8 +81,8 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: List files
-        run: ls -R release-artifacts/
+      - name: List all files
+        run: find release-artifacts -type f
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -82,9 +90,9 @@ jobs:
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            release-artifacts/mac-build/*.dmg
-            release-artifacts/mac-build/*.zip
-            release-artifacts/win-build/*.exe
-            release-artifacts/linux-build/*.AppImage
+            release-artifacts/**/*.dmg
+            release-artifacts/**/*.exe
+            release-artifacts/**/*.AppImage
+            release-artifacts/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
