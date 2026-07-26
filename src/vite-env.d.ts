@@ -45,6 +45,7 @@ type MimicIpcChannel =
   | 'flow-v2:stop'
   | 'flow-v2:status'
   | 'shell:open-path'
+  | 'shell:open-external'
   | 'app:get-default-paths'
   | 'execution:list'
   | 'execution:get'

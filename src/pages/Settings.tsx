@@ -1609,7 +1609,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                         提供 AI 视觉驱动的网页自动化能力，本项目的核心引擎之一
                       </div>
                       <button
-                        onClick={() => window.mimic?.invoke('shell:open-path', 'https://midscenejs.com')}
+                        onClick={() => window.mimic?.invoke('shell:open-external', 'https://midscenejs.com')}
                         className="text-xs text-violet-600 hover:text-violet-700 mt-1 flex items-center gap-1"
                       >
                         <Globe className="w-3 h-3" />
@@ -1627,7 +1627,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                 </div>
                 <div className="space-y-2">
                   <button
-                    onClick={() => window.mimic?.invoke('shell:open-path', 'https://github.com/jibuzixin/mimic-flow')}
+                    onClick={() => window.mimic?.invoke('shell:open-external', 'https://github.com/jibuzixin/mimic-flow')}
                     className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
                   >
                     <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">

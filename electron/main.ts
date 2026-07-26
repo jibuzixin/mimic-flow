@@ -428,6 +428,17 @@ ipcMain.handle('shell:open-path', async (_event, path: string) => {
   }
 });
 
+ipcMain.handle('shell:open-external', async (_event, url: string) => {
+  if (!url) return false;
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (e) {
+    console.error('[shell:open-external] error:', e);
+    return false;
+  }
+});
+
 ipcMain.handle('app:get-default-paths', async () => {
   const userDataPath = app.getPath('userData');
   return {
