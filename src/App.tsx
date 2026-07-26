@@ -123,6 +123,7 @@ function AppContent() {
   }
 
   const isFullPage = location.pathname === '/workflows/editor';
+  const isInternalScroll = ['/logs', '/flow-tester'].includes(location.pathname);
 
   const navItemsWithDev = [...navItems];
   if (devMode) {
@@ -135,7 +136,11 @@ function AppContent() {
       <div className="flex-1 flex overflow-hidden">
         <Sidebar navItems={navItemsWithDev} />
         <main
-          className={isFullPage ? 'flex-1 overflow-hidden' : 'flex-1 overflow-y-auto p-8'}
+          className={cn(
+            'flex-1',
+            isFullPage ? 'overflow-hidden' : 'p-8',
+            !isFullPage && !isInternalScroll ? 'overflow-y-auto' : 'overflow-hidden'
+          )}
         >
           <Routes>
             <Route path="/" element={<Dashboard />} />

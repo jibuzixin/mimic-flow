@@ -220,7 +220,7 @@ export default function Logs() {
   };
 
   return (
-    <div className="h-full flex flex-col min-h-[calc(100vh-2rem-4rem)]">
+    <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
