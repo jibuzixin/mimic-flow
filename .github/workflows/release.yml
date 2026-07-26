@@ -10,6 +10,7 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
   ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
   ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+  CSC_IDENTITY_AUTO_DISCOVERY: false
 
 jobs:
   build:
@@ -48,12 +49,9 @@ jobs:
       - name: Build for ${{ matrix.platform }}
         run: npm run dist:${{ matrix.platform }}
         env:
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          WINDOWS_CERTIFICATE_FILE: ${{ secrets.WIN_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -84,8 +82,9 @@ jobs:
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            release-artifacts/mac-build/*
-            release-artifacts/win-build/*
-            release-artifacts/linux-build/*
+            release-artifacts/mac-build/*.dmg
+            release-artifacts/mac-build/*.zip
+            release-artifacts/win-build/*.exe
+            release-artifacts/linux-build/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
