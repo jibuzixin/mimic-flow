@@ -22,6 +22,9 @@ export default function FloatingProgress() {
   const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'failed' | 'stopped'>(
     'idle'
   );
+  const [runningNodes, setRunningNodes] = useState<string[]>([]);
+  const [currentEngine, setCurrentEngine] = useState('');
+  const [carouselIndex, setCarouselIndex] = useState(0);
 
   useEffect(() => {
     const originalHtmlOverflow = document.documentElement.style.overflow;
@@ -72,6 +75,8 @@ export default function FloatingProgress() {
           setCompletedNodes(s.completedNodes || 0);
           setLastDuration(s.lastDuration || null);
           setStatus(s.status);
+          setRunningNodes(s.runningNodes || []);
+          setCurrentEngine(s.currentEngine || '');
         }
       } catch (e) {
         console.warn('Failed to get floating state:', e);
@@ -89,11 +94,20 @@ export default function FloatingProgress() {
       setCurrentNode('准备中...');
       setStatus('running');
       setLastDuration(data.lastDuration || null);
+      setRunningNodes([]);
+      setCurrentEngine('');
+      setCarouselIndex(0);
     });
 
     const offNodeStart = window.mimic.on('floating:node-start', (data: any) => {
       if (!mounted) return;
       setCurrentNode(data.nodeName || data.nodeType || '');
+      if (data.runningNodes) {
+        setRunningNodes(data.runningNodes);
+      }
+      if (data.currentEngine) {
+        setCurrentEngine(data.currentEngine);
+      }
     });
 
     const offNodeComplete = window.mimic.on('floating:node-complete', (data: any) => {
@@ -103,11 +117,17 @@ export default function FloatingProgress() {
       } else {
         setCompletedNodes((prev) => prev + 1);
       }
+      if (data.runningNodes) {
+        setRunningNodes(data.runningNodes);
+      }
     });
 
-    const offNodeError = window.mimic.on('floating:node-error', () => {
+    const offNodeError = window.mimic.on('floating:node-error', (data: any) => {
       if (!mounted) return;
       setCompletedNodes((prev) => prev + 1);
+      if (data.runningNodes) {
+        setRunningNodes(data.runningNodes);
+      }
     });
 
     const offFlowComplete = window.mimic.on('floating:flow-complete', (data: any) => {
@@ -141,6 +161,17 @@ export default function FloatingProgress() {
     }, 100);
     return () => clearInterval(timer);
   }, [startTime, status]);
+
+  useEffect(() => {
+    if (status !== 'running' || runningNodes.length <= 1) {
+      setCarouselIndex(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setCarouselIndex((prev) => (prev + 1) % runningNodes.length);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [runningNodes, status]);
 
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
@@ -254,10 +285,44 @@ export default function FloatingProgress() {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] text-gray-400 mb-0.5">当前节点</div>
-            <div className="text-sm font-medium text-gray-800 truncate">
-              {currentNode}
+            <div className="text-[11px] text-gray-400 mb-0.5">
+              {status === 'running' && runningNodes.length > 0
+                ? `执行中 · ${runningNodes.length} 个任务${currentEngine ? ` · ${currentEngine}` : ''}`
+                : '当前节点'}
             </div>
+            <div className="relative h-5 overflow-hidden">
+              {status === 'running' && runningNodes.length > 0 ? (
+                <div
+                  className="absolute w-full transition-transform duration-500 ease-in-out"
+                  style={{ transform: `translateY(-${carouselIndex * 20}px)` }}
+                >
+                  {runningNodes.map((node, idx) => (
+                    <div
+                      key={idx}
+                      className="h-5 flex items-center text-sm font-medium text-gray-800 truncate"
+                    >
+                      {node}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm font-medium text-gray-800 truncate">
+                  {currentNode}
+                </div>
+              )}
+            </div>
+            {status === 'running' && runningNodes.length > 1 && (
+              <div className="flex items-center justify-center gap-1 mt-1">
+                {runningNodes.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-1 h-1 rounded-full transition-colors ${
+                      idx === carouselIndex ? 'bg-violet-500' : 'bg-gray-200'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

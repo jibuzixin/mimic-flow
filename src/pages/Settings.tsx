@@ -35,6 +35,10 @@ import {
   HardDrive,
   Zap,
   Palette,
+  Info,
+  Heart,
+  Github as GithubIcon,
+  Globe,
 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { invoke } from '../lib/api';
@@ -923,6 +927,9 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
             <TabsTrigger value="storage" className="gap-2">
               <HardDrive className="w-4 h-4" /> 存储设置
             </TabsTrigger>
+            <TabsTrigger value="about" className="gap-2">
+              <Info className="w-4 h-4" /> 关于
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -1558,6 +1565,98 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                 >
                   清理所有数据
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="about" className="space-y-4 mt-4">
+          <Card className="border-0 shadow-sm bg-white">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-violet-500" />
+                关于 mimic-flow
+              </CardTitle>
+              <CardDescription>AI 驱动的桌面自动化工作流工具</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-400 to-sky-400 flex items-center justify-center shadow-lg shrink-0">
+                  <Sparkles className="w-7 h-7 text-white" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-lg font-semibold text-gray-800">mimic-flow</div>
+                  <div className="text-sm text-gray-500">版本 0.1.0</div>
+                  <div className="text-sm text-gray-600">
+                    基于 AI 的可视化桌面自动化工作流编排工具，让复杂的电脑操作变得简单直观。
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <Heart className="w-4 h-4 text-rose-500" />
+                  致谢
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-violet-50/50 rounded-xl border border-violet-100">
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                      <Eye className="w-4 h-4 text-violet-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-800">Midscene.js</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        提供 AI 视觉驱动的网页自动化能力，本项目的核心引擎之一
+                      </div>
+                      <button
+                        onClick={() => window.mimic?.invoke('shell:open-path', 'https://midscenejs.com')}
+                        className="text-xs text-violet-600 hover:text-violet-700 mt-1 flex items-center gap-1"
+                      >
+                        <Globe className="w-3 h-3" />
+                        midscenejs.com
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <GithubIcon className="w-4 h-4 text-gray-600" />
+                  联系方式
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => window.mimic?.invoke('shell:open-path', 'https://github.com/jibuzixin/mimic-flow')}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                      <GithubIcon className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">GitHub</div>
+                      <div className="text-xs text-gray-500">github.com/jibuzixin/mimic-flow</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-gray-600" />
+                  开源协议
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-sm font-medium text-gray-800 mb-1">MIT License</div>
+                  <div className="text-xs text-gray-500 leading-relaxed">
+                    本项目采用 MIT 开源协议，您可以自由地使用、复制、修改、合并、发布、分发、再授权和/或销售本软件的副本。
+                    有关详细信息，请参阅项目根目录下的 LICENSE 文件。
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-center text-xs text-gray-400 pt-2">
+                Made with <Heart className="w-3 h-3 inline text-rose-400" /> by jibuzixin
               </div>
             </CardContent>
           </Card>

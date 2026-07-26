@@ -9,3 +9,28 @@ release
 .vscode
 .idea
 midscene_run
+
+# 本地数据
+.data/
+userData/
+*.db
+*.sqlite
+*.sqlite3
+
+# 编辑器和系统
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 缓存
+.cache/
+.temp/
+tmp/
+temp/
+
+# 本地工作流文件（如果用户有自定义保存路径）
+workflows/
+logs/
+midscene-reports/

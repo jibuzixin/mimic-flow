@@ -766,7 +766,45 @@ function WorkflowEditorInner() {
     startExecution();
   }, [isRunning, startExecution, stopExecution, validationWarnings.errorCount]);
 
+  const handleSaveAs = useCallback(() => {
+    const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta.name || '工作流'} (副本)`);
+    if (name && name.trim()) {
+      saveAsNewWorkflow(name.trim());
+      setSaveStatus('saved');
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = setTimeout(() => {
+        setSaveStatus('idle');
+      }, 2000);
+    }
+  }, [currentWorkflow, saveAsNewWorkflow]);
+
   const handleSave = useCallback(() => {
+    if (originalWorkflowId) {
+      const wfName = currentWorkflow?.flowMeta?.name || '未命名工作流';
+      const confirmed = confirm(`确定要保存修改到「${wfName}」吗？`);
+      if (!confirmed) return;
+    } else {
+      const wfName = currentWorkflow?.flowMeta?.name || '未命名工作流';
+      const confirmed = confirm(
+        `当前工作流「${wfName}」尚未保存，需要另存为新工作流。\n\n是否立即另存为？`
+      );
+      if (!confirmed) return;
+      const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta?.name || '工作流'} (副本)`);
+      if (name && name.trim()) {
+        saveAsNewWorkflow(name.trim());
+        setSaveStatus('saved');
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+          setSaveStatus('idle');
+        }, 2000);
+      }
+      return;
+    }
+
     setSaveStatus('saving');
     try {
       saveCurrentWorkflow();
@@ -786,7 +824,7 @@ function WorkflowEditorInner() {
         setSaveStatus('idle');
       }, 2000);
     }
-  }, [saveCurrentWorkflow]);
+  }, [saveCurrentWorkflow, originalWorkflowId, currentWorkflow, saveAsNewWorkflow]);
 
   const handleExport = useCallback(() => {
     const wf = exportCurrentWorkflow(hideSensitive);
@@ -799,20 +837,6 @@ function WorkflowEditorInner() {
     URL.revokeObjectURL(url);
     setShowExportDialog(false);
   }, [exportCurrentWorkflow, hideSensitive]);
-
-  const handleSaveAs = useCallback(() => {
-    const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta.name || '工作流'} (副本)`);
-    if (name && name.trim()) {
-      saveAsNewWorkflow(name.trim());
-      setSaveStatus('saved');
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
-    }
-  }, [currentWorkflow, saveAsNewWorkflow]);
 
   const handleNewCanvas = useCallback(() => {
     if (isDirty) {
@@ -1103,7 +1127,7 @@ function WorkflowEditorInner() {
 
           <PropertyPanel />
 
-          <div className="absolute bottom-4 left-4 flex items-center gap-1.5 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-gray-200 px-3 py-1.5 text-[11px] text-gray-500">
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white/80 backdrop-blur-md rounded-xl shadow-lg border border-gray-200 px-3 py-1.5 text-[11px] text-gray-500">
             <span className="inline-flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-600">Ctrl</kbd>
               <span>+ 拖拽圈选</span>

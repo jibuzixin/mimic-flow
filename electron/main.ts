@@ -50,6 +50,8 @@ interface FloatingState {
   completedNodes: number;
   lastDuration: number | null;
   status: 'idle' | 'running' | 'success' | 'failed' | 'stopped';
+  runningNodes: string[];
+  currentEngine: string;
 }
 
 let floatingState: FloatingState = {
@@ -60,6 +62,8 @@ let floatingState: FloatingState = {
   completedNodes: 0,
   lastDuration: null,
   status: 'idle',
+  runningNodes: [],
+  currentEngine: '',
 };
 
 function createFloatingWindow(): Promise<BrowserWindow> {
@@ -592,6 +596,8 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
     completedNodes: 0,
     lastDuration,
     status: 'running',
+    runningNodes: [],
+    currentEngine: '',
   };
 
   let completedNodes = 0;
@@ -615,27 +621,42 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       });
     } else if (evt.type === 'node:start') {
       const nodeName = (evt as any).nodeName || (evt as any).nodeType || '';
+      const nodeType = (evt as any).nodeType || '';
+      const engine = nodeType.startsWith('midscene.') ? 'Midscene' : '内置引擎';
       floatingState.currentNode = nodeName;
+      if (floatingState.runningNodes.length === 0) {
+        floatingState.currentEngine = engine;
+      }
+      floatingState.runningNodes.push(nodeName);
       sendToFloating('floating:node-start', {
         nodeId: (evt as any).nodeId,
         nodeName,
-        nodeType: (evt as any).nodeType,
+        nodeType,
+        engine,
+        runningNodes: [...floatingState.runningNodes],
+        currentEngine: floatingState.currentEngine,
       });
     } else if (evt.type === 'node:complete') {
       completedNodes++;
       floatingState.completedNodes = completedNodes;
+      const nodeName = floatingState.runningNodes.shift();
       sendToFloating('floating:node-complete', {
         nodeId: (evt as any).nodeId,
         duration: (evt as any).duration,
         completedNodes,
+        nodeName,
+        runningNodes: [...floatingState.runningNodes],
       });
     } else if (evt.type === 'node:error') {
       completedNodes++;
       floatingState.completedNodes = completedNodes;
+      const nodeName = floatingState.runningNodes.shift();
       sendToFloating('floating:node-error', {
         nodeId: (evt as any).nodeId,
         duration: (evt as any).duration,
         error: (evt as any).error,
+        nodeName,
+        runningNodes: [...floatingState.runningNodes],
       });
     }
 
