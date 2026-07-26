@@ -6,23 +6,77 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const svgPath = path.join(__dirname, '..', 'landing', 'images', 'logo-geo.svg');
+const sourcePath = path.join(__dirname, '..', 'landing', 'my_icon.png');
 const outputDir = path.join(__dirname, '..', 'build');
 
 if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-const svgBuffer = fs.readFileSync(svgPath);
+const SIZE = 1024;
+const CORNER_RADIUS = 180;
 
-sharp(svgBuffer)
-  .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-  .png()
-  .toFile(path.join(outputDir, 'icon.png'))
-  .then(() => {
-    console.log('Generated icon.png (1024x1024)');
+async function generateSquircleMask(size, radius) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="white"/>
+  </svg>`;
+  return Buffer.from(svg);
+}
+
+async function main() {
+  const iconScale = 0.82;
+  const iconSize = Math.round(SIZE * iconScale);
+  const iconOffset = Math.round((SIZE - iconSize) / 2);
+  const cornerRadius = Math.round(CORNER_RADIUS * iconScale);
+
+  const graphZoom = 1.5;
+  const zoomedSize = Math.round(iconSize * graphZoom);
+
+  const iconBuffer = await sharp(sourcePath)
+    .resize(zoomedSize, zoomedSize, { fit: 'cover', position: 'center' })
+    .extract({
+      left: Math.round((zoomedSize - iconSize) / 2),
+      top: Math.round((zoomedSize - iconSize) / 2),
+      width: iconSize,
+      height: iconSize
+    })
+    .png()
+    .toBuffer();
+
+  const maskBuffer = await generateSquircleMask(iconSize, cornerRadius);
+
+  const roundedIconBuffer = await sharp(iconBuffer)
+    .composite([
+      { input: maskBuffer, blend: 'dest-in' }
+    ])
+    .png()
+    .toBuffer();
+
+  const canvasBuffer = await sharp({
+    create: {
+      width: SIZE,
+      height: SIZE,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
   })
-  .catch(err => {
-    console.error('Error:', err.message);
-    process.exit(1);
-  });
+  .png()
+  .toBuffer();
+
+  const finalBuffer = await sharp(canvasBuffer)
+    .composite([
+      { input: roundedIconBuffer, left: iconOffset, top: iconOffset }
+    ])
+    .png()
+    .toBuffer();
+
+  await sharp(finalBuffer)
+    .toFile(path.join(outputDir, 'icon.png'));
+
+  console.log('Generated icon.png (1024x1024), icon scale:', iconScale);
+}
+
+main().catch(err => {
+  console.error('Error:', err.message);
+  process.exit(1);
+});
