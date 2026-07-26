@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mimic Flow - 让你的电脑自己干活</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #7C3AED;
+    --primary-light: #A78BFA;
+    --primary-dark: #6D28D9;
+    --secondary: #06B6D4;
+    --accent: #F59E0B;
+    --success: #10B981;
+    --danger: #EF4444;
+    --pink: #EC4899;
+    --dark: #1E293B;
+    --darker: #0F172A;
+    --light: #F8FAFC;
+    --gray-100: #F1F5F9;
+    --gray-200: #E2E8F0;
+    --gray-300: #CBD5E1;
+    --gray-500: #64748B;
+    --gray-600: #475569;
+  }
+
+  body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--light);
+    color: var(--dark);
+    overflow-x: hidden;
+    line-height: 1.6;
+  }
+
+  .font-display {
+    font-family: 'ZCOOL KuaiLe', cursive;
+  }
+
+  /* Background decoration */
+  .bg-gradient {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 58, 237, 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(6, 182, 212, 0.1), transparent),
+      radial-gradient(ellipse 50% 30% at 20% 80%, rgba(236, 72, 153, 0.08), transparent);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .grid-pattern {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 30%, transparent 70%);
+  }
+
+  /* Nav */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    backdrop-filter: blur(20px);
+    background: rgba(248, 250, 252, 0.8);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--darker);
+  }
+
+  .logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+  }
+
+  .logo-icon::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2.5px solid white;
+    border-radius: 4px;
+    transform: rotate(45deg);
+  }
+
+  .logo-icon::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: white;
+    border-radius: 50%;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+    align-items: center;
+  }
+
+  .nav-links a {
+    text-decoration: none;
+    color: var(--gray-600);
+    font-weight: 500;
+    font-size: 15px;
+    transition: color 0.3s;
+  }
+
+  .nav-links a:hover {
+    color: var(--primary);
+  }
+
+  .nav-cta {
+    padding: 10px 22px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white !important;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: transform 0.3s, box-shadow 0.3s;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  }
+
+  .nav-cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.45);
+  }
+
+  /* Hero Section */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 120px 40px 60px;
+    z-index: 1;
+  }
+
+  .hero-content {
+    text-align: center;
+    max-width: 800px;
+    animation: fadeInUp 0.8s ease-out;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: rgba(124, 58, 237, 0.1);
+    color: var(--primary);
+    border-radius: 50px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    animation: fadeInUp 0.8s ease-out 0.1s both;
+  }
+
+  .hero-badge .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 60px);
+    line-height: 1.15;
+    margin-bottom: 20px;
+    color: var(--darker);
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+  }
+
+  .hero h1 .gradient {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    font-size: 17px;
+    color: var(--gray-500);
+    line-height: 1.8;
+    margin-bottom: 36px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    animation: fadeInUp 0.8s ease-out 0.3s both;
+  }
+
+  .hero-buttons {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    animation: fadeInUp 0.8s ease-out 0.4s both;
+  }
+
+  .btn-primary {
+    padding: 14px 32px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.35);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(124, 58, 237, 0.45);
+  }
+
+  .btn-secondary {
+    padding: 14px 32px;
+    background: white;
+    color: var(--dark);
+    border: 1.5px solid var(--gray-200);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-2px);
+  }
+
+  /* Hero Screenshot */
+  .hero-screenshot {
+    margin-top: 60px;
+    max-width: 1100px;
+    width: 100%;
+    animation: fadeInUp 0.8s ease-out 0.6s both;
+  }
+
+  .screenshot-frame {
+    position: relative;
+    background: white;
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(0, 0, 0, 0.05);
+  }
+
+  .screenshot-frame::before {
+    content: '';
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+  }
+
+  .screenshot-dots {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+
+  .screenshot-dots span {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+  }
+
+  .screenshot-dots span:nth-child(1) { background: #FF5F57; }
+  .screenshot-dots span:nth-child(2) { background: #FEBC2E; }
+  .screenshot-dots span:nth-child(3) { background: #28C840; }
+
+  .screenshot-img {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+  }
+
+  .screenshot-float {
+    position: absolute;
+    background: white;
+    border-radius: 12px;
+    padding: 14px 18px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: floatCard 4s infinite ease-in-out;
+  }
+
+  .screenshot-float.left {
+    left: -40px;
+    top: 30%;
+    animation-delay: -1s;
+  }
+
+  .screenshot-float.right {
+    right: -40px;
+    top: 50%;
+    animation-delay: -2s;
+  }
+
+  @keyframes floatCard {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  .float-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .float-icon.mouse { background: rgba(16, 185, 129, 0.15); }
+  .float-icon.ai { background: rgba(124, 58, 237, 0.15); }
+
+  .float-text h4 {
+    font-size: 13px;
+    color: var(--darker);
+    margin-bottom: 2px;
+  }
+
+  .float-text p {
+    font-size: 11px;
+    color: var(--gray-500);
+  }
+
+  /* Section common */
+  section {
+    position: relative;
+    z-index: 1;
+  }
+
+  .section-header {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto 60px;
+  }
+
+  .section-tag {
+    display: inline-block;
+    padding: 6px 16px;
+    background: rgba(124, 58, 237, 0.1);
+    color: var(--primary);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  .section-header h2 {
+    font-size: clamp(28px, 4vw, 42px);
+    margin-bottom: 14px;
+    line-height: 1.3;
+    color: var(--darker);
+  }
+
+  .section-header p {
+    font-size: 16px;
+    color: var(--gray-500);
+    line-height: 1.8;
+  }
+
+  /* Pain Points */
+  .pain-section {
+    padding: 100px 40px;
+  }
+
+  .pain-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .pain-card {
+    background: white;
+    border-radius: 16px;
+    padding: 30px 24px;
+    text-align: center;
+    transition: transform 0.4s, box-shadow 0.4s;
+    border: 1px solid var(--gray-100);
+  }
+
+  .pain-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+    border-color: rgba(124, 58, 237, 0.2);
+  }
+
+  .pain-emoji {
+    font-size: 44px;
+    margin-bottom: 16px;
+    display: inline-block;
+  }
+
+  .pain-card h3 {
+    font-size: 17px;
+    margin-bottom: 10px;
+    color: var(--darker);
+  }
+
+  .pain-card p {
+    font-size: 14px;
+    color: var(--gray-500);
+    line-height: 1.7;
+  }
+
+  /* Features Section */
+  .features-section {
+    padding: 100px 40px;
+    background: linear-gradient(180deg, transparent, rgba(124, 58, 237, 0.03) 50%, transparent);
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .feature-card {
+    background: white;
+    border-radius: 20px;
+    padding: 36px 28px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.4s, box-shadow 0.4s;
+    border: 1px solid var(--gray-100);
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    opacity: 0.06;
+    transition: transform 0.6s;
+  }
+
+  .feature-card:nth-child(1)::before { background: var(--primary); }
+  .feature-card:nth-child(2)::before { background: var(--secondary); }
+  .feature-card:nth-child(3)::before { background: var(--success); }
+  .feature-card:nth-child(4)::before { background: var(--accent); }
+  .feature-card:nth-child(5)::before { background: var(--pink); }
+  .feature-card:nth-child(6)::before { background: var(--danger); }
+
+  .feature-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+  }
+
+  .feature-card:hover::before {
+    transform: scale(1.3);
+  }
+
+  .feature-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .feature-card:nth-child(1) .feature-icon { background: rgba(124, 58, 237, 0.12); }
+  .feature-card:nth-child(2) .feature-icon { background: rgba(6, 182, 212, 0.12); }
+  .feature-card:nth-child(3) .feature-icon { background: rgba(16, 185, 129, 0.12); }
+  .feature-card:nth-child(4) .feature-icon { background: rgba(245, 158, 11, 0.15); }
+  .feature-card:nth-child(5) .feature-icon { background: rgba(236, 72, 153, 0.12); }
+  .feature-card:nth-child(6) .feature-icon { background: rgba(239, 68, 68, 0.1); }
+
+  .feature-card h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: var(--darker);
+    position: relative;
+    z-index: 1;
+  }
+
+  .feature-card p {
+    font-size: 14px;
+    color: var(--gray-500);
+    line-height: 1.8;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* How it works */
+  .how-section {
+    padding: 100px 40px;
+  }
+
+  .how-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 30px;
+    max-width: 1000px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .how-step {
+    text-align: center;
+    position: relative;
+  }
+
+  .step-number {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 auto 20px;
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.35);
+  }
+
+  .how-step h3 {
+    font-size: 17px;
+    margin-bottom: 8px;
+    color: var(--darker);
+  }
+
+  .how-step p {
+    font-size: 14px;
+    color: var(--gray-500);
+    line-height: 1.7;
+  }
+
+  .step-arrow {
+    position: absolute;
+    top: 28px;
+    right: -20px;
+    font-size: 24px;
+    color: var(--gray-300);
+  }
+
+  /* Showcase Section */
+  .showcase-section {
+    padding: 100px 40px;
+    background: linear-gradient(180deg, transparent, rgba(6, 182, 212, 0.03) 50%, transparent);
+  }
+
+  .showcase-card {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 24px;
+    padding: 50px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 50px;
+    align-items: center;
+  }
+
+  .showcase-text h2 {
+    font-size: 32px;
+    margin-bottom: 20px;
+    color: var(--darker);
+  }
+
+  .showcase-text p {
+    font-size: 15px;
+    color: var(--gray-500);
+    line-height: 1.8;
+    margin-bottom: 24px;
+  }
+
+  .feature-list {
+    list-style: none;
+  }
+
+  .feature-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    color: var(--gray-600);
+  }
+
+  .feature-list .check {
+    width: 22px;
+    height: 22px;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .showcase-img {
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  }
+
+  .showcase-img img {
+    width: 100%;
+    display: block;
+  }
+
+  /* CTA Section */
+  .cta-section {
+    padding: 100px 40px;
+    text-align: center;
+  }
+
+  .cta-box {
+    max-width: 750px;
+    margin: 0 auto;
+    padding: 60px 50px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-radius: 24px;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-box::before,
+  .cta-box::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .cta-box::before {
+    width: 250px;
+    height: 250px;
+    top: -100px;
+    right: -80px;
+    animation: float 20s infinite ease-in-out;
+  }
+
+  .cta-box::after {
+    width: 150px;
+    height: 150px;
+    bottom: -50px;
+    left: -40px;
+    animation: float 15s infinite ease-in-out reverse;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(20px, -20px); }
+    50% { transform: translate(-10px, 15px); }
+    75% { transform: translate(15px, 10px); }
+  }
+
+  .cta-box h2 {
+    font-size: clamp(24px, 4vw, 34px);
+    margin-bottom: 14px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cta-box p {
+    font-size: 15px;
+    opacity: 0.9;
+    margin-bottom: 30px;
+    line-height: 1.8;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cta-white {
+    padding: 14px 32px;
+    background: white;
+    color: var(--primary);
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    transition: transform 0.3s, box-shadow 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cta-white:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .cta-outline {
+    padding: 14px 32px;
+    background: transparent;
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .cta-outline:hover {
+    border-color: white;
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-3px);
+  }
+
+  /* Footer */
+  footer {
+    position: relative;
+    padding: 40px;
+    text-align: center;
+    color: var(--gray-500);
+    font-size: 14px;
+    z-index: 1;
+    border-top: 1px solid var(--gray-100);
+  }
+
+  footer a {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  /* Scroll reveal */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s, transform 0.7s;
+  }
+
+  .reveal.active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    .showcase-card {
+      grid-template-columns: 1fr;
+      padding: 36px 28px;
+      gap: 30px;
+    }
+
+    .screenshot-float {
+      display: none;
+    }
+  }
+
+  @media (max-width: 768px) {
+    nav { padding: 14px 20px; }
+    .nav-links { display: none; }
+    .hero { padding: 100px 20px 40px; }
+    .pain-section, .features-section, .how-section, .showcase-section, .cta-section { padding: 60px 20px; }
+    .cta-box { padding: 40px 28px; }
+    .step-arrow { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-gradient"></div>
+<div class="grid-pattern"></div>
+
+<nav>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <span>Mimic Flow</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#features">功能特色</a></li>
+    <li><a href="#how">使用方式</a></li>
+    <li><a href="#showcase">界面预览</a></li>
+    <li><a href="https://github.com/jibuzixin/mimic-flow" class="nav-cta">⭐ 免费下载</a></li>
+  </ul>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      开源免费 · 开箱即用
+    </div>
+    <h1 class="font-display">
+      每天省下 <span class="gradient">2 小时</span><br>
+      让电脑自己帮你干活
+    </h1>
+    <p>
+      零代码可视化桌面自动化工具，拖拽节点即可构建工作流。
+      配合 AI 引擎，说人话就能搞定网页自动化。
+      把时间还给真正重要的事 ☕
+    </p>
+    <div class="hero-buttons">
+      <a href="https://github.com/jibuzixin/mimic-flow/releases" class="btn-primary">
+        🚀 立即下载
+      </a>
+      <a href="#features" class="btn-secondary">
+        了解更多 →
+      </a>
+    </div>
+  </div>
+
+  <div class="hero-screenshot">
+    <div class="screenshot-frame">
+      <div class="screenshot-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <img src="images/screenshot-1.png" alt="Mimic Flow 主界面" class="screenshot-img">
+    </div>
+
+    <div class="screenshot-float left">
+      <div class="float-icon mouse">🖱️</div>
+      <div class="float-text">
+        <h4>鼠标自动化</h4>
+        <p>点击、移动、滚轮全支持</p>
+      </div>
+    </div>
+
+    <div class="screenshot-float right">
+      <div class="float-icon ai">🤖</div>
+      <div class="float-text">
+        <h4>AI 驱动</h4>
+        <p>说人话就能自动操作</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Pain Points -->
+<section class="pain-section">
+  <div class="section-header reveal">
+    <div class="section-tag">😫 痛点直击</div>
+    <h2 class="font-display">这些烦恼，是不是每天都在经历？</h2>
+    <p>重复劳动正在悄悄偷走你的时间</p>
+  </div>
+
+  <div class="pain-grid">
+    <div class="pain-card reveal">
+      <div class="pain-emoji">😮‍💨</div>
+      <h3>重复操作，又烦又累</h3>
+      <p>每天反复打开网页、点击、复制粘贴，机械劳动又枯燥又浪费时间</p>
+    </div>
+
+    <div class="pain-card reveal">
+      <div class="pain-emoji">🤯</div>
+      <h3>想学代码，门槛太高</h3>
+      <p>知道 Python 能自动化，但语法太复杂，看了几节入门课就放弃了</p>
+    </div>
+
+    <div class="pain-card reveal">
+      <div class="pain-emoji">💸</div>
+      <h3>专业工具，太贵用不起</h3>
+      <p>市面上的 RPA 工具动辄几万块一年，小团队和个人根本用不起</p>
+    </div>
+
+    <div class="pain-card reveal">
+      <div class="pain-emoji">🔒</div>
+      <h3>云端操作，数据不安全</h3>
+      <p>把账号密码传到云端自动化，心里总不踏实，万一泄露了怎么办</p>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features-section" id="features">
+  <div class="section-header reveal">
+    <div class="section-tag">✨ 核心功能</div>
+    <h2 class="font-display">Mimic Flow 能帮你做什么？</h2>
+    <p>六大核心能力，轻松搞定各种自动化场景</p>
+  </div>
+
+  <div class="features-grid">
+    <div class="feature-card reveal">
+      <div class="feature-icon">🧩</div>
+      <h3>拖拽式流程编排</h3>
+      <p>从节点库拖出节点，连上线就搞定。20+ 种节点类型，条件判断、循环、变量……想怎么组合就怎么组合。</p>
+    </div>
+
+    <div class="feature-card reveal">
+      <div class="feature-icon">🤖</div>
+      <h3>AI 驱动网页自动化</h3>
+      <p>内置 Midscene AI 引擎，用自然语言描述操作，AI 自动识别页面元素并执行，不用写选择器。</p>
+    </div>
+
+    <div class="feature-card reveal">
+      <div class="feature-icon">🖱️</div>
+      <h3>鼠标键盘全控制</h3>
+      <p>鼠标移动、点击、拖拽、滚轮，键盘输入、快捷键，想怎么操作就怎么操作，精确到像素级。</p>
+    </div>
+
+    <div class="feature-card reveal">
+      <div class="feature-icon">🔐</div>
+      <h3>本地运行数据安全</h3>
+      <p>所有操作都在你自己的电脑上执行，工作流文件存在本地。不需要上传账号密码，安全感拉满。</p>
+    </div>
+
+    <div class="feature-card reveal">
+      <div class="feature-icon">🎯</div>
+      <h3>可视化实时监控</h3>
+      <p>执行时最小化到悬浮球，实时显示进度和当前步骤。每一步都有详细日志，出问题一目了然。</p>
+    </div>
+
+    <div class="feature-card reveal">
+      <div class="feature-icon">⚡</div>
+      <h3>错误重试更稳定</h3>
+      <p>节点失败自动重试，支持跳过错误继续执行。再也不用担心网络波动导致整个流程挂掉。</p>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="how-section" id="how">
+  <div class="section-header reveal">
+    <div class="section-tag">🎯 三步上手</div>
+    <h2 class="font-display">只需 3 步，开启自动化之旅</h2>
+    <p>零代码基础也能快速上手</p>
+  </div>
+
+  <div class="how-steps">
+    <div class="how-step reveal">
+      <div class="step-number">1</div>
+      <h3>拖拽节点</h3>
+      <p>从左侧节点库拖出你需要的节点，放到画布上</p>
+      <span class="step-arrow">→</span>
+    </div>
+
+    <div class="how-step reveal">
+      <div class="step-number">2</div>
+      <h3>连线配置</h3>
+      <p>用线连接节点，在右侧面板配置参数和逻辑</p>
+      <span class="step-arrow">→</span>
+    </div>
+
+    <div class="how-step reveal">
+      <div class="step-number">3</div>
+      <h3>一键运行</h3>
+      <p>点击运行按钮，看着电脑自动帮你完成所有操作</p>
+    </div>
+  </div>
+</section>
+
+<!-- Showcase -->
+<section class="showcase-section" id="showcase">
+  <div class="section-header reveal">
+    <div class="section-tag">🖼️ 界面预览</div>
+    <h2 class="font-display">清爽简洁，专注效率</h2>
+    <p>简洁不简单，每个功能都恰到好处</p>
+  </div>
+
+  <div class="showcase-card reveal">
+    <div class="showcase-text">
+      <h2 class="font-display">可视化编辑器</h2>
+      <p>三栏式布局，左侧节点库、中间画布、右侧属性面板，操作直观，学习成本极低。</p>
+      <ul class="feature-list">
+        <li><span class="check">✓</span> 20+ 种内置节点，覆盖常见自动化场景</li>
+        <li><span class="check">✓</span> 节点分类清晰，搜索快速定位</li>
+        <li><span class="check">✓</span> 可视化连线，流程逻辑一目了然</li>
+        <li><span class="check">✓</span> 实时参数配置，所见即所得</li>
+        <li><span class="check">✓</span> 支持变量传递，数据在节点间流转</li>
+      </ul>
+    </div>
+    <div class="showcase-img">
+      <img src="images/screenshot-1.png" alt="可视化编辑器界面">
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="cta-box reveal">
+    <h2 class="font-display">准备好解放双手了吗？</h2>
+    <p>开源免费，开箱即用。<br>现在就下载 Mimic Flow，把时间还给真正重要的事。</p>
+    <div class="cta-buttons">
+      <a href="https://github.com/jibuzixin/mimic-flow/releases" class="cta-white">
+        ⭐ 立即下载
+      </a>
+      <a href="https://github.com/jibuzixin/mimic-flow" class="cta-outline">
+        � 查看源码
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Made with ❤️ by Mimic Flow Team ·
+    <a href="https://github.com/jibuzixin/mimic-flow">GitHub</a> ·
+    <a href="#">MIT License</a>
+  </p>
+</footer>
+
+<script>
+  // Scroll reveal animation
+  const revealElements = document.querySelectorAll('.reveal');
+
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry, index) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => {
+          entry.target.classList.add('active');
+        }, index * 80);
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, {
+    threshold: 0.1,
+    rootMargin: '0px 0px -40px 0px'
+  });
+
+  revealElements.forEach(el => revealObserver.observe(el));
+
+  // Smooth scroll for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
