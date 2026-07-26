@@ -339,6 +339,18 @@ ipcMain.handle('workflow:save', async (_event, workflow: any) => {
   const filename = `${name}_${id}.json`;
   const filePath = join(dir, filename);
   
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  for (const file of files) {
+    try {
+      const filePathOld = join(dir, file);
+      const content = readFileSync(filePathOld, 'utf-8');
+      const data = JSON.parse(content);
+      if (data.id === id && file !== filename) {
+        unlinkSync(filePathOld);
+      }
+    } catch {}
+  }
+  
   writeFileSync(filePath, JSON.stringify(workflow, null, 2), 'utf-8');
   return true;
 });

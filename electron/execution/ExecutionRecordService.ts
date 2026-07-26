@@ -87,6 +87,176 @@ class ExecutionRecordService {
     console.log('[ExecutionRecordService] saving db');
     this.saveDb();
     console.log('[ExecutionRecordService] init complete');
+    
+    this.migrateOldStructureIfNeeded();
+  }
+  
+  private migrateOldStructureIfNeeded() {
+    if (!this.db) return;
+    
+    try {
+      const stmt = this.db.prepare('SELECT COUNT(*) as count FROM executions');
+      stmt.bind([]);
+      let total = 0;
+      if (stmt.step()) {
+        const row = stmt.getAsObject() as any;
+        total = row?.count || 0;
+      }
+      stmt.free();
+      
+      if (total === 0) return;
+      
+      const checkStmt = this.db.prepare('SELECT directory FROM executions LIMIT 1');
+      checkStmt.bind([]);
+      let sampleDir = '';
+      if (checkStmt.step()) {
+        const row = checkStmt.getAsObject() as any;
+        sampleDir = row?.directory || '';
+      }
+      checkStmt.free();
+      
+      const parts = sampleDir.split('/');
+      if (parts.length >= 3) return;
+      
+      console.log('[ExecutionRecordService] Migrating old directory structure...');
+      this.migrateOldStructure();
+    } catch (e) {
+      console.error('[ExecutionRecordService] Migration check failed:', e);
+    }
+  }
+  
+  private migrateOldStructure() {
+    if (!this.db) return;
+    
+    try {
+      const allStmt = this.db.prepare('SELECT * FROM executions ORDER BY start_time ASC');
+      allStmt.bind([]);
+      
+      const allRecords: any[] = [];
+      while (allStmt.step()) {
+        allRecords.push(allStmt.getAsObject());
+      }
+      allStmt.free();
+      
+      let migrated = 0;
+      for (const row of allRecords) {
+        try {
+          const oldRelativeDir = row.directory;
+          const oldFullDir = join(this.baseDir, oldRelativeDir);
+          
+          if (!existsSync(oldFullDir)) continue;
+          
+          const startTime = row.start_time;
+          const workflowName = row.workflow_name;
+          const dateStr = new Date(startTime).toISOString().slice(0, 10);
+          const timeStr = new Date(startTime).toISOString().replace(/[:T]/g, '-').slice(11, 19);
+          const safeName = workflowName.replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
+          
+          const oldDirParts = oldRelativeDir.split('/');
+          const oldDirName = oldDirParts[oldDirParts.length - 1];
+          const idMatch = oldDirName.match(/_([a-f0-9]{8})$/);
+          const shortId = idMatch ? idMatch[1] : uuidv4().slice(0, 8);
+          
+          const newDirName = `${timeStr}_${shortId}`;
+          const newRelativeDir = join(dateStr, safeName, newDirName);
+          const newFullDir = join(this.baseDir, newRelativeDir);
+          
+          if (oldFullDir === newFullDir) continue;
+          
+          if (existsSync(newFullDir)) continue;
+          
+          mkdirSync(dirname(newFullDir), { recursive: true });
+          
+          const oldMidsceneDir = join(oldFullDir, 'midscene-report');
+          const newEngineDir = join(newFullDir, 'engine');
+          
+          const entries = readdirSync(oldFullDir);
+          for (const entry of entries) {
+            const srcPath = join(oldFullDir, entry);
+            const destPath = join(newFullDir, entry);
+            const stat = statSync(srcPath);
+            
+            if (entry === 'midscene-report') {
+              const newMidsceneDir = join(newEngineDir, 'midscene');
+              this.copyDir(srcPath, newMidsceneDir);
+            } else if (stat.isDirectory()) {
+              this.copyDir(srcPath, destPath);
+            } else {
+              copyFileSync(srcPath, destPath);
+            }
+          }
+          
+          const metaRecord: ExecutionRecord = {
+            id: row.id,
+            workflowId: row.workflow_id,
+            workflowName: row.workflow_name,
+            status: row.status,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            duration: row.duration,
+            directory: newRelativeDir,
+            nodeTotal: row.node_total || 0,
+            nodeSuccess: row.node_success || 0,
+            nodeFailed: row.node_failed || 0,
+            tokenInput: row.token_input || 0,
+            tokenOutput: row.token_output || 0,
+            tokenTotal: row.token_total || 0,
+            cost: row.cost || 0,
+            hasMidsceneReport: row.has_midscene_report === 1,
+          };
+          
+          const metaPath = join(newFullDir, 'meta.json');
+          writeFileSync(metaPath, JSON.stringify(metaRecord, null, 2), 'utf-8');
+          
+          this.db.run(
+            'UPDATE executions SET directory = ? WHERE id = ?',
+            [newRelativeDir, row.id],
+          );
+          
+          this.removeDir(oldFullDir);
+          migrated++;
+        } catch (e) {
+          console.error('[ExecutionRecordService] Failed to migrate record:', row?.id, e);
+        }
+      }
+      
+      this.saveDb();
+      this.cleanupEmptyOldDirs();
+      console.log(`[ExecutionRecordService] Migrated ${migrated} records to new structure`);
+    } catch (e) {
+      console.error('[ExecutionRecordService] Migration failed:', e);
+    }
+  }
+  
+  private cleanupEmptyOldDirs() {
+    try {
+      if (!existsSync(this.baseDir)) return;
+      const dateDirs = readdirSync(this.baseDir).filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f));
+      for (const dateDir of dateDirs) {
+        const datePath = join(this.baseDir, dateDir);
+        const stat = statSync(datePath);
+        if (!stat.isDirectory()) continue;
+        
+        const entries = readdirSync(datePath);
+        for (const entry of entries) {
+          const entryPath = join(datePath, entry);
+          const entryStat = statSync(entryPath);
+          if (!entryStat.isDirectory()) continue;
+          
+          const subEntries = readdirSync(entryPath);
+          if (subEntries.length === 0) {
+            rmdirSync(entryPath);
+          }
+        }
+        
+        const remaining = readdirSync(datePath);
+        if (remaining.length === 0) {
+          rmdirSync(datePath);
+        }
+      }
+    } catch (e) {
+      console.warn('[ExecutionRecordService] Cleanup empty dirs failed:', e);
+    }
   }
 
   private saveDb() {
@@ -144,10 +314,10 @@ class ExecutionRecordService {
 
   createExecutionDir(workflowName: string, startTime: number): string {
     const dateStr = new Date(startTime).toISOString().slice(0, 10);
-    const timeStr = new Date(startTime).toISOString().replace(/[:T]/g, '-').slice(0, 19);
+    const timeStr = new Date(startTime).toISOString().replace(/[:T]/g, '-').slice(11, 19);
     const safeName = workflowName.replace(/[<>:"/\\|?*\s]/g, '_').slice(0, 50);
-    const dirName = `${safeName}_${timeStr}_${uuidv4().slice(0, 8)}`;
-    const fullPath = join(this.baseDir, dateStr, dirName);
+    const dirName = `${timeStr}_${uuidv4().slice(0, 8)}`;
+    const fullPath = join(this.baseDir, dateStr, safeName, dirName);
     mkdirSync(fullPath, { recursive: true });
     return fullPath;
   }
@@ -173,7 +343,7 @@ class ExecutionRecordService {
 
     let hasMidsceneReport = false;
     if (midsceneReportDir && existsSync(midsceneReportDir)) {
-      const targetDir = join(directory, 'midscene-report');
+      const targetDir = join(directory, 'engine', 'midscene');
       const stat = statSync(midsceneReportDir);
       if (stat.isDirectory()) {
         this.copyDir(midsceneReportDir, targetDir);
@@ -202,6 +372,9 @@ class ExecutionRecordService {
       cost: record.cost || 0,
       hasMidsceneReport,
     };
+
+    const metaPath = join(directory, 'meta.json');
+    writeFileSync(metaPath, JSON.stringify(executionRecord, null, 2), 'utf-8');
 
     this.db.run(
       `INSERT OR REPLACE INTO executions (
@@ -283,7 +456,7 @@ class ExecutionRecordService {
         .filter((l): l is LogEntry => l !== null);
     }
 
-    const midsceneReportDir = join(fullDir, 'midscene-report');
+    const midsceneReportDir = join(fullDir, 'engine', 'midscene');
     let midsceneReportPath: string | undefined;
     let midsceneReportUrl: string | undefined;
     const hasMidsceneReport = existsSync(midsceneReportDir) && readdirSync(midsceneReportDir).some((f) => f.endsWith('.html'));
@@ -295,7 +468,7 @@ class ExecutionRecordService {
       }
       if (htmlFile) {
         midsceneReportPath = join(midsceneReportDir, htmlFile);
-        const relativePath = join(record.directory, 'midscene-report', htmlFile);
+        const relativePath = join(record.directory, 'engine', 'midscene', htmlFile);
         midsceneReportUrl = `midscene-report://local/${relativePath.split(sep).map(encodeURIComponent).join('/')}`;
       }
     }
