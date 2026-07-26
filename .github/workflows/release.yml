@@ -46,6 +46,9 @@ jobs:
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
 
+      - name: Generate app icons
+        run: npm run generate:icons
+
       - name: Build Electron app
         run: npm run build
 
@@ -57,7 +60,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: List release files
-        run: ls -la release/
+        run: node -e "const fs=require('fs'); const path=require('path'); function walk(dir){const items=fs.readdirSync(dir); items.forEach(i=>{const p=path.join(dir,i); const s=fs.statSync(p); console.log(s.size.toString().padStart(10),p); if(s.isDirectory())walk(p);});} walk('release');"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

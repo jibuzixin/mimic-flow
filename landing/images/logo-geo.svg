@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="20" flood-color="#A78BFA" flood-opacity="0.2"/>
+    </filter>
+    <radialGradient id="gradRed" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#FF8A8A;stop-opacity:0.95"/>
+      <stop offset="100%" style="stop-color:#FF6B6B;stop-opacity:0.75"/>
+    </radialGradient>
+    <radialGradient id="gradPink" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#F9A8D4;stop-opacity:0.95"/>
+      <stop offset="100%" style="stop-color:#F472B6;stop-opacity:0.75"/>
+    </radialGradient>
+    <radialGradient id="gradPurple" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#C4B5FD;stop-opacity:0.95"/>
+      <stop offset="100%" style="stop-color:#A78BFA;stop-opacity:0.78"/>
+    </radialGradient>
+    <radialGradient id="gradCyan" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#5EEAD4;stop-opacity:0.95"/>
+      <stop offset="100%" style="stop-color:#4ECDC4;stop-opacity:0.78"/>
+    </radialGradient>
+    <radialGradient id="gradYellow" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#FFF3A0;stop-opacity:0.95"/>
+      <stop offset="100%" style="stop-color:#FFE66D;stop-opacity:0.8"/>
+    </radialGradient>
+  </defs>
+  
+  <g filter="url(#softShadow)">
+    <circle cx="330" cy="160" r="95" fill="url(#gradRed)"/>
+    <circle cx="170" cy="135" r="75" fill="url(#gradPink)"/>
+    <circle cx="120" cy="270" r="85" fill="url(#gradPurple)"/>
+    <circle cx="260" cy="350" r="70" fill="url(#gradCyan)"/>
+    <circle cx="370" cy="290" r="58" fill="url(#gradYellow)"/>
+  </g>
+</svg>
