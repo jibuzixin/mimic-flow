@@ -7,12 +7,12 @@ export function getV2Scheduler(): FlowScheduler | null {
   return currentScheduler;
 }
 
-export async function runFlowV2(flow: FlowSchema, onEvent?: (event: RuntimeEvent) => void): Promise<void> {
+export async function runFlowV2(flow: FlowSchema, onEvent?: (event: RuntimeEvent) => void, options?: { workflowId?: string; workflowName?: string }): Promise<void> {
   if (currentScheduler && currentScheduler.getStatus() === 'running') {
     throw new Error('已有工作流正在运行，请先停止');
   }
 
-  currentScheduler = new FlowScheduler(flow);
+  currentScheduler = new FlowScheduler(flow, options);
 
   if (onEvent) {
     currentScheduler.on('event', onEvent);

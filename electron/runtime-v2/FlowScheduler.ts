@@ -135,11 +135,15 @@ export class FlowScheduler extends EventEmitter {
   private engineRegistry: EngineRegistry;
   private log = getLogger();
   private flowId: string;
+  private workflowId: string;
+  private workflowName: string;
 
-  constructor(flow: FlowSchema) {
+  constructor(flow: FlowSchema, options?: { workflowId?: string; workflowName?: string }) {
     super();
     this.flow = flow;
     this.flowId = `flow-${Date.now()}`;
+    this.workflowId = options?.workflowId || this.flowId;
+    this.workflowName = options?.workflowName || flow.flowMeta?.name || '工作流';
 
     for (const node of flow.nodes) {
       this.nodeMap.set(node.id, node);
@@ -302,7 +306,7 @@ export class FlowScheduler extends EventEmitter {
 
     console.log('[FlowScheduler] Starting flow:', this.flow.flowMeta.name, 'with', this.flow.nodes.length, 'nodes');
     this.addLog({ level: 'info', source: 'scheduler', message: '工作流开始执行' });
-    this.emit('event', { type: 'flow:start', flowId: this.flowId } as RuntimeEvent);
+    this.emit('event', { type: 'flow:start', flowId: this.flowId, workflowId: this.workflowId, workflowName: this.workflowName, startTime: this.startTime } as RuntimeEvent);
 
     try {
       const startNode = this.flow.nodes.find((n) => n.nodeType === 'control.start') || this.flow.nodes[0];
@@ -338,8 +342,13 @@ export class FlowScheduler extends EventEmitter {
       
       this.emit('event', {
         type: 'flow:complete',
+        flowId: this.flowId,
+        workflowId: this.workflowId,
+        workflowName: this.workflowName,
         status: this.status as 'success' | 'failed' | 'stopped',
         duration: Date.now() - this.startTime,
+        startTime: this.startTime,
+        endTime: Date.now(),
         reportPath,
         logs,
         nodeStats,

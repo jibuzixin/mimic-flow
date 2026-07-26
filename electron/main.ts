@@ -418,15 +418,19 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       const logs = (evt as any).logs || [];
       const nodeStats = (evt as any).nodeStats || { total: 0, success: 0, failed: 0 };
       const reportPath = (evt as any).reportPath;
+      const eventWorkflowId = (evt as any).workflowId || wfId;
+      const eventWorkflowName = (evt as any).workflowName || flowName;
+      const eventStartTime = (evt as any).startTime || (Date.now() - duration);
+      const eventEndTime = (evt as any).endTime || Date.now();
       
       try {
         getExecutionRecordService().saveExecution(
           {
-            workflowId: wfId,
-            workflowName: flowName,
+            workflowId: eventWorkflowId,
+            workflowName: eventWorkflowName,
             status,
-            startTime: Date.now() - duration,
-            endTime: Date.now(),
+            startTime: eventStartTime,
+            endTime: eventEndTime,
             duration,
             nodeTotal: nodeStats.total,
             nodeSuccess: nodeStats.success,
@@ -460,7 +464,7 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
         new Notification({ title, body }).show();
       }
     }
-  }).catch((err) => {
+  }, { workflowId: wfId, workflowName: flowName }).catch((err) => {
     console.error('[flow-v2:run] Flow execution error:', err);
     // 发送错误事件到前端
     try {
