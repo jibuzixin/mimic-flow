@@ -113,6 +113,18 @@ export default function WorkflowList() {
     }
   };
 
+  const handleRun = async (wf: WorkflowRecord) => {
+    try {
+      const flowSchema = exportWorkflow(wf.id);
+      const runRes = await window.mimic?.invoke('flow-v2:run', flowSchema, { workflowId: wf.id });
+      if (!(runRes as any)?.success) {
+        alert('启动失败: ' + ((runRes as any)?.error || '未知错误'));
+      }
+    } catch (e) {
+      alert('启动失败: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   const handleCreate = () => {
     const proceed = checkUnsavedAndProceed(() => {
       const id = createWorkflow('新建工作流');
@@ -317,7 +329,7 @@ export default function WorkflowList() {
                     className="flex-1 gap-1 text-xs"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpen(wf);
+                      handleRun(wf);
                     }}
                   >
                     <Play className="h-3.5 w-3.5" />
