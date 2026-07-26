@@ -174,15 +174,21 @@ class ExecutionRecordService {
           for (const entry of entries) {
             const srcPath = join(oldFullDir, entry);
             const destPath = join(newFullDir, entry);
-            const stat = statSync(srcPath);
             
-            if (entry === 'midscene-report') {
-              const newMidsceneDir = join(newEngineDir, 'midscene');
-              this.copyDir(srcPath, newMidsceneDir);
-            } else if (stat.isDirectory()) {
-              this.copyDir(srcPath, destPath);
-            } else {
-              copyFileSync(srcPath, destPath);
+            try {
+              if (!existsSync(srcPath)) continue;
+              const stat = statSync(srcPath);
+              
+              if (entry === 'midscene-report') {
+                const newMidsceneDir = join(newEngineDir, 'midscene');
+                this.copyDir(srcPath, newMidsceneDir);
+              } else if (stat.isDirectory()) {
+                this.copyDir(srcPath, destPath);
+              } else {
+                copyFileSync(srcPath, destPath);
+              }
+            } catch (entryErr) {
+              console.warn(`[ExecutionRecordService] Skipping entry ${entry}:`, entryErr);
             }
           }
           

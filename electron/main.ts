@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol, screen } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join, relative } from 'path';
 import { getStore } from './store.js';
@@ -39,13 +39,135 @@ const __dirname = dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+let mainWindow: BrowserWindow | null = null;
+let floatingWindow: BrowserWindow | null = null;
+
+interface FloatingState {
+  workflowName: string;
+  currentNode: string;
+  startTime: number;
+  totalNodes: number;
+  completedNodes: number;
+  lastDuration: number | null;
+  status: 'idle' | 'running' | 'success' | 'failed' | 'stopped';
+}
+
+let floatingState: FloatingState = {
+  workflowName: '',
+  currentNode: '',
+  startTime: 0,
+  totalNodes: 0,
+  completedNodes: 0,
+  lastDuration: null,
+  status: 'idle',
+};
+
+function createFloatingWindow(): Promise<BrowserWindow> {
+  return new Promise((resolve, reject) => {
+    if (floatingWindow) {
+      floatingWindow.focus();
+      resolve(floatingWindow);
+      return;
+    }
+
+    const preloadPath = join(__dirname, 'preload.cjs');
+    const { width: displayWidth, height: displayHeight } =
+      screen.getPrimaryDisplay().workAreaSize;
+
+    const windowWidth = 320;
+    const windowHeight = 260;
+    const margin = 24;
+
+    floatingWindow = new BrowserWindow({
+      width: windowWidth,
+      height: windowHeight,
+      x: displayWidth - windowWidth - margin,
+      y: displayHeight - windowHeight - margin,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: true,
+      roundedCorners: true,
+      show: false,
+      webPreferences: {
+        preload: preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+
+    floatingWindow.on('closed', () => {
+      floatingWindow = null;
+    });
+
+    const handleFailed = (error: Error) => {
+      reject(error);
+    };
+
+    floatingWindow.webContents.once('did-finish-load', () => {
+      floatingWindow?.webContents.removeListener('did-fail-load', handleFailed as any);
+      if (floatingWindow) {
+        floatingWindow.showInactive();
+        floatingWindow.setOpacity(0);
+        let opacity = 0;
+        const fadeIn = setInterval(() => {
+          opacity += 0.1;
+          if (opacity >= 1) {
+            opacity = 1;
+            clearInterval(fadeIn);
+          }
+          floatingWindow?.setOpacity(opacity);
+        }, 16);
+        resolve(floatingWindow);
+      }
+    });
+
+    floatingWindow.webContents.once('did-fail-load', handleFailed as any);
+
+    if (isDev) {
+      floatingWindow.loadURL('http://localhost:5173/floating');
+    } else {
+      floatingWindow.loadFile(join(__dirname, '../dist/index.html'), {
+        hash: '/floating',
+      });
+    }
+  });
+}
+
+function closeFloatingWindow() {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    const win = floatingWindow;
+    let opacity = 1;
+    const fadeOut = setInterval(() => {
+      opacity -= 0.15;
+      if (opacity <= 0) {
+        clearInterval(fadeOut);
+        if (!win.isDestroyed()) {
+          win.close();
+        }
+      } else {
+        win.setOpacity(opacity);
+      }
+    }, 16);
+  }
+}
+
+function sendToFloating(channel: string, data: unknown) {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    floatingWindow.webContents.send(channel, data);
+  }
+}
+
 function createMainWindow() {
   const preloadPath = join(__dirname, 'preload.cjs');
   console.log('[Main] __dirname:', __dirname);
   console.log('[Main] preload path:', preloadPath);
   console.log('[Main] preload exists:', existsSync(preloadPath));
 
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
@@ -60,33 +182,35 @@ function createMainWindow() {
     show: false,
   });
 
-  mainWindow.webContents.on('did-finish-load', () => {
+  mainWindow = win;
+
+  win.webContents.on('did-finish-load', () => {
     console.log('[Main] Page finished loading, checking window.mimic...');
-    mainWindow.webContents.executeJavaScript('window.mimic ? "mimic EXISTS" : "mimic NOT FOUND"')
+    win.webContents.executeJavaScript('window.mimic ? "mimic EXISTS" : "mimic NOT FOUND"')
       .then((result) => console.log('[Main] window.mimic check:', result))
       .catch((e) => console.error('[Main] window.mimic check failed:', e));
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
+    win.loadURL('http://localhost:5173');
+    win.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'));
+    win.loadFile(join(__dirname, '../dist/index.html'));
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+  win.once('ready-to-show', () => {
+    win.show();
     getLogger().info('Main window ready to show');
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  flowRuntimeService.setMainWindow(mainWindow);
+  flowRuntimeService.setMainWindow(win);
 
-  return mainWindow;
+  return win;
 }
 
 app.whenReady().then(async () => {
@@ -227,6 +351,33 @@ ipcMain.handle('window:maximize', (event) => {
 ipcMain.handle('window:close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   win?.close();
+});
+
+ipcMain.handle('window:restore-main', () => {
+  if (mainWindow) {
+    mainWindow.setOpacity(1);
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    floatingWindow.close();
+    floatingWindow = null;
+  }
+});
+
+ipcMain.handle('window:close-floating', () => {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    floatingWindow.close();
+    floatingWindow = null;
+  }
+  if (mainWindow && !mainWindow.isVisible()) {
+    mainWindow.setOpacity(1);
+    mainWindow.show();
+  }
+});
+
+ipcMain.handle('floating:get-state', () => {
+  return { ...floatingState };
 });
 
 ipcMain.handle('dialog:select-video', async () => {
@@ -396,19 +547,96 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
   const win = BrowserWindow.fromWebContents(webContents);
 
   const startNode = flow.nodes.find((n) => n.nodeType === 'control.start');
-  const shouldMinimize = startNode?.nodeParams?.minimizeWindow === true;
-  if (shouldMinimize && win) {
+  let windowMode = startNode?.nodeParams?.windowMode as string | undefined;
+  if (!windowMode && startNode?.nodeParams?.minimizeWindow === true) {
+    windowMode = 'minimize';
+  }
+  windowMode = windowMode || 'none';
+
+  if (windowMode === 'minimize' && win) {
     win.minimize();
+  } else if (windowMode === 'floating' && win) {
+    try {
+      await createFloatingWindow();
+      win.hide();
+      win.setOpacity(1);
+    } catch (e) {
+      console.error('[flow-v2:run] Failed to create floating window:', e);
+    }
   }
 
   let flowName = flow.flowMeta?.name || '工作流';
   let wfId = options?.workflowId || flowName;
+  let totalNodes = flow.nodes.filter((n) => n.nodeType !== 'control.start' && n.nodeType !== 'control.end').length;
+
+  let lastDuration: number | null = null;
+  try {
+    const result = getExecutionRecordService().listExecutions({
+      workflowId: wfId,
+      status: 'success',
+      pageSize: 1,
+      page: 1,
+    });
+    if (result && result.items && result.items.length > 0) {
+      lastDuration = result.items[0].duration || null;
+    }
+  } catch (e) {
+    console.warn('[flow-v2:run] Failed to get last execution duration:', e);
+  }
+
+  floatingState = {
+    workflowName: flowName,
+    currentNode: '准备中...',
+    startTime: Date.now(),
+    totalNodes,
+    completedNodes: 0,
+    lastDuration,
+    status: 'running',
+  };
+
+  let completedNodes = 0;
 
   runFlowV2(flow, (evt: RuntimeEventV2) => {
     try {
       webContents.send('flow-v2:event', evt);
     } catch (e) {
       console.error('[flow-v2:run] Failed to send event to renderer:', e);
+    }
+
+    if (evt.type === 'flow:start') {
+      const startTime = (evt as any).startTime || Date.now();
+      floatingState.startTime = startTime;
+      floatingState.status = 'running';
+      sendToFloating('floating:flow-start', {
+        workflowName: flowName,
+        startTime,
+        totalNodes,
+        lastDuration,
+      });
+    } else if (evt.type === 'node:start') {
+      const nodeName = (evt as any).nodeName || (evt as any).nodeType || '';
+      floatingState.currentNode = nodeName;
+      sendToFloating('floating:node-start', {
+        nodeId: (evt as any).nodeId,
+        nodeName,
+        nodeType: (evt as any).nodeType,
+      });
+    } else if (evt.type === 'node:complete') {
+      completedNodes++;
+      floatingState.completedNodes = completedNodes;
+      sendToFloating('floating:node-complete', {
+        nodeId: (evt as any).nodeId,
+        duration: (evt as any).duration,
+        completedNodes,
+      });
+    } else if (evt.type === 'node:error') {
+      completedNodes++;
+      floatingState.completedNodes = completedNodes;
+      sendToFloating('floating:node-error', {
+        nodeId: (evt as any).nodeId,
+        duration: (evt as any).duration,
+        error: (evt as any).error,
+      });
     }
 
     if (evt.type === 'flow:complete') {
@@ -422,6 +650,14 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       const eventWorkflowName = (evt as any).workflowName || flowName;
       const eventStartTime = (evt as any).startTime || (Date.now() - duration);
       const eventEndTime = (evt as any).endTime || Date.now();
+      
+      floatingState.status = status;
+      floatingState.currentNode = status === 'success' ? '执行完成' : status === 'stopped' ? '已停止' : '执行失败';
+      
+      sendToFloating('floating:flow-complete', {
+        status,
+        duration,
+      });
       
       try {
         getExecutionRecordService().saveExecution(
@@ -474,6 +710,11 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
         error: err instanceof Error ? err.message : String(err),
       });
     } catch {}
+
+    sendToFloating('floating:flow-complete', {
+      status: 'failed',
+      error: err instanceof Error ? err.message : String(err),
+    });
 
     if (Notification.isSupported()) {
       new Notification({

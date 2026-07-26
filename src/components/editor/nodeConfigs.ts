@@ -41,10 +41,21 @@ export const nodeConfigs: NodeConfig[] = [
     description: '工作流的起点，执行从这里开始',
     color: '#22c55e',
     defaultParams: {
-      minimizeWindow: false,
+      windowMode: 'none',
     },
     propertyFields: [
-      { key: 'minimizeWindow', label: '执行时最小化窗口', type: 'switch', defaultValue: false, description: '工作流开始执行时自动最小化当前窗口' },
+      {
+        key: 'windowMode',
+        label: '执行时窗口',
+        type: 'select',
+        defaultValue: 'none',
+        description: '工作流开始执行时主窗口的行为',
+        options: [
+          { label: '保持不变', value: 'none' },
+          { label: '最小化到任务栏', value: 'minimize' },
+          { label: '缩小为悬浮小窗', value: 'floating' },
+        ],
+      },
     ],
   },
   {

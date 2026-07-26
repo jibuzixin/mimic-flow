@@ -18,6 +18,7 @@ import WorkflowEditor from './pages/WorkflowEditor';
 import Logs from './pages/Logs';
 import FlowTester from './pages/FlowTester';
 import SettingsPage from './pages/Settings';
+import FloatingProgress from './pages/FloatingProgress';
 
 type NavItem = {
   path: string;
@@ -149,6 +150,7 @@ function AppContent() {
             <Route path="/logs" element={<Logs />} />
             {devMode && <Route path="/flow-tester" element={<FlowTester />} />}
             <Route path="/settings" element={<SettingsPage onDevModeToggle={() => setDevMode((v) => !v)} devMode={devMode} />} />
+            <Route path="/floating" element={<FloatingProgress />} />
           </Routes>
         </main>
       </div>
