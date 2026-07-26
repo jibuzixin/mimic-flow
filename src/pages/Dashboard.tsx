@@ -100,15 +100,23 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  const handleRunWorkflow = async (workflowId: string, _workflowName: string) => {
+  const findWorkflow = (workflowId: string, workflowName: string) => {
+    let workflow = workflows.find((w) => w.id === workflowId);
+    if (!workflow) {
+      workflow = workflows.find((w) => w.workflow?.flowMeta?.name === workflowName);
+    }
+    return workflow;
+  };
+
+  const handleRunWorkflow = async (workflowId: string, workflowName: string) => {
     try {
-      const workflow = workflows.find((w) => w.id === workflowId);
+      const workflow = findWorkflow(workflowId, workflowName);
       if (!workflow) {
         alert('工作流不存在');
         return;
       }
-      const flowSchema = exportWorkflow(workflowId);
-      const runRes = await window.mimic?.invoke('flow-v2:run', flowSchema, { workflowId });
+      const flowSchema = exportWorkflow(workflow.id);
+      const runRes = await window.mimic?.invoke('flow-v2:run', flowSchema, { workflowId: workflow.id });
       if ((runRes as any)?.success) {
         setTimeout(loadStats, 500);
       } else {
@@ -243,7 +251,12 @@ export default function Dashboard() {
                       className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/workflows/editor?id=${record.workflowId}`);
+                        const wf = findWorkflow(record.workflowId, record.workflowName);
+                        if (wf) {
+                          navigate(`/workflows/editor?id=${wf.id}`);
+                        } else {
+                          alert('工作流不存在');
+                        }
                       }}
                       title="编辑"
                     >
