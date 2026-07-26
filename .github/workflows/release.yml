@@ -93,9 +93,8 @@ jobs:
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            release-artifacts/**/*.dmg
-            release-artifacts/**/*.exe
-            release-artifacts/**/*.AppImage
-            release-artifacts/**/*.zip
+            release-artifacts/mac-build/*.dmg
+            release-artifacts/win-build/*Setup*.exe
+            release-artifacts/linux-build/*.AppImage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

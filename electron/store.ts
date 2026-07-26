@@ -9,8 +9,6 @@ interface AppStore {
   models: ModelProfile[];
   /** 各场景默认选用的模型 ID */
   defaultModelIds: DefaultModelSelection;
-  videoSavePath: string;
-  videoParseConcurrency: number;
   globalRuntimeOption: {
     defaultTimeout: number;
     defaultRetry: number;
@@ -115,8 +113,6 @@ export function getStore(): Store<AppStore> {
         midsceneModel: defaultMidsceneModel,
         models: defaultModels,
         defaultModelIds: defaultModelIds,
-        videoSavePath: '',
-        videoParseConcurrency: 3,
         globalRuntimeOption: defaultGlobalRuntimeOption,
         shortcutKeys: {
           recordToggle: 'F9',

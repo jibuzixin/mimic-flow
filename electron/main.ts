@@ -4,8 +4,6 @@ import { dirname, join, relative } from 'path';
 import { getStore } from './store.js';
 import { getLogger } from './logger.js';
 import { aiChat, getUsageStatistics, resetUsageStatistics } from './ai/index.js';
-import { parseVideo } from './video/index.js';
-import { registerRecorderIpc } from './recorder.js';
 import { FlowRuntimeService } from './runtime/FlowRuntimeService.js';
 import { MidsceneAdapter } from './midscene/adapter.js';
 import { runFlowV2, stopFlowV2, getFlowStatusV2, getV2Scheduler } from './runtime-v2/FlowRuntimeService.js';
@@ -18,8 +16,6 @@ import path from 'path';
 type StoreKey =
   | 'modelProvider'
   | 'midsceneModel'
-  | 'videoSavePath'
-  | 'videoParseConcurrency'
   | 'globalRuntimeOption'
   | 'shortcutKeys'
   | 'ui'
@@ -37,7 +33,11 @@ const flowRuntimeService = new FlowRuntimeService(midsceneAdapter);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const isDev = (process.env.NODE_ENV === 'development' || !app.isPackaged) && process.env.MIMIC_FORCE_PROD !== 'true';
+
+function getDistPath(...paths: string[]) {
+  return join(__dirname, '..', '..', 'dist', ...paths);
+}
 
 let mainWindow: BrowserWindow | null = null;
 let floatingWindow: BrowserWindow | null = null;
@@ -134,7 +134,7 @@ function createFloatingWindow(): Promise<BrowserWindow> {
     if (isDev) {
       floatingWindow.loadURL('http://localhost:5173/floating');
     } else {
-      floatingWindow.loadFile(join(__dirname, '../dist/index.html'), {
+      floatingWindow.loadFile(getDistPath('index.html'), {
         hash: '/floating',
       });
     }
@@ -199,7 +199,7 @@ function createMainWindow() {
     win.loadURL('http://localhost:5173');
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
-    win.loadFile(join(__dirname, '../dist/index.html'));
+    win.loadFile(getDistPath('index.html'));
   }
 
   win.once('ready-to-show', () => {
@@ -275,7 +275,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  registerRecorderIpc();
   createMainWindow();
 
   app.on('activate', () => {
@@ -382,17 +381,6 @@ ipcMain.handle('window:close-floating', () => {
 
 ipcMain.handle('floating:get-state', () => {
   return { ...floatingState };
-});
-
-ipcMain.handle('dialog:select-video', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [
-      { name: 'Videos', extensions: ['mp4', 'mkv', 'mov', 'webm', 'avi'] },
-      { name: 'All Files', extensions: ['*'] },
-    ],
-  });
-  return result.canceled ? null : result.filePaths[0];
 });
 
 ipcMain.handle('dialog:select-folder', async () => {
@@ -892,7 +880,6 @@ ipcMain.handle('config:get', async () => {
     success: true,
     data: {
       defaultMidsceneModel: getStore().get('midsceneModel'),
-      videoParseModel: getStore().get('modelProvider'),
       globalRuntimeOption: getStore().get('globalRuntimeOption'),
       models: getStore().get('models'),
       defaultModelIds: getStore().get('defaultModelIds'),
@@ -929,23 +916,6 @@ ipcMain.handle('dialog:save-flow-file', async (_event, defaultName?: string) => 
     ],
   });
   return result.canceled ? null : result.filePath;
-});
-
-ipcMain.handle('ai:parse-video', async (_event, videoPath: string, options?: { mode?: 'simple' | 'smart' | 'native'; compress?: boolean; fps?: number; maxFrames?: number; maxImagesPerRequest?: number; concurrency?: number; prompt?: string }) => {
-  getLogger().info('AI parse video requested', { videoPath, options });
-  const result = await parseVideo({
-    videoPath,
-    compress: options?.compress ?? true,
-    frameOptions: {
-      mode: options?.mode ?? 'smart',
-      fps: options?.fps,
-      maxFrames: options?.maxFrames,
-    },
-    maxImagesPerRequest: options?.maxImagesPerRequest,
-    concurrency: options?.concurrency,
-    customPrompt: options?.prompt,
-  });
-  return result;
 });
 
 ipcMain.handle('ai:chat-step', async (_event, prompt: string) => {

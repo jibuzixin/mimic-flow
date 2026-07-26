@@ -380,25 +380,6 @@
   resolved "https://registry.npmmirror.com/@esbuild/darwin-arm64/-/darwin-arm64-0.21.5.tgz"
   integrity sha512-DwqXqZyuk5AiWWf3UfLiRDJ5EDd49zg6O9wclZ7kUMv2WRFr4HKjXp/5t8JZ11QbQfUS6/cRCKGwYhtNAY88kQ==
 
-"@ffmpeg-installer/darwin-arm64@4.1.5":
-  version "4.1.5"
-  resolved "https://registry.npmmirror.com/@ffmpeg-installer/darwin-arm64/-/darwin-arm64-4.1.5.tgz"
-  integrity sha512-hYqTiP63mXz7wSQfuqfFwfLOfwwFChUedeCVKkBtl/cliaTM7/ePI9bVzfZ2c+dWu3TqCwLDRWNSJ5pqZl8otA==
-
-"@ffmpeg-installer/ffmpeg@^1.1.0":
-  version "1.1.0"
-  resolved "https://registry.npmmirror.com/@ffmpeg-installer/ffmpeg/-/ffmpeg-1.1.0.tgz"
-  integrity sha512-Uq4rmwkdGxIa9A6Bd/VqqYbT7zqh1GrT5/rFwCwKM70b42W5gIjWeVETq6SdcL0zXqDtY081Ws/iJWhr1+xvQg==
-  optionalDependencies:
-    "@ffmpeg-installer/darwin-arm64" "4.1.5"
-    "@ffmpeg-installer/darwin-x64" "4.1.0"
-    "@ffmpeg-installer/linux-arm" "4.1.3"
-    "@ffmpeg-installer/linux-arm64" "4.1.4"
-    "@ffmpeg-installer/linux-ia32" "4.1.0"
-    "@ffmpeg-installer/linux-x64" "4.1.0"
-    "@ffmpeg-installer/win32-ia32" "4.1.0"
-    "@ffmpeg-installer/win32-x64" "4.1.0"
-
 "@floating-ui/core@^1.8.0":
   version "1.8.0"
   resolved "https://registry.npmmirror.com/@floating-ui/core/-/core-1.8.0.tgz"
@@ -1466,13 +1447,6 @@
   resolved "https://registry.npmmirror.com/@types/estree/-/estree-1.0.9.tgz"
   integrity sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==
 
-"@types/fluent-ffmpeg@^2.1.28":
-  version "2.1.28"
-  resolved "https://registry.npmmirror.com/@types/fluent-ffmpeg/-/fluent-ffmpeg-2.1.28.tgz"
-  integrity sha512-5ovxsDwBcPfJ+eYs1I/ZpcYCnkce7pvH9AHSvrZllAp1ZPpTRDZAFjF3TRFbukxSgIYTTNYePbS0rKUmaxVbXw==
-  dependencies:
-    "@types/node" "*"
-
 "@types/fs-extra@^9.0.11", "@types/fs-extra@9.0.13":
   version "9.0.13"
   resolved "https://registry.npmmirror.com/@types/fs-extra/-/fs-extra-9.0.13.tgz"
@@ -1937,11 +1911,6 @@ async-exit-hook@^2.0.1:
   version "2.0.1"
   resolved "https://registry.npmmirror.com/async-exit-hook/-/async-exit-hook-2.0.1.tgz"
   integrity sha512-NW2cX8m1Q7KPA7a5M2ULQeZ2wR5qI5PAbw5L0UOMxdioVk9PMZ0h1TmyZEkPYrCvYjDlFICusOu1dlEKAAeXBw==
-
-async@^0.2.9:
-  version "0.2.10"
-  resolved "https://registry.npmmirror.com/async/-/async-0.2.10.tgz"
-  integrity sha512-eAkdoKxU6/LkKDBzLpT+t6Ff5EtfSF4wx1WfJiPEEV7WNLnDaRXk0oVysiEPm262roaachGexwUv94WhSgN5TQ==
 
 async@^3.2.4, async@^3.2.6:
   version "3.2.6"
@@ -3424,14 +3393,6 @@ finalhandler@~1.3.1:
     parseurl "~1.3.3"
     statuses "~2.0.2"
     unpipe "~1.0.0"
-
-fluent-ffmpeg@^2.1.3:
-  version "2.1.3"
-  resolved "https://registry.npmmirror.com/fluent-ffmpeg/-/fluent-ffmpeg-2.1.3.tgz"
-  integrity sha512-Be3narBNt2s6bsaqP6Jzq91heDgOEaDCJAXcE3qcma/EJBSy5FB4cvO31XBInuAuKBx8Kptf8dkhjK0IOru39Q==
-  dependencies:
-    async "^0.2.9"
-    which "^1.1.1"
 
 follow-redirects@^1.0.0, follow-redirects@^1.15.6:
   version "1.16.0"
@@ -6873,13 +6834,6 @@ when-exit@^2.1.4:
   version "2.1.5"
   resolved "https://registry.npmmirror.com/when-exit/-/when-exit-2.1.5.tgz"
   integrity sha512-VGkKJ564kzt6Ms1dbgPP/yuIoQCrsFAnRbptpC5wOEsDaNsbCB2bnfnaA8i/vRs5tjUSEOtIuvl9/MyVsvQZCg==
-
-which@^1.1.1:
-  version "1.3.1"
-  resolved "https://registry.npmmirror.com/which/-/which-1.3.1.tgz"
-  integrity sha512-HxJdYWq1MTIQbJ3nw0cqssHoTNU267KlrDuGZ1WYlxDStUtKUhOaJmh112/TZmHxxUfuJqPXSOm7tDyas0OSIQ==
-  dependencies:
-    isexe "^2.0.0"
 
 which@^1.2.9:
   version "1.3.1"
