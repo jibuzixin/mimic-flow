@@ -81,7 +81,7 @@
   },
   "build": {
     "appId": "com.mimicflow.app",
-    "productName": "mimic-flow",
+    "productName": "Mimic Flow",
     "directories": {
       "output": "release",
       "buildResources": "build"

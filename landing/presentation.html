@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mimic Flow - 产品介绍</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #A78BFA;
+    --secondary: #67E8F9;
+    --accent: #F472B6;
+    --warm: #FBBF24;
+    --dark: #1e1b4b;
+    --light: #FAF9FF;
+    --purple-1: #8b5cf6;
+    --purple-2: #a855f7;
+    --purple-3: #d946ef;
+    --text: #312e81;
+    --text-muted: #6b7280;
+    --border: rgba(167, 139, 250, 0.18);
+    --glow: rgba(167, 139, 250, 0.35);
+  }
+
+  html, body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--light);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100%;
+  }
+
+  body {
+    background:
+      radial-gradient(ellipse at top left, rgba(167,139,250,0.18) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom right, rgba(244,114,182,0.14) 0%, transparent 50%),
+      radial-gradient(ellipse at center, rgba(103,232,249,0.08) 0%, transparent 60%),
+      #FAF9FF;
+    background-attachment: fixed;
+  }
+
+  .font-display {
+    font-family: 'ZCOOL KuaiLe', cursive;
+  }
+
+  .slides-container {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 70px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.75s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: translateX(0);
+    z-index: 2;
+  }
+
+  .slide.prev {
+    transform: translateX(-100%);
+  }
+
+  .slide-content {
+    max-width: 1180px;
+    width: 100%;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ===== 动画 ===== */
+  .step {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .step.shown {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .step.delay-1 { transition-delay: 0.12s; }
+  .step.delay-2 { transition-delay: 0.24s; }
+  .step.delay-3 { transition-delay: 0.36s; }
+  .step.delay-4 { transition-delay: 0.48s; }
+  .step.delay-5 { transition-delay: 0.6s; }
+  .step.delay-6 { transition-delay: 0.72s; }
+  .step.delay-7 { transition-delay: 0.84s; }
+  .step.delay-8 { transition-delay: 0.96s; }
+
+  .float { animation: float 5s infinite ease-in-out; }
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0); }
+    50% { transform: translate(0, -14px); }
+  }
+  .pulse-glow { animation: pulseGlow 2.5s infinite ease-in-out; }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 var(--glow); }
+    50% { box-shadow: 0 0 40px 6px var(--glow); }
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 45%, #ec4899 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .rotate-slow { animation: rotateSlow 16s linear infinite; }
+  @keyframes rotateSlow { to { transform: rotate(360deg); } }
+
+  /* ===== 导航 ===== */
+  .slide-number {
+    position: fixed;
+    bottom: 30px;
+    right: 40px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #94A3B8;
+    z-index: 100;
+    letter-spacing: 1px;
+  }
+  .nav-dots {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 100;
+  }
+  .nav-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #CBD5E1;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .nav-dot.active {
+    background: var(--primary);
+    width: 28px;
+    border-radius: 5px;
+  }
+  .nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: all 0.3s;
+    color: var(--text);
+    font-size: 22px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.1);
+  }
+  .nav-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-50%) scale(1.08);
+    box-shadow: 0 12px 32px rgba(167, 139, 250, 0.28);
+  }
+  .nav-btn.prev { left: 28px; }
+  .nav-btn.next { right: 28px; }
+  .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: translateY(-50%); }
+
+  .step-indicator {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .step-indicator.show { opacity: 1; }
+  .step-indicator .count {
+    font-weight: 700;
+    color: var(--primary);
+  }
+  .step-indicator .hint {
+    padding: 2px 10px;
+    border-radius: 20px;
+    background: rgba(167,139,250,0.12);
+    color: #7c3aed;
+    font-size: 11px;
+    margin-left: 6px;
+  }
+
+  .hint {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #94A3B8;
+    z-index: 100;
+    opacity: 0.7;
+  }
+
+  /* ===== 通用样式 ===== */
+  .slide-title {
+    font-size: 44px;
+    font-weight: 800;
+    margin-bottom: 14px;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+  .slide-subtitle {
+    font-size: 18px;
+    color: var(--text-muted);
+    margin-bottom: 36px;
+    line-height: 1.7;
+  }
+
+  .glass {
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    box-shadow:
+      0 8px 32px rgba(139, 92, 246, 0.08),
+      inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    background: rgba(167,139,250,0.12);
+    color: #7c3aed;
+    border-radius: 50px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid rgba(167,139,250,0.25);
+  }
+  .badge-pink {
+    background: rgba(244,114,182,0.12);
+    color: #be185d;
+    border-color: rgba(244,114,182,0.25);
+  }
+  .badge-cyan {
+    background: rgba(103,232,249,0.12);
+    color: #0e7490;
+    border-color: rgba(103,232,249,0.25);
+  }
+  .badge-amber {
+    background: rgba(251,191,36,0.14);
+    color: #b45309;
+    border-color: rgba(251,191,36,0.3);
+  }
+
+  /* ===== Slide 1: 封面 ===== */
+  .cover { text-align: center; }
+  .cover-logo {
+    width: 140px;
+    height: 140px;
+    margin: 0 auto 32px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cover-logo .logo-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 34px;
+    background: linear-gradient(135deg, rgba(167,139,250,0.45), rgba(244,114,182,0.45));
+    filter: blur(18px);
+    opacity: 0.7;
+  }
+  .cover-logo img {
+    position: relative;
+    z-index: 1;
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    border-radius: 28px;
+    box-shadow: 0 18px 48px rgba(167,139,250,0.3);
+  }
+  .cover h1 {
+    font-size: 82px;
+    font-weight: 900;
+    margin-bottom: 22px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+  }
+  .cover .subtitle {
+    font-size: 26px;
+    color: var(--text-muted);
+    margin-bottom: 42px;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .cover .tagline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 36px;
+    background: linear-gradient(135deg, rgba(167,139,250,0.12), rgba(244,114,182,0.1));
+    color: #5b21b6;
+    border-radius: 50px;
+    font-size: 17px;
+    font-weight: 600;
+    border: 1px solid rgba(167,139,250,0.25);
+  }
+  .cover .stars {
+    margin-top: 36px;
+    font-size: 13px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+  .cover .stars span {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 10px;
+    color: var(--warm);
+    font-size: 15px;
+  }
+
+  /* ===== Slide 2: 介绍 ===== */
+  .intro-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 36px;
+    align-items: center;
+  }
+  .intro-visual {
+    position: relative;
+    height: 440px;
+  }
+  .intro-visual .screenshot {
+    position: absolute;
+    width: 100%;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 64px rgba(139,92,246,0.22);
+    top: 10%;
+    left: 0;
+  }
+  .intro-visual .screenshot img {
+    width: 100%;
+    display: block;
+  }
+  .intro-visual .float-badge {
+    position: absolute;
+    padding: 12px 18px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    z-index: 3;
+  }
+  .intro-visual .badge-1 { top: 0; right: -6px; background: white; color: var(--primary); border: 1px solid var(--border); }
+  .intro-visual .badge-2 { bottom: 12%; left: -14px; background: linear-gradient(135deg, #ec4899, #f472b6); color: white; }
+  .feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .feature-item {
+    padding: 22px 26px;
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    transition: all 0.3s;
+  }
+  .feature-item:hover {
+    transform: translateX(4px);
+  }
+  .feature-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    flex-shrink: 0;
+  }
+  .feature-text h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .feature-text p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  /* ===== Slide 3: 节点拖拽连接演示 ===== */
+  .wf-stage {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 30px;
+    height: 500px;
+  }
+  .node-lib {
+    padding: 22px 18px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+  .node-lib h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 2px 4px;
+  }
+  .lib-node {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: white;
+    border: 1px solid rgba(139,92,246,0.12);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: grab;
+    transition: all 0.3s;
+  }
+  .lib-node:hover {
+    transform: translateX(4px);
+    border-color: var(--primary);
+    box-shadow: 0 6px 18px rgba(167,139,250,0.18);
+  }
+  .lib-node .dot {
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .canvas {
+    position: relative;
+    padding: 26px;
+    height: 100%;
+    background:
+      linear-gradient(rgba(167,139,250,0.05) 1px, transparent 1px) 0 0/24px 24px,
+      linear-gradient(90deg, rgba(167,139,250,0.05) 1px, transparent 1px) 0 0/24px 24px,
+      rgba(255,255,255,0.55);
+    border-radius: 20px;
+    overflow: hidden;
+  }
+  .wf-node {
+    position: absolute;
+    width: 190px;
+    background: white;
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 18px;
+    padding: 14px 16px;
+    box-shadow: 0 12px 28px rgba(139,92,246,0.1);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .wf-node.hidden { opacity: 0; transform: scale(0.6) translateY(-30px); }
+  .wf-node.shown { opacity: 1; transform: scale(1) translateY(0); }
+  .wf-node.active { border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.15), 0 12px 28px rgba(34,197,94,0.18); }
+  .wf-node-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .wf-node-head .ndot {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .wf-node-head h5 { font-size: 14px; font-weight: 700; }
+  .wf-node p { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+  .wf-node .port {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: white;
+    border: 2px solid var(--primary);
+  }
+  .wf-node .port.in { left: -7px; top: 50%; transform: translateY(-50%); }
+  .wf-node .port.out { right: -7px; top: 50%; transform: translateY(-50%); }
+  .wf-node .port.on {
+    background: var(--primary);
+    box-shadow: 0 0 10px var(--primary);
+  }
+  .lines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .line {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 3;
+    stroke-dasharray: 6 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.7;
+  }
+  .line.run {
+    stroke-dashoffset: 0;
+    animation: dash 0.8s linear infinite;
+    stroke: #22c55e;
+    opacity: 1;
+  }
+  @keyframes dash { to { stroke-dashoffset: -24; } }
+
+  .toolbar {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    display: flex;
+    gap: 8px;
+    z-index: 5;
+  }
+  .tb-btn {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: white;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  .tb-btn.show { opacity: 1; transform: translateY(0); }
+  .tb-btn.run {
+    background: linear-gradient(135deg, #8b5cf6, #ec4899);
+    color: white;
+    border: none;
+    box-shadow: 0 6px 16px rgba(167,139,250,0.35);
+  }
+  .tb-btn.run:hover { transform: translateY(-2px); }
+
+  /* ===== Slide 4: AI act ===== */
+  .ai-act-layout {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 40px;
+    align-items: center;
+  }
+  .single-node-hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  .single-node-hero .big-node {
+    width: 360px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 50%, #ec4899 100%);
+    border-radius: 28px;
+    padding: 30px 30px;
+    color: white;
+    box-shadow: 0 32px 64px rgba(167,139,250,0.42);
+    position: relative;
+    overflow: hidden;
+  }
+  .single-node-hero .big-node::after {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+  }
+  .single-node-hero .big-node::before {
+    content: '';
+    position: absolute;
+    bottom: -80px; left: -40px;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.07);
+  }
+  .node-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.18);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+    letter-spacing: 0.5px;
+  }
+  .big-node h3 {
+    font-size: 24px;
+    font-weight: 800;
+    margin-bottom: 14px;
+    position: relative;
+    z-index: 1;
+  }
+  .big-node .prompt {
+    padding: 18px 20px;
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    position: relative;
+    z-index: 1;
+    font-family: 'Noto Sans SC', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .big-node .prompt .cursor {
+    display: inline-block;
+    width: 2px;
+    background: white;
+    height: 16px;
+    vertical-align: -2px;
+    margin-left: 2px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .mini-flow {
+    margin-top: 26px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.6s;
+  }
+  .mini-flow.show { opacity: 1; transform: translateY(0); }
+  .mini-node {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .mini-arrow { color: var(--primary); font-weight: 900; }
+
+  .ai-side {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .ai-pros {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .ai-pro {
+    padding: 18px 22px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    transition: all 0.3s;
+  }
+  .ai-pro:hover { transform: translateX(4px); }
+  .ai-pro-icon {
+    width: 44px; height: 44px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .ai-pro h4 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .ai-pro p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+  .tip-box {
+    margin-top: 4px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(251,191,36,0.12), rgba(244,114,182,0.08));
+    border: 1px dashed rgba(251,191,36,0.4);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .tip-box .em { font-size: 20px; flex-shrink: 0; }
+  .tip-box p { font-size: 13px; color: #92400e; line-height: 1.6; }
+  .tip-box p strong { color: #78350f; }
+
+  /* ===== Slide 5: 双引擎架构 ===== */
+  .engines-layout {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .engine-card {
+    padding: 34px 30px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .engine-card.engine-ai {
+    border: 2px solid rgba(139,92,246,0.25);
+    background:
+      radial-gradient(ellipse at top right, rgba(167,139,250,0.18), transparent 60%),
+      rgba(255,255,255,0.75);
+  }
+  .engine-card.engine-local {
+    border: 2px solid rgba(103,232,249,0.25);
+    background:
+      radial-gradient(ellipse at top right, rgba(103,232,249,0.18), transparent 60%),
+      rgba(255,255,255,0.75);
+  }
+  .engine-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .engine-icon {
+    width: 58px; height: 58px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+  .engine-ai .engine-icon { background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; }
+  .engine-local .engine-icon { background: linear-gradient(135deg, #06b6d4, #22d3ee); color: white; }
+  .engine-title h3 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .engine-title .tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+  .engine-ai .tag { background: rgba(139,92,246,0.15); color: #6d28d9; }
+  .engine-local .tag { background: rgba(6,182,212,0.15); color: #0e7490; }
+  .engine-points {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex: 1;
+  }
+  .engine-point {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.7);
+    border: 1px solid rgba(139,92,246,0.08);
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.5;
+  }
+  .engine-local .engine-point { border-color: rgba(6,182,212,0.08); }
+  .engine-point .pi { font-size: 16px; flex-shrink: 0; }
+  .engine-foot {
+    padding: 14px 18px;
+    border-radius: 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .engine-ai .engine-foot { background: rgba(139,92,246,0.12); color: #6d28d9; }
+  .engine-local .engine-foot { background: rgba(6,182,212,0.12); color: #0e7490; }
+  .vs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 0 8px;
+  }
+  .vs-circle {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--warm), #f97316);
+    color: white;
+    font-weight: 900;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 14px 32px rgba(251,146,60,0.4);
+    position: relative;
+  }
+  .vs-circle::after {
+    content: 'AND';
+    position: absolute;
+    bottom: -24px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary);
+    background: white;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    letter-spacing: 1px;
+  }
+  .flow-illu {
+    margin-top: 28px;
+    padding: 20px;
+    text-align: center;
+  }
+  .flow-illu-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .flow-chip {
+    padding: 9px 16px;
+    border-radius: 12px;
+    background: white;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chip-ai { color: #6d28d9; border-color: rgba(139,92,246,0.3); background: rgba(167,139,250,0.1); }
+  .chip-local { color: #0e7490; border-color: rgba(6,182,212,0.3); background: rgba(103,232,249,0.1); }
+  .chip-switch { color: #b45309; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.12); }
+  .flow-arrow { color: var(--primary); font-weight: 800; }
+
+  /* ===== Slide 6: 应用场景 ===== */
+  .scenarios {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+  }
+  .scenario {
+    padding: 28px 26px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .scenario:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 48px rgba(139,92,246,0.16);
+  }
+  .scenario .sicon {
+    width: 60px; height: 60px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    margin-bottom: 18px;
+    position: relative;
+    z-index: 1;
+  }
+  .scenario h4 {
+    font-size: 19px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+  }
+  .scenario p {
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.7;
+    position: relative;
+    z-index: 1;
+  }
+  .scenario .bg-emoji {
+    position: absolute;
+    right: -20px;
+    bottom: -20px;
+    font-size: 110px;
+    opacity: 0.06;
+    z-index: 0;
+  }
+
+  /* ===== Slide 7: 架构 ===== */
+  .arch-diagram {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 20px;
+  }
+  .arch-layer {
+    flex: 1;
+    padding: 28px 22px;
+    text-align: center;
+    transition: all 0.4s;
+  }
+  .arch-layer:hover { transform: translateY(-4px); }
+  .arch-layer.ui {
+    border: 2.5px solid rgba(139,92,246,0.75);
+    background:
+      radial-gradient(ellipse at top right, rgba(167,139,250,0.42), transparent 60%),
+      linear-gradient(180deg, rgba(237,233,254,0.95), rgba(255,255,255,0.92));
+    box-shadow:
+      0 16px 40px rgba(139,92,246,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .arch-layer.scheduler {
+    border: 2.5px solid rgba(244,114,182,0.72);
+    background:
+      radial-gradient(ellipse at top right, rgba(244,114,182,0.38), transparent 60%),
+      linear-gradient(180deg, rgba(252,231,243,0.9), rgba(255,255,255,0.92));
+    box-shadow:
+      0 16px 40px rgba(236,72,153,0.16),
+      inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .arch-layer.engine {
+    border: 2.5px solid rgba(103,232,249,0.75);
+    background:
+      radial-gradient(ellipse at top right, rgba(103,232,249,0.42), transparent 60%),
+      linear-gradient(180deg, rgba(224,251,252,0.9), rgba(255,255,255,0.92));
+    box-shadow:
+      0 16px 40px rgba(6,182,212,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.8);
+  }
+  .arch-head {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .arch-layer.ui .arch-head { color: #6d28d9; }
+  .arch-layer.scheduler .arch-head { color: #be185d; }
+  .arch-layer.engine .arch-head { color: #0e7490; }
+  .arch-item {
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.85);
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+    border: 1px solid rgba(139,92,246,0.08);
+  }
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    font-size: 32px;
+    color: var(--primary);
+    font-weight: 900;
+  }
+  .footer-note {
+    margin-top: 26px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .footer-note .sep { margin: 0 10px; opacity: 0.5; }
+
+  /* ===== Slide 8: 结束 ===== */
+  .end-slide {
+    text-align: center;
+  }
+  .end-slide .big-emoji {
+    font-size: 90px;
+    margin-bottom: 24px;
+  }
+  .end-slide h2 {
+    font-size: 54px;
+    font-weight: 900;
+    margin-bottom: 16px;
+    line-height: 1.15;
+  }
+  .end-slide h2 .gradient-text { display: inline-block; }
+  .end-slide .desc {
+    font-size: 20px;
+    color: var(--text-muted);
+    margin-bottom: 38px;
+    line-height: 1.6;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 50px;
+    background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 50%, #ec4899 100%);
+    color: white;
+    border-radius: 50px;
+    font-size: 19px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 18px 46px rgba(167,139,250,0.45);
+    transition: all 0.3s;
+    border: none;
+    cursor: pointer;
+  }
+  .cta:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 24px 56px rgba(167,139,250,0.55);
+  }
+  .metrics {
+    margin-top: 60px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    max-width: 880px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .metric {
+    padding: 22px 14px;
+    border-radius: 18px;
+    transition: transform 0.3s;
+  }
+  .metric:hover { transform: translateY(-4px); }
+  .metric .num {
+    font-size: 40px;
+    font-weight: 900;
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+  .metric .lbl { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+  .m1 .num { color: var(--primary); }
+  .m2 .num { color: #06b6d4; }
+  .m3 .num { color: var(--accent); }
+  .m4 .num { color: var(--warm); }
+
+  /* ===== 背景装饰 ===== */
+  .bg-orbit {
+    position: fixed;
+    top: -120px; right: -120px;
+    width: 460px; height: 460px;
+    border-radius: 50%;
+    border: 1px dashed rgba(167,139,250,0.2);
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.8;
+  }
+  .bg-orbit.c2 {
+    top: auto; right: auto;
+    bottom: -180px; left: -180px;
+    width: 560px; height: 560px;
+    border-color: rgba(244,114,182,0.16);
+  }
+  .bg-dot {
+    position: fixed;
+    border-radius: 50%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+  .bg-dot.d1 { width: 10px; height: 10px; background: var(--primary); top: 15%; left: 8%; animation: float 8s ease-in-out infinite; }
+  .bg-dot.d2 { width: 8px; height: 8px; background: var(--accent); top: 70%; right: 12%; animation: float 10s -2s ease-in-out infinite; }
+  .bg-dot.d3 { width: 6px; height: 6px; background: var(--warm); top: 40%; right: 6%; animation: float 7s -4s ease-in-out infinite; }
+  .bg-dot.d4 { width: 12px; height: 12px; background: var(--secondary); bottom: 18%; left: 15%; animation: float 9s -1s ease-in-out infinite; opacity: 0.4; }
+
+  ::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+</head>
+<body>
+
+<div class="bg-orbit rotate-slow"></div>
+<div class="bg-orbit c2 rotate-slow" style="animation-duration:30s; animation-direction:reverse;"></div>
+<div class="bg-dot d1"></div>
+<div class="bg-dot d2"></div>
+<div class="bg-dot d3"></div>
+<div class="bg-dot d4"></div>
+
+<div class="step-indicator" id="stepIndicator">
+  分步动画：<span class="count" id="stepCount">0</span> / <span id="stepTotal">0</span>
+  <span class="hint">点击 / 空格继续</span>
+</div>
+
+<div class="slides-container" id="slides">
+
+  <!-- ============ Slide 1: 封面 ============ -->
+  <div class="slide active" data-slide="0" data-steps="0">
+    <div class="slide-content cover">
+      <div class="step shown">
+        <div class="cover-logo float pulse-glow">
+          <div class="logo-ring"></div>
+          <img src="images/logo-app.png" alt="Mimic Flow Logo" onerror="this.src='images/logo-app.png'">
+        </div>
+      </div>
+      <div class="step shown delay-1">
+        <h1>Mimic <span class="gradient-text">Flow</span></h1>
+      </div>
+      <div class="step shown delay-2">
+        <p class="subtitle">让你的电脑自己干活<br>可视化流程编排 × AI 驱动 × 双引擎自动化</p>
+      </div>
+      <div class="step shown delay-3">
+        <span class="tagline">✨ 所见即所得的自动化工作流平台</span>
+      </div>
+      <div class="step shown delay-4">
+        <div class="stars">
+          <span>★★★★★</span>
+          本地运行 · 隐私安全 · 跨平台支持
+          <span>★★★★★</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 2: 什么是 Mimic Flow ============ -->
+  <div class="slide" data-slide="1" data-steps="4">
+    <div class="slide-content">
+      <div class="step" data-step="1">
+        <span class="badge">💡 关于 Mimic Flow</span>
+      </div>
+      <h2 class="slide-title step" data-step="2">
+        集成<span class="gradient-text"> 多模态 AI </span>的桌面自动化
+      </h2>
+      <p class="slide-subtitle step" data-step="3">
+        在位置变化快、元素不明确的场景，AI 辅助判断精准操作；稳定场景下，纯本地图像匹配快速高效。
+      </p>
+
+      <div class="intro-grid">
+        <div class="intro-visual step" data-step="4">
+          <div class="screenshot float">
+            <img src="images/screenshot-1.png" alt="Mimic Flow 界面截图">
+          </div>
+          <div class="float-badge badge-1 float" style="animation-delay:-1.5s">🤖 AI 驱动</div>
+          <div class="float-badge badge-2 float" style="animation-delay:-3s">⚡ 图像匹配</div>
+        </div>
+
+        <div class="feature-list">
+          <div class="feature-item glass step" data-step="5">
+            <div class="feature-icon" style="background: rgba(167,139,250,0.14);">🎯</div>
+            <div class="feature-text">
+              <h3>AI 辅助定位</h3>
+              <p>基于多模态大模型理解页面，元素位移也能精准找到，不再受坐标变化困扰。</p>
+            </div>
+          </div>
+          <div class="feature-item glass step" data-step="6">
+            <div class="feature-icon" style="background: rgba(103,232,249,0.16);">🖼️</div>
+            <div class="feature-text">
+              <h3>纯本地图像匹配</h3>
+              <p>不用 AI 也能运行。模板图 + 置信度匹配，毫秒级响应，稳定快捷又省 token。</p>
+            </div>
+          </div>
+          <div class="feature-item glass step" data-step="7">
+            <div class="feature-icon" style="background: rgba(244,114,182,0.14);">🔧</div>
+            <div class="feature-text">
+              <h3>键鼠系统级操作</h3>
+              <p>直接控制鼠标键盘，桌面应用、游戏、网页全场景支持，一切皆可自动化。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 3: 节点拖拽连接演示 ============ -->
+  <div class="slide" data-slide="2" data-steps="8">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge">🧩 可视化编排</span></div>
+      <h2 class="slide-title step" data-step="2">
+        拖拽节点 · 连接流程 · <span class="gradient-text">一键运行</span>
+      </h2>
+      <p class="slide-subtitle step" data-step="3">就像搭积木一样构建自动化流程，连线完成后点击运行保存即可。</p>
+
+      <div class="wf-stage step" data-step="4">
+        <div class="node-lib glass">
+          <h4>节点库</h4>
+          <div class="lib-node"><div class="dot" style="background:rgba(167,139,250,0.16);">🚀</div>开始节点</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(239,68,68,0.14);">🖱️</div>鼠标点击</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(59,130,246,0.14);">⌨️</div>键盘输入</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(251,191,36,0.16);">🖼️</div>图片等待</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(34,197,94,0.14);">🔀</div>条件判断</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(236,72,153,0.14);">🧠</div>AI 操作</div>
+          <div class="lib-node"><div class="dot" style="background:rgba(139,92,246,0.14);">⏹️</div>结束节点</div>
+        </div>
+
+        <div class="canvas glass">
+          <div class="toolbar">
+            <button class="tb-btn" id="tbSave" type="button">💾 保存</button>
+            <button class="tb-btn run" id="tbRun" type="button">▶ 运行</button>
+          </div>
+
+          <div class="wf-node" id="wf1" style="top:34px; left:36px;">
+            <div class="port in"></div>
+            <div class="wf-node-head"><div class="ndot" style="background:rgba(167,139,250,0.16);">🚀</div><h5>开始</h5></div>
+            <p>工作流入口</p>
+            <div class="port out"></div>
+          </div>
+
+          <div class="wf-node hidden" id="wf2" style="top:34px; left:290px;">
+            <div class="port in"></div>
+            <div class="wf-node-head"><div class="ndot" style="background:rgba(251,191,36,0.16);">🖼️</div><h5>图片条件等待</h5></div>
+            <p>等待按钮图片出现</p>
+            <div class="port out"></div>
+          </div>
+
+          <div class="wf-node hidden" id="wf3" style="top:34px; left:550px;">
+            <div class="port in"></div>
+            <div class="wf-node-head"><div class="ndot" style="background:rgba(239,68,68,0.14);">🖱️</div><h5>鼠标点击</h5></div>
+            <p>点击匹配位置</p>
+            <div class="port out"></div>
+          </div>
+
+          <div class="wf-node hidden" id="wf4" style="top:250px; left:290px;">
+            <div class="port in"></div>
+            <div class="wf-node-head"><div class="ndot" style="background:rgba(236,72,153,0.14);">🧠</div><h5>AI 操作</h5></div>
+            <p>输入用户名密码</p>
+            <div class="port out"></div>
+          </div>
+
+          <div class="wf-node hidden" id="wf5" style="top:250px; left:550px;">
+            <div class="port in"></div>
+            <div class="wf-node-head"><div class="ndot" style="background:rgba(139,92,246,0.14);">⏹️</div><h5>结束</h5></div>
+            <p>流程结束</p>
+            <div class="port out"></div>
+          </div>
+
+          <svg class="lines" id="linesSvg" viewBox="0 0 800 500" preserveAspectRatio="none">
+            <path class="line" id="L1" d="" />
+            <path class="line" id="L2" d="" />
+            <path class="line" id="L3" d="" />
+            <path class="line" id="L4" d="" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 4: Midscene AI-act 单节点 ============ -->
+  <div class="slide" data-slide="3" data-steps="4">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge badge-pink">🧠 Midscene AI-Act</span></div>
+      <h2 class="slide-title step" data-step="2">
+        <span class="gradient-text">一个节点</span> · 搞定复杂任务
+      </h2>
+      <p class="slide-subtitle step" data-step="3">依托 Midscene AI-act，单节点即可任务描述 → 自主规划 → 步骤执行，不需要其他节点，一步到位。</p>
+
+      <div class="ai-act-layout">
+        <div class="single-node-hero step" data-step="4">
+          <div class="big-node pulse-glow">
+            <span class="node-label">⚡ AI 操作节点（单节点搞定）</span>
+            <h3>请帮我完成登录</h3>
+            <div class="prompt" id="typewriter">
+              打开登录页 → 找到用户名输入框 → 输入账号 → 找到密码框 → 输入密码 → 点击登录按钮 → 验证是否成功<span class="cursor">|</span>
+            </div>
+          </div>
+
+          <div class="mini-flow" id="miniFlow">
+            <div class="mini-node">📝 理解</div>
+            <span class="mini-arrow">→</span>
+            <div class="mini-node">🧭 规划</div>
+            <span class="mini-arrow">→</span>
+            <div class="mini-node">🛠️ 执行</div>
+            <span class="mini-arrow">→</span>
+            <div class="mini-node">✅ 验证</div>
+          </div>
+        </div>
+
+        <div class="ai-side">
+          <div class="ai-pro glass step" data-step="5">
+            <div class="ai-pro-icon" style="background:rgba(167,139,250,0.14);">🎯</div>
+            <div>
+              <h4>描述即执行</h4>
+              <p>只要用自然语言说清楚要做什么，AI 自动拆解为多个操作步骤并逐一完成。</p>
+            </div>
+          </div>
+          <div class="ai-pro glass step" data-step="6">
+            <div class="ai-pro-icon" style="background:rgba(103,232,249,0.16);">🧭</div>
+            <div>
+              <h4>自主规划路径</h4>
+              <p>页面变化、元素重排都不怕，AI 会根据实时页面重新规划下一步，不会卡死。</p>
+            </div>
+          </div>
+          <div class="ai-pro glass step" data-step="7">
+            <div class="ai-pro-icon" style="background:rgba(244,114,182,0.14);">✨</div>
+            <div>
+              <h4>省去大量节点</h4>
+              <p>原本需要 10 个节点的复杂操作，一个 AI 节点搞定，画布更简洁。</p>
+            </div>
+          </div>
+          <div class="tip-box step" data-step="8">
+            <span class="em">💡</span>
+            <p><strong>温馨提示：</strong> AI-act 会消耗一定 token，适合复杂多变的场景；简单稳定操作推荐用本地节点（图像匹配/键鼠）。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 5: 双引擎架构 ============ -->
+  <div class="slide" data-slide="4" data-steps="4">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge badge-cyan">🚀 双引擎架构</span></div>
+      <h2 class="slide-title step" data-step="2">
+        <span class="gradient-text">该用 AI 时灵活聪明</span>，<span style="color:#0e7490;">不用 AI 时干净利落</span>
+      </h2>
+      <p class="slide-subtitle step" data-step="3">智能切换、协同作战，一套流程同时享受 AI 的灵活和本地执行的速度。</p>
+
+      <div class="engines-layout step" data-step="4">
+        <div class="engine-card glass engine-ai">
+          <div class="engine-head">
+            <div class="engine-icon">🧠</div>
+            <div class="engine-title">
+              <h3>AI 智能引擎</h3>
+              <span class="tag">灵活 · 精准 · 会思考</span>
+            </div>
+          </div>
+          <div class="engine-points">
+            <div class="engine-point"><span class="pi">🎯</span>元素位移变化也能精准识别</div>
+            <div class="engine-point"><span class="pi">💬</span>自然语言描述任务即可</div>
+            <div class="engine-point"><span class="pi">🧭</span>会判断、会规划、会重试</div>
+            <div class="engine-point"><span class="pi">🌐</span>网页/桌面多模态理解</div>
+          </div>
+          <div class="engine-foot">✨ 适合复杂多变的场景</div>
+        </div>
+
+        <div class="vs">
+          <div class="vs-circle">+</div>
+        </div>
+
+        <div class="engine-card glass engine-local">
+          <div class="engine-head">
+            <div class="engine-icon">⚡</div>
+            <div class="engine-title">
+              <h3>本地执行引擎</h3>
+              <span class="tag">快速 · 稳定 · 零成本</span>
+            </div>
+          </div>
+          <div class="engine-points">
+            <div class="engine-point"><span class="pi">🖼️</span>纯本地图像匹配毫秒级</div>
+            <div class="engine-point"><span class="pi">🖱️</span>键鼠操作延迟极低</div>
+            <div class="engine-point"><span class="pi">🔌</span>不联网也能运行</div>
+            <div class="engine-point"><span class="pi">💰</span>完全零 token 消耗</div>
+          </div>
+          <div class="engine-foot">⚙️ 适合固定稳定的场景</div>
+        </div>
+      </div>
+
+      <div class="flow-illu glass step" data-step="5">
+        <div class="flow-illu-row">
+          <div class="flow-chip">💼 工作流开始</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-chip chip-local">🖼️ 图像匹配打开页面</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-chip chip-switch">🔀 根据场景自动切换</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-chip chip-ai">🧠 AI 处理复杂表单</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-chip chip-local">⚡ 键鼠批量操作</div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-chip">✅ 任务完成</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 6: 应用场景 ============ -->
+  <div class="slide" data-slide="5" data-steps="6">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge badge-amber">🌟 想象力无限</span></div>
+      <h2 class="slide-title step" data-step="2">
+        能用它做<span class="gradient-text"> 什么</span>？
+      </h2>
+      <p class="slide-subtitle step" data-step="3">发挥你的想象，依靠大家共同发掘更多玩法。重复操作都能交给 Mimic Flow～</p>
+
+      <div class="scenarios">
+        <div class="scenario glass step" data-step="4">
+          <div class="sicon" style="background:rgba(167,139,250,0.14);">📊</div>
+          <h4>数据采集与监控</h4>
+          <p>定时访问网站抓取数据、监控价格变化、自动生成日报周报。24/7 不间断值守。</p>
+          <div class="bg-emoji">📊</div>
+        </div>
+        <div class="scenario glass step" data-step="5">
+          <div class="sicon" style="background:rgba(103,232,249,0.18);">📧</div>
+          <h4>日常办公自动化</h4>
+          <p>自动收发邮件、填写表单、处理 Excel 报表、钉钉飞书打卡。从重复工作中解放双手。</p>
+          <div class="bg-emoji">📧</div>
+        </div>
+        <div class="scenario glass step" data-step="6">
+          <div class="sicon" style="background:rgba(244,114,182,0.14);">🧪</div>
+          <h4>UI 自动化测试</h4>
+          <p>自然语言描述测试步骤，AI 自动执行验证，回归测试效率提升 10 倍以上。</p>
+          <div class="bg-emoji">🧪</div>
+        </div>
+        <div class="scenario glass step" data-step="7">
+          <div class="sicon" style="background:rgba(251,191,36,0.18);">🎮</div>
+          <h4>游戏自动化</h4>
+          <p>图像识别 + 系统键鼠，自动完成日常任务、刷图、收集资源。释放游戏时间。</p>
+          <div class="bg-emoji">🎮</div>
+        </div>
+        <div class="scenario glass step" data-step="8">
+          <div class="sicon" style="background:rgba(96,165,250,0.18);">📱</div>
+          <h4>社交媒体运营</h4>
+          <p>自动发布内容、评论点赞、私信回复、粉丝互动。多平台统一管理，运营高效。</p>
+          <div class="bg-emoji">📱</div>
+        </div>
+        <div class="scenario glass step" data-step="9">
+          <div class="sicon" style="background:rgba(34,197,94,0.14);">⚙️</div>
+          <h4>跨系统工作流</h4>
+          <p>串联多个系统和工具，打通数据孤岛。OA+Excel+微信+ERP 一套流程搞定。</p>
+          <div class="bg-emoji">⚙️</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 7: 技术架构 ============ -->
+  <div class="slide" data-slide="6" data-steps="3">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge">🏗️ 模块化架构</span></div>
+      <h2 class="slide-title step" data-step="2">
+        三层分离 · <span class="gradient-text">灵活扩展 · 稳定可靠</span>
+      </h2>
+      <p class="slide-subtitle step" data-step="3">Electron 跨平台桌面应用，本地运行，数据本地存储，隐私安全。</p>
+
+      <div class="arch-diagram">
+        <div class="arch-layer glass step" data-step="4">
+          <div class="arch-head">🎨 UI 层</div>
+          <div class="arch-item">React + TypeScript</div>
+          <div class="arch-item">可视化画布编辑器</div>
+          <div class="arch-item">节点属性配置面板</div>
+          <div class="arch-item">工作流库管理</div>
+          <div class="arch-item">执行日志追踪</div>
+          <div class="arch-item">定时任务调度</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-layer glass step" data-step="5">
+          <div class="arch-head">⚡ 调度层</div>
+          <div class="arch-item">FlowScheduler</div>
+          <div class="arch-item">节点分段执行</div>
+          <div class="arch-item">变量池 & 上下文</div>
+          <div class="arch-item">引擎注册中心</div>
+          <div class="arch-item">错误处理 & 重试</div>
+          <div class="arch-item">智能引擎路由</div>
+        </div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-layer glass step" data-step="6">
+          <div class="arch-head">🔧 引擎层</div>
+          <div class="arch-item">Midscene Engine</div>
+          <div class="arch-item">System Engine</div>
+          <div class="arch-item">多模态 AI 集成</div>
+          <div class="arch-item">图像识别匹配</div>
+          <div class="arch-item">键鼠控制系统</div>
+          <div class="arch-item">定时 & 队列调度</div>
+        </div>
+      </div>
+
+      <div class="footer-note step" data-step="7">
+        基于 Electron 跨平台 <span class="sep">·</span> 本地运行 <span class="sep">·</span> 数据本地存储 <span class="sep">·</span> 隐私安全可控
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 8: 结束 ============ -->
+  <div class="slide" data-slide="7" data-steps="3">
+    <div class="slide-content end-slide">
+      <div class="big-emoji step shown float">🎉</div>
+      <h2 class="step shown delay-1">
+        准备好让电脑<span class="gradient-text"> 为你干活 </span>了吗？
+      </h2>
+      <p class="desc step shown delay-2">释放你的时间，去做更有创造力的事。<br>Mimic Flow 帮你搞定一切重复操作。</p>
+      <a href="index.html" class="cta step shown delay-3 pulse-glow">
+        🚀 立即免费下载
+      </a>
+
+      <div class="metrics">
+        <div class="metric glass m1 step shown delay-4">
+          <div class="num">∞</div>
+          <div class="lbl">无限可能</div>
+        </div>
+        <div class="metric glass m2 step shown delay-5">
+          <div class="num">0</div>
+          <div class="lbl">代码门槛</div>
+        </div>
+        <div class="metric glass m3 step shown delay-6">
+          <div class="num">10×</div>
+          <div class="lbl">效率提升</div>
+        </div>
+        <div class="metric glass m4 step shown delay-7">
+          <div class="num">24/7</div>
+          <div class="lbl">全天候运行</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<button class="nav-btn prev" id="prevBtn" onclick="prevSlide()">‹</button>
+<button class="nav-btn next" id="nextBtn" onclick="handleNextClick()">›</button>
+
+<div class="nav-dots" id="navDots"></div>
+<div class="slide-number" id="slideNumber">1 / 8</div>
+<div class="hint">← → 或空格翻页 · 有分步动画时空格继续下一个步骤</div>
+
+<script>
+  let currentSlide = 0;
+  let currentStep = 0;
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  const dotsContainer = document.getElementById('navDots');
+  const slideNumber = document.getElementById('slideNumber');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const stepIndicator = document.getElementById('stepIndicator');
+  const stepCountEl = document.getElementById('stepCount');
+  const stepTotalEl = document.getElementById('stepTotal');
+
+  // dots
+  for (let i = 0; i < totalSlides; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => { goToSlide(i); };
+    dotsContainer.appendChild(dot);
+  }
+
+  function getStepsCount(slideIdx) {
+    const s = slides[slideIdx];
+    return parseInt(s.dataset.steps || '0', 10);
+  }
+
+  function updateStepIndicator() {
+    const total = getStepsCount(currentSlide);
+    if (total > 0 && currentStep < total) {
+      stepIndicator.classList.add('show');
+      stepCountEl.textContent = currentStep;
+      stepTotalEl.textContent = total;
+    } else {
+      stepIndicator.classList.remove('show');
+    }
+  }
+
+  // 显示 slide 中 step <= n 的所有动画元素
+  function animateSlideSteps(slideIdx, maxStep) {
+    const slide = slides[slideIdx];
+    const steps = slide.querySelectorAll('.step');
+    steps.forEach(el => {
+      const s = parseInt(el.dataset.step || '0', 10);
+      // 无 data-step 的：根据 delay 自动播放
+      if (s === 0) {
+        // 自带 delay，不需要手动控制
+        el.classList.add('shown');
+      } else {
+        if (s <= maxStep) el.classList.add('shown');
+        else el.classList.remove('shown');
+      }
+    });
+
+    // Slide 3 特殊：节点依次出现 / 连线 / 按钮 / 运行
+    if (slideIdx === 2) animateSlide3(maxStep);
+    // Slide 4 特殊：mini flow
+    if (slideIdx === 3) {
+      const mf = document.getElementById('miniFlow');
+      if (mf) mf.classList.toggle('show', maxStep >= 5);
+    }
+  }
+
+  // Slide 3 - 节点动画
+  function animateSlide3(step) {
+    const nodes = {
+      5: ['wf2'],
+      6: ['wf3'],
+      7: ['wf4'],
+      8: ['wf5']
+    };
+    for (let k in nodes) {
+      nodes[k].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', step < parseInt(k));
+        el?.classList.toggle('shown', step >= parseInt(k));
+      });
+    }
+
+    drawLines(step);
+
+    const tbs = document.querySelectorAll('#tbSave, #tbRun');
+    const showTb = step >= 8;
+    tbs.forEach((b, i) => {
+      b.classList.toggle('show', showTb);
+      b.style.transitionDelay = (i*80) + 'ms';
+    });
+
+    const runStep = step >= 9;
+    ['wf1','wf2','wf3','wf4','wf5'].forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (runStep && step - 9 >= i) {
+        el && el.classList.add('active');
+      } else {
+        el && el.classList.remove('active');
+      }
+      // 激活节点的 out 端口点亮
+      const p = el?.querySelector('.port.out');
+      if (runStep && step - 9 >= i + 1) p?.classList.add('on');
+      else p?.classList.remove('on');
+      const pi = el?.querySelector('.port.in');
+      if (runStep && step - 9 >= i && i > 0) pi?.classList.add('on');
+      else pi?.classList.remove('on');
+    });
+    const linesRun = step >= 9;
+    ['L1','L2','L3','L4'].forEach(id => {
+      const l = document.getElementById(id);
+      l?.classList.toggle('run', linesRun);
+    });
+  }
+
+  function getPortPos(nodeId, port) {
+    const canvas = document.querySelector('.canvas');
+    const node = document.getElementById(nodeId);
+    if (!canvas || !node) return { x: 0, y: 0 };
+    const cR = canvas.getBoundingClientRect();
+    const nR = node.getBoundingClientRect();
+    const y = nR.top - cR.top + nR.height / 2;
+    const x = port === 'out'
+      ? nR.right - cR.left - 7   // .port.out 定位 right:-7px
+      : nR.left  - cR.left + 7;  // .port.in  定位 left:-7px
+    return { x, y };
+  }
+
+  function bezierH(from, to, bendY) {
+    const dx = Math.max(40, Math.abs(to.x - from.x) / 2);
+    const cy1 = from.y + (bendY || 0);
+    const cy2 = to.y   + (bendY || 0);
+    // 如果 y 差异小，走直线贝塞尔
+    if (Math.abs(to.y - from.y) < 20) {
+      return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
+    }
+    // 如果 y 差异大，先水平再垂直再水平（S形或反S形）
+    const midX = (from.x + to.x) / 2;
+    return `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
+  }
+
+  function drawLines(step) {
+    const L1 = document.getElementById('L1');
+    const L2 = document.getElementById('L2');
+    const L3 = document.getElementById('L3');
+    const L4 = document.getElementById('L4');
+    const svg = document.getElementById('linesSvg');
+    const canvas = document.querySelector('.canvas');
+
+    // 动态设置 SVG 的 viewBox 等于 canvas 内像素，防止拉伸错位
+    if (svg && canvas) {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.style.width = w + 'px';
+      svg.style.height = h + 'px';
+    }
+
+    const wf1Out = getPortPos('wf1', 'out');
+    const wf2In  = getPortPos('wf2', 'in');
+    const wf2Out = getPortPos('wf2', 'out');
+    const wf3In  = getPortPos('wf3', 'in');
+    const wf3Out = getPortPos('wf3', 'out');
+    const wf4In  = getPortPos('wf4', 'in');
+    const wf4Out = getPortPos('wf4', 'out');
+    const wf5In  = getPortPos('wf5', 'in');
+
+    // L1: 开始 → 图片等待（水平）
+    const s1 = step >= 6 ? bezierH(wf1Out, wf2In) : '';
+    // L2: 图片等待 → 鼠标点击（水平）
+    const s2 = step >= 6 ? bezierH(wf2Out, wf3In) : '';
+    // L3: 鼠标点击 out 分叉下 → AI 操作 in （斜线 S 型）
+    const s3 = step >= 8 ? bezierH(wf3Out, wf4In) : '';
+    // L4: AI 操作 → 结束（水平）
+    const s4 = step >= 8 ? bezierH(wf4Out, wf5In) : '';
+
+    if (L1) L1.setAttribute('d', s1);
+    if (L2) L2.setAttribute('d', s2);
+    if (L3) L3.setAttribute('d', s3);
+    if (L4) L4.setAttribute('d', s4);
+  }
+
+  window.addEventListener('resize', () => {
+    if (currentSlide === 2) drawLines(Math.max(currentStep, 8));
+  });
+
+  function updateSlide() {
+    slides.forEach((slide, idx) => {
+      slide.classList.remove('active', 'prev');
+      if (idx < currentSlide) slide.classList.add('prev');
+      else if (idx === currentSlide) slide.classList.add('active');
+    });
+    document.querySelectorAll('.nav-dot').forEach((dot, idx) => {
+      dot.classList.toggle('active', idx === currentSlide);
+    });
+    slideNumber.textContent = `${currentSlide + 1} / ${totalSlides}`;
+    prevBtn.disabled = currentSlide === 0 && currentStep === 0;
+    nextBtn.disabled = false;
+    animateSlideSteps(currentSlide, currentStep);
+    updateStepIndicator();
+  }
+
+  function totalMaxSteps(slideIdx) {
+    // 有些 slide 内置的 step 数比 data-steps 大（比如 slide3 动画）
+    if (slideIdx === 2) return 10;
+    if (slideIdx === 3) return 8;
+    if (slideIdx === 4) return 5;
+    if (slideIdx === 5) return 9;
+    if (slideIdx === 6) return 7;
+    return getStepsCount(slideIdx);
+  }
+
+  function handleNextClick() {
+    const maxS = totalMaxSteps(currentSlide);
+    if (currentStep < maxS) {
+      currentStep++;
+      animateSlideSteps(currentSlide, currentStep);
+      updateStepIndicator();
+      return;
+    }
+    nextSlide();
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides - 1) {
+      currentSlide++;
+      currentStep = 0;
+      updateSlide();
+    }
+  }
+  function prevSlide() {
+    if (currentStep > 0) {
+      currentStep = Math.max(0, currentStep - 1);
+      animateSlideSteps(currentSlide, currentStep);
+      updateStepIndicator();
+      return;
+    }
+    if (currentSlide > 0) {
+      currentSlide--;
+      currentStep = totalMaxSteps(currentSlide);
+      updateSlide();
+    }
+  }
+  function goToSlide(idx) {
+    currentSlide = idx;
+    currentStep = totalMaxSteps(idx);
+    updateSlide();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') {
+      e.preventDefault();
+      handleNextClick();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      prevSlide();
+    }
+  });
+
+  updateSlide();
+</script>
+</body>
+</html>

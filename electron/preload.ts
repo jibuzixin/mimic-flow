@@ -53,7 +53,12 @@ export type IpcChannel =
   | 'window:restore-main'
   | 'window:close-floating'
   | 'floating:get-state'
-  | 'execution:setBaseDir';
+  | 'execution:setBaseDir'
+  | 'scheduled-tasks:list'
+  | 'scheduled-tasks:add'
+  | 'scheduled-tasks:update'
+  | 'scheduled-tasks:delete'
+  | 'scheduled-tasks:run-now';
 
 const api = {
   platform: process.platform,

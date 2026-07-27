@@ -13,6 +13,7 @@ import type { FlowSchema, FlowFileWrapper } from '../types/flow.js';
 import type { FlowSchema as FlowSchemaV2, RuntimeEvent as RuntimeEventV2 } from '../types/flow-v2.js';
 import { readFileSync, writeFileSync, existsSync, statSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import path from 'path';
+import type { ScheduledTask } from './store.js';
 
 type StoreKey =
   | 'modelProvider'
@@ -1157,3 +1158,349 @@ ipcMain.handle('system:move-mouse', async (_event, x: number, y: number) => {
     return false;
   }
 });
+
+// ========== 定时任务调度器 ==========
+interface PendingRun {
+  taskId: string;
+  scheduledAt: number;
+  trigger: 'schedule' | 'manual';
+}
+
+let taskQueue: PendingRun[] = [];
+let taskRunning = false;
+let taskPollTimer: NodeJS.Timeout | null = null;
+let taskRunInstanceId: string | null = null;
+
+function parseCronField(field: string, min: number, max: number): number[] {
+  const result: number[] = [];
+  if (field === '*') {
+    for (let i = min; i <= max; i++) result.push(i);
+    return result;
+  }
+  const parts = field.split(',');
+  for (const part of parts) {
+    const stepMatch = part.match(/^(.+)\/(\d+)$/);
+    const base = stepMatch ? stepMatch[1] : part;
+    const step = stepMatch ? parseInt(stepMatch[2], 10) : 1;
+    let start = min;
+    let end = max;
+    if (base !== '*') {
+      const rangeMatch = base.match(/^(\d+)-(\d+)$/);
+      if (rangeMatch) {
+        start = parseInt(rangeMatch[1], 10);
+        end = parseInt(rangeMatch[2], 10);
+      } else {
+        start = parseInt(base, 10);
+        end = start;
+      }
+    }
+    for (let i = start; i <= end; i += step) {
+      if (i >= min && i <= max && !result.includes(i)) result.push(i);
+    }
+  }
+  return result.sort((a, b) => a - b);
+}
+
+function computeCronNextRun(expr: string, from: number): number {
+  const fields = expr.trim().split(/\s+/);
+  const hasSecond = fields.length === 6;
+  if (fields.length !== 5 && !hasSecond) {
+    throw new Error('Cron 表达式需要 5~6 段');
+  }
+  const sField = hasSecond ? fields.shift()! : '0';
+  const [minF, hourF, domF, monthF, dowF] = fields;
+  const secs = parseCronField(sField, 0, 59);
+  const mins = parseCronField(minF, 0, 59);
+  const hours = parseCronField(hourF, 0, 23);
+  const doms = parseCronField(domF, 1, 31);
+  const months = parseCronField(monthF, 1, 12);
+  const dows = parseCronField(dowF, 0, 6);
+  const d = new Date(from + 1000);
+  d.setMilliseconds(0);
+  for (let i = 0; i < 366 * 24 * 60 * 60; i++) {
+    if (!months.includes(d.getMonth() + 1)) { d.setDate(1); d.setMonth(d.getMonth() + 1); d.setHours(0, 0, 0, 0); continue; }
+    if (!doms.includes(d.getDate()) || !dows.includes(d.getDay())) { d.setDate(d.getDate() + 1); d.setHours(0, 0, 0, 0); continue; }
+    if (!hours.includes(d.getHours())) { d.setHours(d.getHours() + 1, 0, 0, 0); continue; }
+    if (!mins.includes(d.getMinutes())) { d.setMinutes(d.getMinutes() + 1, 0, 0); continue; }
+    if (!secs.includes(d.getSeconds())) { d.setSeconds(d.getSeconds() + 1, 0); continue; }
+    return d.getTime();
+  }
+  return from + 86400000;
+}
+
+function computeNextRunAt(task: ScheduledTask, after: number = Date.now()): number {
+  if (task.triggerType === 'once') return task.nextRunAt;
+  if (task.triggerType === 'interval' && task.intervalMs) {
+    const base = Math.max(after, task.nextRunAt || after);
+    if (base <= after) {
+      const delta = after - base;
+      const steps = Math.floor(delta / task.intervalMs) + 1;
+      return base + steps * task.intervalMs;
+    }
+    return base;
+  }
+  if (task.triggerType === 'cron' && task.cronExpression) {
+    try { return computeCronNextRun(task.cronExpression, after); } catch (e) { /* ignore */ }
+  }
+  return after + 86400000;
+}
+
+function rescheduleTask(taskId: string) {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const idx = tasks.findIndex((t) => t.id === taskId);
+  if (idx < 0) return;
+  const task = tasks[idx];
+  const now = Date.now();
+  task.lastRunAt = now;
+  if (task.triggerType === 'once') {
+    task.enabled = false;
+  } else {
+    task.nextRunAt = computeNextRunAt(task, now);
+  }
+  task.updatedAt = now;
+  tasks[idx] = task;
+  getStore().set('scheduledTasks', tasks);
+}
+
+function findWorkflowData(workflowId: string): FlowSchemaV2 | null {
+  try {
+    const dir = ensureWorkflowsDir();
+    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(dir, file), 'utf-8');
+        const data = JSON.parse(content);
+        if (data.id === workflowId) {
+          return (data.workflow as FlowSchemaV2) || null;
+        }
+      } catch {
+        // continue
+      }
+    }
+  } catch (e) {
+    console.warn('[scheduler] findWorkflowData failed:', e);
+  }
+  return null;
+}
+
+async function runNextPendingTask() {
+  if (taskRunning || taskQueue.length === 0) return;
+  taskRunning = true;
+  try {
+    while (taskQueue.length > 0) {
+      const next = taskQueue.shift()!;
+      const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+      const task = tasks.find((t) => t.id === next.taskId);
+      if (!task) continue;
+      const flow = findWorkflowData(task.workflowId);
+      if (!flow) {
+        console.warn('[scheduler] 定时任务对应工作流不存在:', task.workflowId);
+        rescheduleTask(task.id);
+        continue;
+      }
+      try {
+        console.log(`[scheduler] 触发定时任务: ${task.name} (workflow=${task.workflowId})`);
+        if (Notification.isSupported()) {
+          new Notification({
+            title: '⏰ 定时任务触发',
+            body: `正在执行：${task.name}`,
+          }).show();
+        }
+
+        const flowName = task.workflowName || flow.flowMeta?.name || '工作流';
+        const wfId = task.workflowId;
+
+        let completedNodes = 0;
+        const startNode2 = flow.nodes.find((n) => n.nodeType === 'control.start');
+        const reachableNodeIds = new Set<string>();
+        if (startNode2) {
+          const queue2: string[] = [startNode2.id];
+          reachableNodeIds.add(startNode2.id);
+          while (queue2.length > 0) {
+            const currentId = queue2.shift()!;
+            const currentNode = flow.nodes.find((n) => n.id === currentId);
+            if (!currentNode) continue;
+            const nextList = currentNode.nextNodes || [];
+            for (const nx of nextList) {
+              if (!reachableNodeIds.has(nx.nodeId)) { reachableNodeIds.add(nx.nodeId); queue2.push(nx.nodeId); }
+            }
+          }
+        }
+        const totalNodes = Array.from(reachableNodeIds).filter((id) => {
+          const n = flow.nodes.find((x) => x.id === id);
+          return n && n.nodeType !== 'control.start' && n.nodeType !== 'control.end';
+        }).length;
+
+        const res = await runFlowV2(flow, (evt: any) => {
+          try { mainWindow?.webContents.send('flow-v2:event', evt); } catch {}
+          if (evt.type === 'node:complete') completedNodes++;
+          if (evt.type === 'flow:complete') {
+            const status = (evt as any).status;
+            const duration = (evt as any).duration || 0;
+            const logs = (evt as any).logs || [];
+            const nodeStats = (evt as any).nodeStats || { total: totalNodes, success: completedNodes, failed: 0 };
+            const reportPath = (evt as any).reportPath;
+            const eventStartTime = (evt as any).startTime || (Date.now() - duration);
+            const eventEndTime = (evt as any).endTime || Date.now();
+            try {
+              getExecutionRecordService().saveExecution(
+                {
+                  workflowId: wfId,
+                  workflowName: flowName,
+                  status,
+                  startTime: eventStartTime,
+                  endTime: eventEndTime,
+                  duration,
+                  nodeTotal: nodeStats.total || totalNodes,
+                  nodeSuccess: nodeStats.success ?? completedNodes,
+                  nodeFailed: nodeStats.failed ?? 0,
+                  tokenInput: 0, tokenOutput: 0, tokenTotal: 0, cost: 0,
+                },
+                logs,
+                reportPath || undefined,
+              );
+            } catch (e) {
+              console.error('[scheduler] Failed to save execution record:', e);
+            }
+            const durationSec = (duration / 1000).toFixed(1);
+            let title = ''; let body = '';
+            if (status === 'success') { title = '✅ 定时任务执行成功'; body = `${task.name} 已完成，耗时 ${durationSec} 秒`; }
+            else if (status === 'failed') { title = '❌ 定时任务执行失败'; body = `${task.name} 失败，请查看日志`; }
+            else if (status === 'stopped') { title = '⏹️ 定时任务已停止'; body = `${task.name} 已被停止`; }
+            if (Notification.isSupported() && title) new Notification({ title, body }).show();
+          }
+        }, { workflowId: wfId, workflowName: flowName });
+        taskRunInstanceId = (res as any)?.instanceId || null;
+        await (getV2Scheduler() as any)?.waitForDone?.().catch(() => {});
+      } catch (e) {
+        console.error('[scheduler] 定时任务执行失败:', e);
+      } finally {
+        rescheduleTask(task.id);
+      }
+    }
+  } finally {
+    taskRunning = false;
+    taskRunInstanceId = null;
+    broadcastTasksState();
+  }
+}
+
+function taskPollTick() {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const now = Date.now();
+  const changedTasks: ScheduledTask[] = [];
+  for (const task of tasks) {
+    if (!task.enabled) continue;
+    // 排队中已经有该任务就不重复加了
+    if (taskQueue.some((p) => p.taskId === task.id)) continue;
+    // 运行中的工作流如果就是这个任务，也跳过（防止递归）
+    if (taskRunning && taskQueue.length === 0) { /* still running previous one */ }
+    if (now >= task.nextRunAt) {
+      // 需要排队，告诉用户（如果正在运行别的任务）
+      if (taskRunning) {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: '⏰ 定时任务排队',
+            body: `「${task.name}」触发时间到，当前有任务执行中，已加入队列。`,
+          }).show();
+        }
+      }
+      taskQueue.push({ taskId: task.id, scheduledAt: task.nextRunAt, trigger: 'schedule' });
+      changedTasks.push(task);
+    }
+  }
+  if (changedTasks.length > 0) broadcastTasksState();
+  runNextPendingTask().catch((e) => console.error('[scheduler] runNext error', e));
+}
+
+function startTaskPolling() {
+  if (taskPollTimer) return;
+  taskPollTimer = setInterval(taskPollTick, 10_000);
+  taskPollTick();
+}
+
+function broadcastTasksState() {
+  try {
+    const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+    mainWindow?.webContents.send('scheduled-tasks:update', {
+      tasks,
+      running: taskRunning,
+      queueSize: taskQueue.length,
+      runInstanceId: taskRunInstanceId,
+    });
+  } catch (e) { /* ignore */ }
+}
+
+ipcMain.handle('scheduled-tasks:list', async () => {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  // 顺手刷新一次下次运行时间（保证 UI 看起来准确）
+  const now = Date.now();
+  const updated = tasks.map((t) => {
+    if (!t.enabled) return t;
+    if (t.nextRunAt <= now && t.triggerType !== 'once') {
+      return { ...t, nextRunAt: computeNextRunAt(t, now) };
+    }
+    return t;
+  });
+  return {
+    tasks: updated,
+    running: taskRunning,
+    queueSize: taskQueue.length,
+    runInstanceId: taskRunInstanceId,
+  };
+});
+
+ipcMain.handle('scheduled-tasks:add', async (_event, payload: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'nextRunAt'> & { nextRunAt?: number }) => {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = Date.now();
+  let nextRunAt = payload.nextRunAt || now + 60_000;
+  const draft: ScheduledTask = {
+    ...payload,
+    id,
+    nextRunAt,
+    createdAt: now,
+    updatedAt: now,
+  };
+  if (!payload.nextRunAt) draft.nextRunAt = computeNextRunAt(draft, now);
+  tasks.push(draft);
+  getStore().set('scheduledTasks', tasks);
+  broadcastTasksState();
+  return draft;
+});
+
+ipcMain.handle('scheduled-tasks:update', async (_event, id: string, patch: Partial<ScheduledTask>) => {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const idx = tasks.findIndex((t) => t.id === id);
+  if (idx < 0) throw new Error('任务不存在');
+  const merged: ScheduledTask = { ...tasks[idx], ...patch, updatedAt: Date.now() };
+  merged.nextRunAt = computeNextRunAt(merged, Date.now());
+  tasks[idx] = merged;
+  getStore().set('scheduledTasks', tasks);
+  broadcastTasksState();
+  return merged;
+});
+
+ipcMain.handle('scheduled-tasks:delete', async (_event, id: string) => {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const remaining = tasks.filter((t) => t.id !== id);
+  taskQueue = taskQueue.filter((q) => q.taskId !== id);
+  getStore().set('scheduledTasks', remaining);
+  broadcastTasksState();
+  return true;
+});
+
+ipcMain.handle('scheduled-tasks:run-now', async (_event, id: string) => {
+  const tasks = getStore().get('scheduledTasks') as ScheduledTask[] | undefined || [];
+  const task = tasks.find((t) => t.id === id);
+  if (!task) throw new Error('任务不存在');
+  taskQueue.push({ taskId: task.id, scheduledAt: Date.now(), trigger: 'manual' });
+  broadcastTasksState();
+  runNextPendingTask().catch((e) => console.error('[scheduler] run-now error', e));
+  return true;
+});
+
+// app ready 时启动轮询（在 createWindow 后面会自动 ready，这里直接启动一次）
+app.whenReady().then(() => {
+  startTaskPolling();
+}).catch(() => {});

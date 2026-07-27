@@ -25,6 +25,26 @@ interface AppStore {
   };
   workflows: unknown[];
   usageStatistics: UsageStatistics;
+  scheduledTasks: ScheduledTask[];
+}
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  workflowId: string;
+  workflowName: string;
+  triggerType: 'once' | 'interval' | 'cron';
+  /** 下次执行时间戳（ms），once 必填；interval 也会在这里维护 */
+  nextRunAt: number;
+  /** 上次执行时间戳（ms），可选 */
+  lastRunAt?: number;
+  /** interval 模式：间隔毫秒数 */
+  intervalMs?: number;
+  /** cron 表达式，5 或 6 段：分 时 日 月 周 [秒] */
+  cronExpression?: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 const defaultPricing = {
@@ -127,6 +147,7 @@ export function getStore(): Store<AppStore> {
         },
         workflows: [],
         usageStatistics: defaultUsageStatistics,
+        scheduledTasks: [],
       },
     });
 

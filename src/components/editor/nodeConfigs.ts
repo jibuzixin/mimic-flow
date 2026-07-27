@@ -1022,7 +1022,7 @@ export const nodeConfigs: NodeConfig[] = [
   {
     type: 'system.waitForImage',
     name: '图片条件等待',
-    category: 'system',
+    category: 'wait',
     icon: Image,
     description: '等待图片出现，匹配到走true分支，超时走false分支',
     color: '#f59e0b',

@@ -60,7 +60,12 @@ type MimicIpcChannel =
   | 'system:record-keys'
   | 'system:get-dpi-scale'
   | 'system:set-dpi-scale'
-  | 'system:move-mouse';
+  | 'system:move-mouse'
+  | 'scheduled-tasks:list'
+  | 'scheduled-tasks:add'
+  | 'scheduled-tasks:update'
+  | 'scheduled-tasks:delete'
+  | 'scheduled-tasks:run-now';
 
 declare global {
   interface Window {

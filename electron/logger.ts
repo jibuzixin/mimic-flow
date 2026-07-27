@@ -13,6 +13,27 @@ export interface LogEntry {
 
 const MAX_MEMORY_LOGS = 2000;
 
+function pad2(n: number) { return String(n).padStart(2, '0'); }
+function pad3(n: number) { return String(n).padStart(3, '0'); }
+
+function toLocalISOString(d: Date): string {
+  const tzOffset = -d.getTimezoneOffset();
+  const sign = tzOffset >= 0 ? '+' : '-';
+  const absOff = Math.abs(tzOffset);
+  const offH = pad2(Math.floor(absOff / 60));
+  const offM = pad2(absOff % 60);
+  return (
+    d.getFullYear() + '-' +
+    pad2(d.getMonth() + 1) + '-' +
+    pad2(d.getDate()) + 'T' +
+    pad2(d.getHours()) + ':' +
+    pad2(d.getMinutes()) + ':' +
+    pad2(d.getSeconds()) + '.' +
+    pad3(d.getMilliseconds()) +
+    sign + offH + ':' + offM
+  );
+}
+
 class Logger {
   private logDir: string;
   private logFile: string;
@@ -25,10 +46,12 @@ class Logger {
       if (!existsSync(this.logDir)) {
         mkdirSync(this.logDir, { recursive: true });
       }
-      this.logFile = join(this.logDir, `app-${new Date().toISOString().slice(0, 10)}.log`);
+      const todayStr = toLocalISOString(new Date()).slice(0, 10);
+      this.logFile = join(this.logDir, `app-${todayStr}.log`);
     } catch {
       this.logDir = '/tmp/mimic-flow-logs';
-      this.logFile = join(this.logDir, `app-${new Date().toISOString().slice(0, 10)}.log`);
+      const todayStr = toLocalISOString(new Date()).slice(0, 10);
+      this.logFile = join(this.logDir, `app-${todayStr}.log`);
       try {
         if (!existsSync(this.logDir)) {
           mkdirSync(this.logDir, { recursive: true });
@@ -41,7 +64,7 @@ class Logger {
   }
 
   private write(level: LogLevel, message: string, meta?: Record<string, unknown>) {
-    const timestamp = new Date().toISOString();
+    const timestamp = toLocalISOString(new Date());
     const entry: LogEntry = {
       timestamp,
       level,

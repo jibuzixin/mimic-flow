@@ -1,9 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, MoreVertical, Play, Copy, Download, Trash2, Edit2, FileJson, Upload, Eye } from 'lucide-react';
+import { Plus, Search, MoreVertical, Play, Copy, Download, Trash2, Edit2, FileJson, Upload, Eye, Check, X, ArrowUpDown, ArrowUp, ArrowDown, CheckSquare, Square } from 'lucide-react';
 import { useWorkflowStore, type WorkflowRecord } from '../stores/workflowStore';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+
+type SortField = 'updatedAt' | 'createdAt' | 'name' | 'nodeCount';
+type SortOrder = 'asc' | 'desc';
 
 function formatDate(ts: number) {
   const d = new Date(ts);
@@ -47,6 +50,11 @@ export default function WorkflowList() {
     setWorkflowBgImage,
   } = useWorkflowStore();
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('updatedAt');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -88,9 +96,92 @@ export default function WorkflowList() {
     loadFromStorage();
   }, [loadFromStorage]);
 
-  const filtered = workflows.filter((w) =>
-    w.workflow.flowMeta.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    let list = workflows.filter((w) =>
+      w.workflow.flowMeta.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    list = [...list].sort((a, b) => {
+      let valA: string | number = 0;
+      let valB: string | number = 0;
+
+      switch (sortField) {
+        case 'name':
+          valA = a.workflow.flowMeta.name.toLowerCase();
+          valB = b.workflow.flowMeta.name.toLowerCase();
+          break;
+        case 'createdAt':
+          valA = a.createdAt;
+          valB = b.createdAt;
+          break;
+        case 'nodeCount':
+          valA = a.workflow.nodes.length;
+          valB = b.workflow.nodes.length;
+          break;
+        case 'updatedAt':
+        default:
+          valA = a.updatedAt;
+          valB = b.updatedAt;
+          break;
+      }
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortOrder === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+    });
+
+    return list;
+  }, [workflows, searchTerm, sortField, sortOrder]);
+
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((w) => w.id)));
+    }
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (confirm(`确定要删除选中的 ${selectedIds.size} 个工作流吗？此操作不可撤销。`)) {
+      selectedIds.forEach((id) => deleteWorkflow(id));
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    }
+  };
+
+  const handleBatchExport = () => {
+    if (selectedIds.size === 0) return;
+    const exported = Array.from(selectedIds).map((id) => exportWorkflow(id, hideSensitive));
+    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `workflows-${selectedIds.size}-${Date.now()}.flow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowExportDialog(null);
+  };
+
+  const handleBatchDuplicate = () => {
+    selectedIds.forEach((id) => duplicateWorkflow(id));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  };
 
   const checkUnsavedAndProceed = (callback: () => void) => {
     if (hasUnsavedChanges()) {
@@ -181,7 +272,12 @@ export default function WorkflowList() {
 
   const confirmExport = () => {
     if (!showExportDialog) return;
-    
+
+    if (showExportDialog === 'batch') {
+      handleBatchExport();
+      return;
+    }
+
     const wf = exportWorkflow(showExportDialog, hideSensitive);
     const blob = new Blob([JSON.stringify(wf, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -236,8 +332,8 @@ export default function WorkflowList() {
         </div>
       </div>
 
-      <div className="mb-6">
-        <div className="relative max-w-md">
+      <div className="mb-6 flex items-center gap-3">
+        <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="搜索工作流..."
@@ -246,7 +342,118 @@ export default function WorkflowList() {
             className="pl-10"
           />
         </div>
+
+        <div className="relative">
+          <Button
+            variant="outline"
+            onClick={() => setShowSortMenu(!showSortMenu)}
+            className="gap-2"
+          >
+            {sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+            {sortField === 'updatedAt' ? '更新时间' :
+             sortField === 'createdAt' ? '创建时间' :
+             sortField === 'name' ? '名称' : '节点数量'}
+          </Button>
+          {showSortMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
+              <div className="absolute right-0 top-full mt-2 w-40 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-1">
+                {[
+                  { field: 'updatedAt', label: '更新时间' },
+                  { field: 'createdAt', label: '创建时间' },
+                  { field: 'name', label: '名称' },
+                  { field: 'nodeCount', label: '节点数量' },
+                ].map(({ field, label }) => (
+                  <button
+                    key={field}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 ${
+                      sortField === field ? 'text-violet-600 font-medium' : 'text-gray-700'
+                    }`}
+                    onClick={() => {
+                      if (sortField === field) {
+                        setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortField(field as SortField);
+                        setSortOrder('desc');
+                      }
+                      setShowSortMenu(false);
+                    }}
+                  >
+                    {label}
+                    {sortField === field && (
+                      sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <Button
+          variant={selectMode ? 'default' : 'outline'}
+          onClick={() => {
+            setSelectMode(!selectMode);
+            setSelectedIds(new Set());
+          }}
+          className="gap-2"
+        >
+          {selectMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+          {selectMode ? '取消选择' : '多选'}
+        </Button>
       </div>
+
+      {selectMode && filtered.length > 0 && (
+        <div className="mb-4 flex items-center justify-between px-4 py-3 bg-violet-50 rounded-xl border border-violet-100">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 text-sm text-violet-700 hover:text-violet-800"
+            >
+              {selectedIds.size === filtered.length && filtered.length > 0 ? (
+                <CheckSquare className="h-4 w-4" />
+              ) : (
+                <Square className="h-4 w-4" />
+              )}
+              <span className="font-medium">
+                已选择 {selectedIds.size} / {filtered.length} 个
+              </span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBatchDuplicate}
+              disabled={selectedIds.size === 0}
+              className="gap-1.5 text-xs"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              批量复制
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExportDialog('batch')}
+              disabled={selectedIds.size === 0}
+              className="gap-1.5 text-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              批量导出
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBatchDelete}
+              disabled={selectedIds.size === 0}
+              className="gap-1.5 text-xs"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              批量删除
+            </Button>
+          </div>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
@@ -273,11 +480,32 @@ export default function WorkflowList() {
           {filtered.map((wf, idx) => (
             <div
               key={wf.id}
-              className="group bg-white rounded-2xl border border-gray-200/70 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative"
+              className={`group bg-white rounded-2xl border shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative ${
+                selectedIds.has(wf.id)
+                  ? 'border-violet-400 ring-2 ring-violet-200'
+                  : 'border-gray-200/70'
+              }`}
             >
+              {selectMode && (
+                <button
+                  className="absolute top-3 left-3 z-10 w-6 h-6 rounded-md bg-white/90 backdrop-blur-sm border-2 flex items-center justify-center hover:bg-white transition-colors"
+                  style={{
+                    borderColor: selectedIds.has(wf.id) ? '#8b5cf6' : '#d1d5db',
+                  }}
+                  onClick={(e) => toggleSelect(wf.id, e)}
+                >
+                  {selectedIds.has(wf.id) && <Check className="w-4 h-4 text-violet-500" />}
+                </button>
+              )}
               <div
                 className="cursor-pointer"
-                onClick={() => handleOpen(wf)}
+                onClick={() => {
+                  if (selectMode) {
+                    toggleSelect(wf.id);
+                  } else {
+                    handleOpen(wf);
+                  }
+                }}
               >
                 <div
                   className={`h-28 relative overflow-hidden rounded-t-2xl ${wf.bgImage ? '' : `bg-gradient-to-br ${wf.bgGradient || gradients[idx % gradients.length]}`}`}
@@ -489,9 +717,13 @@ export default function WorkflowList() {
           />
           <div className="relative w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
             <div className="p-5 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800">导出工作流</h3>
+              <h3 className="text-lg font-semibold text-gray-800">
+                {showExportDialog === 'batch' ? '批量导出工作流' : '导出工作流'}
+              </h3>
               <p className="text-sm text-gray-500 mt-1">
-                将工作流导出为 JSON 文件，可用于分享或备份
+                {showExportDialog === 'batch'
+                  ? `将选中的 ${selectedIds.size} 个工作流导出为 JSON 文件`
+                  : '将工作流导出为 JSON 文件，可用于分享或备份'}
               </p>
             </div>
             <div className="p-5 space-y-4">
