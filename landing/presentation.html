@@ -1104,6 +1104,466 @@
   .bg-dot.d4 { width: 12px; height: 12px; background: var(--secondary); bottom: 18%; left: 15%; animation: float 9s -1s ease-in-out infinite; opacity: 0.4; }
 
   ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* ============ 以下为本次新增：三层架构鲜艳高亮 + 动效强化 + Roadmap ============ */
+
+  /* ===== 强化：三层架构更大胆鲜艳的高亮 ===== */
+  .arch-layer {
+    transition: all 0.6s cubic-bezier(.34,1.56,.64,1);
+  }
+  .arch-layer.ui {
+    border: 3px solid #6d28d9 !important;
+    background:
+      radial-gradient(ellipse at 10% 10%, rgba(244,114,182,0.75) 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 90%, rgba(139,92,246,1) 0%, transparent 65%),
+      linear-gradient(180deg, #5b21b6 0%, #7c3aed 35%, #a855f7 80%, #c084fc 100%) !important;
+    color: #ffffff;
+    box-shadow:
+      0 30px 72px rgba(124,58,237,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18),
+      0 0 0 1px rgba(255,255,255,0.1) inset !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .arch-layer.ui::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.28) 50%, transparent 80%);
+    transform: translateX(-120%);
+    animation: archShimmer 5s -1s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .arch-layer.scheduler {
+    border: 3px solid #be123c !important;
+    background:
+      radial-gradient(ellipse at 90% 10%, rgba(251,191,36,0.55) 0%, transparent 55%),
+      radial-gradient(ellipse at 10% 90%, rgba(244,114,182,0.95) 0%, transparent 65%),
+      linear-gradient(180deg, #9f1239 0%, #db2777 35%, #ec4899 75%, #f472b6 100%) !important;
+    color: #ffffff;
+    box-shadow:
+      0 30px 72px rgba(219,39,119,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18),
+      0 0 0 1px rgba(255,255,255,0.1) inset !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .arch-layer.scheduler::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.25) 50%, transparent 80%);
+    transform: translateX(-120%);
+    animation: archShimmer 5s -2.5s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .arch-layer.engine {
+    border: 3px solid #155e75 !important;
+    background:
+      radial-gradient(ellipse at 10% 10%, rgba(250,204,21,0.45) 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 90%, rgba(6,182,212,0.95) 0%, transparent 65%),
+      linear-gradient(180deg, #115e59 0%, #0891b2 35%, #06b6d4 70%, #22d3ee 100%) !important;
+    color: #ffffff;
+    box-shadow:
+      0 30px 72px rgba(6,182,212,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18),
+      0 0 0 1px rgba(255,255,255,0.1) inset !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .arch-layer.engine::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.25) 50%, transparent 80%);
+    transform: translateX(-120%);
+    animation: archShimmer 5s -4s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .arch-layer:hover {
+    transform: translateY(-18px) scale(1.045) rotate(-1deg) !important;
+    z-index: 10;
+  }
+  .arch-layer.ui:hover {
+    box-shadow:
+      0 44px 96px rgba(124,58,237,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55),
+      inset 0 -2px 0 rgba(0,0,0,0.2) !important;
+  }
+  .arch-layer.scheduler:hover {
+    box-shadow:
+      0 44px 96px rgba(219,39,119,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55),
+      inset 0 -2px 0 rgba(0,0,0,0.2) !important;
+  }
+  .arch-layer.engine:hover {
+    box-shadow:
+      0 44px 96px rgba(6,182,212,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55),
+      inset 0 -2px 0 rgba(0,0,0,0.2) !important;
+  }
+  @keyframes archShimmer {
+    0% { transform: translateX(-120%); }
+    55% { transform: translateX(120%); }
+    100% { transform: translateX(120%); }
+  }
+  .arch-head {
+    color: #ffffff !important;
+    font-size: 16px !important;
+    letter-spacing: 3px !important;
+    margin-bottom: 22px !important;
+    margin-top: 10px !important;
+    text-shadow: 0 3px 10px rgba(0,0,0,0.3), 0 1px 0 rgba(0,0,0,0.25) !important;
+    position: relative;
+    z-index: 4;
+  }
+  .arch-item {
+    background: rgba(255,255,255,0.18) !important;
+    color: #ffffff !important;
+    border: 1.5px solid rgba(255,255,255,0.28) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow:
+      0 8px 22px rgba(0,0,0,0.25),
+      inset 0 1px 0 rgba(255,255,255,0.35) !important;
+    position: relative;
+    z-index: 4;
+    transition: all 0.4s cubic-bezier(.34,1.56,.64,1) !important;
+  }
+  .arch-item:hover {
+    transform: translateX(8px) scale(1.06) rotate(-0.5deg) !important;
+    background: rgba(255,255,255,0.28) !important;
+    box-shadow:
+      0 14px 34px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.5) !important;
+  }
+  .arch-layer .layer-no {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 17px;
+    letter-spacing: 0.5px;
+    color: #1e1b4b;
+    background: linear-gradient(135deg, #fef3c7, #ffffff 55%, #fae8ff);
+    z-index: 4;
+    box-shadow:
+      0 10px 26px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.9);
+    animation: float 4.5s ease-in-out infinite;
+  }
+  .arch-layer.scheduler .layer-no { animation-delay: -1.5s; }
+  .arch-layer.engine .layer-no { animation-delay: -3s; }
+
+  .arch-arrow {
+    transition: all 0.3s;
+  }
+  .arch-arrow .arr1 {
+    color: #f0abfc !important;
+    filter: drop-shadow(0 0 22px rgba(240,171,252,1)) drop-shadow(0 0 8px rgba(168,85,247,1));
+    animation: archArrBounce 1.4s ease-in-out infinite;
+  }
+  .arch-arrow .arr2 {
+    color: #a5f3fc !important;
+    filter: drop-shadow(0 0 22px rgba(165,243,252,1)) drop-shadow(0 0 8px rgba(34,211,238,1));
+    animation: archArrBounce 1.4s -0.7s ease-in-out infinite;
+  }
+  @keyframes archArrBounce {
+    0%, 100% { transform: translateX(0) scale(1); }
+    50% { transform: translateX(14px) scale(1.25); }
+  }
+
+  .footer-note {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: 14px 22px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(167,139,250,0.08), rgba(244,114,182,0.06) 55%, rgba(6,182,212,0.08));
+    border: 1px dashed rgba(167,139,250,0.3);
+    display: inline-block;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* ===== 新增：Slide 8 Roadmap 未来功能 ===== */
+  .roadmap-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 18px;
+  }
+  .road-card {
+    padding: 34px 26px 26px;
+    border-radius: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.6s cubic-bezier(.34,1.56,.64,1);
+    transform-style: preserve-3d;
+    color: #ffffff;
+    border: 2.5px dashed rgba(255,255,255,0.35);
+    text-align: left;
+  }
+  .road-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.14), transparent 55%);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .road-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.22) 50%, transparent 80%);
+    transform: translateX(-120%);
+    animation: archShimmer 6s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .road-card:hover {
+    transform: translateY(-16px) rotate(-1.2deg) scale(1.05);
+    z-index: 10;
+  }
+  .road-card .status-tag {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    padding: 6px 14px;
+    border-radius: 22px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    z-index: 6;
+    color: #1e1b4b;
+    background: linear-gradient(135deg, #fef9c3, #ffffff 55%, #fce7f3);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.9);
+  }
+  .road-card .big-icon {
+    width: 78px; height: 78px;
+    border-radius: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 38px;
+    margin-bottom: 22px;
+    position: relative;
+    z-index: 5;
+    box-shadow:
+      0 20px 44px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.55);
+    color: white;
+    transition: all 0.5s cubic-bezier(.34,1.56,.64,1);
+    animation: float 5.2s ease-in-out infinite;
+    border: 2px solid rgba(255,255,255,0.4);
+  }
+  .road-card:hover .big-icon {
+    transform: scale(1.2) rotate(-12deg);
+    box-shadow:
+      0 30px 64px rgba(0,0,0,0.45),
+      inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .road-card h3 {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 12px;
+    line-height: 1.3;
+    position: relative;
+    z-index: 5;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    letter-spacing: -0.01em;
+  }
+  .road-card p {
+    font-size: 14px;
+    line-height: 1.75;
+    font-weight: 500;
+    position: relative;
+    z-index: 5;
+    color: rgba(255,255,255,0.95);
+  }
+  .road-card p strong {
+    color: #ffffff;
+    font-weight: 800;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.3);
+  }
+  .road-card .check-list {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+    z-index: 5;
+  }
+  .road-card .check-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 12.5px;
+    line-height: 1.55;
+    list-style: none;
+    font-weight: 600;
+    color: rgba(255,255,255,0.95);
+  }
+  .road-card .check-list li::before {
+    content: '→';
+    font-weight: 900;
+    font-size: 15px;
+    line-height: 1;
+    margin-top: 2px;
+    color: #ffffff;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,0.7));
+  }
+  .road-card .progress {
+    margin-top: 22px;
+    position: relative;
+    z-index: 5;
+  }
+  .road-card .progress .bar {
+    height: 9px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.25);
+    overflow: hidden;
+    box-shadow:
+      inset 0 1px 3px rgba(0,0,0,0.25),
+      inset 0 -1px 0 rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+  .road-card .progress .fill {
+    height: 100%;
+    border-radius: 14px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 16px currentColor;
+    background: linear-gradient(90deg, #ffffff, #fef3c7, #ffffff);
+  }
+  .road-card .progress .fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 1.8s infinite linear;
+  }
+  .road-card .progress .lbl {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 9px;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  }
+
+  .road-card.r1 {
+    background:
+      radial-gradient(ellipse at top left, rgba(244,114,182,0.65) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom right, rgba(139,92,246,1) 0%, transparent 65%),
+      linear-gradient(180deg, #5b21b6 0%, #7c3aed 35%, #a855f7 75%, #c084fc 100%);
+    box-shadow:
+      0 28px 72px rgba(124,58,237,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18);
+  }
+  .road-card.r1:hover {
+    box-shadow:
+      0 44px 100px rgba(124,58,237,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55);
+  }
+  .road-card.r1::after { animation-delay: -1s; }
+  .road-card.r1 .big-icon {
+    background: linear-gradient(135deg, #c084fc 0%, #a855f7 55%, #7c3aed 100%);
+  }
+  .road-card.r1 .progress .fill { width: 30%; color: #f0abfc; }
+
+  .road-card.r2 {
+    background:
+      radial-gradient(ellipse at top right, rgba(251,191,36,0.6) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom left, rgba(244,114,182,0.95) 0%, transparent 65%),
+      linear-gradient(180deg, #9f1239 0%, #db2777 35%, #ec4899 75%, #f472b6 100%);
+    box-shadow:
+      0 28px 72px rgba(219,39,119,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18);
+  }
+  .road-card.r2:hover {
+    box-shadow:
+      0 44px 100px rgba(219,39,119,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55);
+  }
+  .road-card.r2::after { animation-delay: -2.8s; }
+  .road-card.r2 .big-icon {
+    background: linear-gradient(135deg, #fb7185 0%, #ec4899 55%, #be123c 100%);
+    animation-delay: -1.8s;
+  }
+  .road-card.r2 .progress .fill { width: 45%; color: #fda4af; }
+
+  .road-card.r3 {
+    background:
+      radial-gradient(ellipse at top right, rgba(52,211,153,0.55) 0%, transparent 55%),
+      radial-gradient(ellipse at bottom left, rgba(6,182,212,1) 0%, transparent 65%),
+      linear-gradient(180deg, #115e59 0%, #0891b2 35%, #06b6d4 70%, #22d3ee 100%);
+    box-shadow:
+      0 28px 72px rgba(6,182,212,0.70),
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -2px 0 rgba(0,0,0,0.18);
+  }
+  .road-card.r3:hover {
+    box-shadow:
+      0 44px 100px rgba(6,182,212,0.95),
+      inset 0 2px 0 rgba(255,255,255,0.55);
+  }
+  .road-card.r3::after { animation-delay: -4.6s; }
+  .road-card.r3 .big-icon {
+    background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 55%, #0891b2 100%);
+    animation-delay: -3.6s;
+  }
+  .road-card.r3 .progress .fill { width: 15%; color: #a5f3fc; }
+
+  .roadmap-footer {
+    margin-top: 28px;
+    padding: 18px 28px;
+    border-radius: 22px;
+    text-align: center;
+    background:
+      linear-gradient(135deg, rgba(251,191,36,0.2), rgba(244,114,182,0.12) 50%, rgba(103,232,249,0.18)),
+      repeating-linear-gradient(45deg, transparent 0 14px, rgba(251,191,36,0.06) 14px 28px);
+    border: 2px dashed rgba(251,191,36,0.55);
+    position: relative;
+    overflow: hidden;
+  }
+  .roadmap-footer p {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.75;
+    color: #78350f;
+    position: relative;
+    z-index: 1;
+  }
+  .roadmap-footer p .flag {
+    font-weight: 900;
+    font-size: 17px;
+    color: #92400e;
+  }
 </style>
 </head>
 <body>
@@ -1460,7 +1920,8 @@
       <p class="slide-subtitle step" data-step="3">Electron 跨平台桌面应用，本地运行，数据本地存储，隐私安全。</p>
 
       <div class="arch-diagram">
-        <div class="arch-layer glass step" data-step="4">
+        <div class="arch-layer ui glass step" data-step="4">
+          <span class="layer-no">L1</span>
           <div class="arch-head">🎨 UI 层</div>
           <div class="arch-item">React + TypeScript</div>
           <div class="arch-item">可视化画布编辑器</div>
@@ -1469,8 +1930,9 @@
           <div class="arch-item">执行日志追踪</div>
           <div class="arch-item">定时任务调度</div>
         </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-layer glass step" data-step="5">
+        <div class="arch-arrow"><span class="arr1">→</span></div>
+        <div class="arch-layer scheduler glass step" data-step="5">
+          <span class="layer-no">L2</span>
           <div class="arch-head">⚡ 调度层</div>
           <div class="arch-item">FlowScheduler</div>
           <div class="arch-item">节点分段执行</div>
@@ -1479,8 +1941,9 @@
           <div class="arch-item">错误处理 & 重试</div>
           <div class="arch-item">智能引擎路由</div>
         </div>
-        <div class="arch-arrow">→</div>
-        <div class="arch-layer glass step" data-step="6">
+        <div class="arch-arrow"><span class="arr2">→</span></div>
+        <div class="arch-layer engine glass step" data-step="6">
+          <span class="layer-no">L3</span>
           <div class="arch-head">🔧 引擎层</div>
           <div class="arch-item">Midscene Engine</div>
           <div class="arch-item">System Engine</div>
@@ -1497,8 +1960,73 @@
     </div>
   </div>
 
-  <!-- ============ Slide 8: 结束 ============ -->
+  <!-- ============ Slide 8: 未来功能 Roadmap ============ -->
   <div class="slide" data-slide="7" data-steps="3">
+    <div class="slide-content">
+      <div class="step" data-step="1"><span class="badge badge-amber">🚧 未来规划</span></div>
+      <h2 class="slide-title step" data-step="2">
+        即将上线 · <span class="gradient-text">让自动化更进一步</span>
+      </h2>
+      <p class="slide-subtitle step" data-step="3">以下功能正在积极研发中，敬请期待。有想法也欢迎一起共建～</p>
+
+      <div class="roadmap-grid">
+        <div class="road-card r1 step" data-step="4">
+          <span class="status-tag">规划中 · 30%</span>
+          <div class="big-icon">🎬</div>
+          <h3>视频 → 工作流</h3>
+          <p>上传一段<strong>操作演示视频</strong>，AI 自动理解操作意图和步骤，<strong>直接生成可执行的工作流</strong>。</p>
+          <ul class="check-list">
+            <li>视频逐帧理解操作序列</li>
+            <li>识别鼠标点击、键盘输入等动作</li>
+            <li>导出为 Mimic Flow 工作流文件</li>
+          </ul>
+          <div class="progress">
+            <div class="bar"><div class="fill"></div></div>
+            <div class="lbl"><span>研发进度</span><span>30%</span></div>
+          </div>
+        </div>
+
+        <div class="road-card r2 step" data-step="5">
+          <span class="status-tag">设计中 · 45%</span>
+          <div class="big-icon">📹</div>
+          <h3>录屏录制 → 工作流</h3>
+          <p><strong>一边操作一边录制</strong>，软件自动记录你的点击、输入、等待行为，<strong>转化为可定时执行的工作流</strong>。</p>
+          <ul class="check-list">
+            <li>实时录屏 + 操作事件捕获</li>
+            <li>智能识别重复模式并合并</li>
+            <li>录制完成一键加入定时任务</li>
+          </ul>
+          <div class="progress">
+            <div class="bar"><div class="fill"></div></div>
+            <div class="lbl"><span>研发进度</span><span>45%</span></div>
+          </div>
+        </div>
+
+        <div class="road-card r3 step" data-step="6">
+          <span class="status-tag">构思中 · 15%</span>
+          <div class="big-icon">🧬</div>
+          <h3>AI 自我进化</h3>
+          <p>工作流<strong>失败不中断</strong>，AI 主动理解任务目标、<strong>诊断原因并介入修复</strong>，持续优化流程。</p>
+          <ul class="check-list">
+            <li>失败原因自动诊断与重试</li>
+            <li>基于历史执行的流程优化建议</li>
+            <li>自适应参数调优（等待时间 / 置信度）</li>
+          </ul>
+          <div class="progress">
+            <div class="bar"><div class="fill"></div></div>
+            <div class="lbl"><span>研发进度</span><span>15%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="roadmap-footer step" data-step="7">
+        <p><span class="flag">🚀</span> 有你期待的功能？欢迎提想法 · 共同建设 Mimic Flow 的下一个里程碑</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Slide 9: 结束 ============ -->
+  <div class="slide" data-slide="8" data-steps="3">
     <div class="slide-content end-slide">
       <div class="big-emoji step shown float">🎉</div>
       <h2 class="step shown delay-1">
@@ -1536,7 +2064,7 @@
 <button class="nav-btn next" id="nextBtn" onclick="handleNextClick()">›</button>
 
 <div class="nav-dots" id="navDots"></div>
-<div class="slide-number" id="slideNumber">1 / 8</div>
+<div class="slide-number" id="slideNumber">1 / 9</div>
 <div class="hint">← → 或空格翻页 · 有分步动画时空格继续下一个步骤</div>
 
 <script>
@@ -1745,6 +2273,7 @@
     if (slideIdx === 4) return 5;
     if (slideIdx === 5) return 9;
     if (slideIdx === 6) return 7;
+    if (slideIdx === 7) return 7;
     return getStepsCount(slideIdx);
   }
 
