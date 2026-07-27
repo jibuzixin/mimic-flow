@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const sourcePath = path.join(__dirname, '..', 'landing', 'my_icon.png');
+const sourcePath = path.join(__dirname, '..', 'landing', 'images', 'new_logo.png');
 const outputDir = path.join(__dirname, '..', 'build');
 
 if (!fs.existsSync(outputDir)) {
@@ -29,7 +29,7 @@ async function main() {
   const iconOffset = Math.round((SIZE - iconSize) / 2);
   const cornerRadius = Math.round(CORNER_RADIUS * iconScale);
 
-  const graphZoom = 1.5;
+  const graphZoom = 2.6;
   const zoomedSize = Math.round(iconSize * graphZoom);
 
   const iconBuffer = await sharp(sourcePath)
