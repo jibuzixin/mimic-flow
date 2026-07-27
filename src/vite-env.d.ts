@@ -59,7 +59,8 @@ type MimicIpcChannel =
   | 'system:pick-coordinate'
   | 'system:record-keys'
   | 'system:get-dpi-scale'
-  | 'system:set-dpi-scale';
+  | 'system:set-dpi-scale'
+  | 'system:move-mouse';
 
 declare global {
   interface Window {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick, FileText, Plus, Image, Keyboard, Target } from 'lucide-react';
+import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick, FileText, Plus, Image, Keyboard, Target, Move } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
@@ -739,6 +739,13 @@ export const PropertyPanel: React.FC = () => {
             console.error('拾取坐标失败', e);
           }
         };
+        const testPosition = async () => {
+          try {
+            await window.mimic.invoke('system:move-mouse', x, y);
+          } catch (e) {
+            console.error('移动鼠标失败', e);
+          }
+        };
         return (
           <div className="space-y-2">
             <div className="flex gap-2">
@@ -761,14 +768,24 @@ export const PropertyPanel: React.FC = () => {
                 />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={pickCoordinate}
-              className="w-full px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
-            >
-              <Target className="h-4 w-4" />
-              点击拾取坐标
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={pickCoordinate}
+                className="flex-1 px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+              >
+                <Target className="h-4 w-4" />
+                点击拾取坐标
+              </button>
+              <button
+                type="button"
+                onClick={testPosition}
+                className="flex-1 px-3 py-2 text-sm text-cyan-600 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+              >
+                <Move className="h-4 w-4" />
+                测试位置
+              </button>
+            </div>
           </div>
         );
       }

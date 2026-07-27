@@ -309,15 +309,25 @@ export class SystemEngine implements FlowEngine {
     const direction = params.direction || 'down';
     const amount = Number(params.amount || 3);
 
-    if (direction === 'up') {
-      this.robot.scrollMouse(amount, 'up');
-    } else if (direction === 'down') {
-      this.robot.scrollMouse(amount, 'down');
-    } else if (direction === 'left') {
-      this.robot.scrollMouse(amount, 'left');
-    } else if (direction === 'right') {
-      this.robot.scrollMouse(amount, 'right');
+    let scrollX = 0;
+    let scrollY = 0;
+
+    switch (direction) {
+      case 'up':
+        scrollY = amount;
+        break;
+      case 'down':
+        scrollY = -amount;
+        break;
+      case 'left':
+        scrollX = -amount;
+        break;
+      case 'right':
+        scrollX = amount;
+        break;
     }
+
+    this.robot.scrollMouse(scrollX, scrollY);
 
     return true;
   }

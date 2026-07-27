@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol, screen } from 'electron';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { dirname, join, relative } from 'path';
 import { getStore } from './store.js';
 import { getLogger } from './logger.js';
@@ -956,7 +957,6 @@ function loadSystemRobot(): any {
   if (systemRobotLoaded) return robot;
   systemRobotLoaded = true;
   try {
-    const { createRequire } = require('module');
     const req = createRequire(import.meta.url);
     robot = req('robotjs');
     getLogger().info('[System] robotjs loaded');
@@ -1122,4 +1122,16 @@ ipcMain.handle('system:get-dpi-scale', async () => {
 ipcMain.handle('system:set-dpi-scale', async (_event, scale: number) => {
   getStore().set('systemDpiScale', scale);
   return true;
+});
+
+ipcMain.handle('system:move-mouse', async (_event, x: number, y: number) => {
+  try {
+    const robot = loadSystemRobot();
+    if (!robot) return false;
+    robot.moveMouse(x, y);
+    return true;
+  } catch (error) {
+    console.error('[system:move-mouse] failed:', error);
+    return false;
+  }
 });

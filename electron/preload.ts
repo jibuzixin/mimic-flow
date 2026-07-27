@@ -49,6 +49,7 @@ export type IpcChannel =
   | 'system:record-keys'
   | 'system:get-dpi-scale'
   | 'system:set-dpi-scale'
+  | 'system:move-mouse'
   | 'window:restore-main'
   | 'window:close-floating'
   | 'floating:get-state'
