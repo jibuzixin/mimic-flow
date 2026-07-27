@@ -73,6 +73,9 @@ function WorkflowEditorInner() {
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [editingName, setEditingName] = useState('');
+  const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
+  const [saveAsName, setSaveAsName] = useState('');
+  const saveAsInputRef = useRef<HTMLInputElement>(null);
   const isSyncingFromStore = useRef(false);
   const lastMouseDownButton = useRef<number>(2);
 
@@ -767,41 +770,31 @@ function WorkflowEditorInner() {
   }, [isRunning, startExecution, stopExecution, validationWarnings.errorCount]);
 
   const handleSaveAs = useCallback(() => {
-    const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta.name || '工作流'} (副本)`);
-    if (name && name.trim()) {
-      saveAsNewWorkflow(name.trim());
-      setSaveStatus('saved');
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        setSaveStatus('idle');
-      }, 2000);
+    setSaveAsName(currentWorkflow?.flowMeta.name ? `${currentWorkflow.flowMeta.name} (副本)` : '新建工作流');
+    setShowSaveAsDialog(true);
+    setTimeout(() => {
+      saveAsInputRef.current?.focus();
+      saveAsInputRef.current?.select();
+    }, 50);
+  }, [currentWorkflow]);
+
+  const confirmSaveAs = useCallback(() => {
+    const name = saveAsName.trim();
+    if (!name) return;
+    saveAsNewWorkflow(name);
+    setShowSaveAsDialog(false);
+    setSaveStatus('saved');
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-  }, [currentWorkflow, saveAsNewWorkflow]);
+    saveTimeoutRef.current = setTimeout(() => {
+      setSaveStatus('idle');
+    }, 2000);
+  }, [saveAsName, saveAsNewWorkflow]);
 
   const handleSave = useCallback(() => {
-    if (originalWorkflowId) {
-      const wfName = currentWorkflow?.flowMeta?.name || '未命名工作流';
-      const confirmed = confirm(`确定要保存修改到「${wfName}」吗？`);
-      if (!confirmed) return;
-    } else {
-      const wfName = currentWorkflow?.flowMeta?.name || '未命名工作流';
-      const confirmed = confirm(
-        `当前工作流「${wfName}」尚未保存，需要另存为新工作流。\n\n是否立即另存为？`
-      );
-      if (!confirmed) return;
-      const name = prompt('请输入新工作流的名称：', `${currentWorkflow?.flowMeta?.name || '工作流'} (副本)`);
-      if (name && name.trim()) {
-        saveAsNewWorkflow(name.trim());
-        setSaveStatus('saved');
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-        }
-        saveTimeoutRef.current = setTimeout(() => {
-          setSaveStatus('idle');
-        }, 2000);
-      }
+    if (!originalWorkflowId) {
+      handleSaveAs();
       return;
     }
 
@@ -824,7 +817,7 @@ function WorkflowEditorInner() {
         setSaveStatus('idle');
       }, 2000);
     }
-  }, [saveCurrentWorkflow, originalWorkflowId, currentWorkflow, saveAsNewWorkflow]);
+  }, [saveCurrentWorkflow, originalWorkflowId, handleSaveAs]);
 
   const handleExport = useCallback(() => {
     const wf = exportCurrentWorkflow(hideSensitive);
@@ -1361,6 +1354,59 @@ function WorkflowEditorInner() {
       </div>
 
       <AnimatePresence>
+        {showSaveAsDialog && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/20 z-[90]"
+              onClick={() => setShowSaveAsDialog(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200/60 overflow-hidden z-[100]"
+            >
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-semibold text-gray-800">保存为新工作流</h3>
+              </div>
+              <div className="px-4 py-3">
+                <input
+                  ref={saveAsInputRef}
+                  type="text"
+                  value={saveAsName}
+                  onChange={(e) => setSaveAsName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      confirmSaveAs();
+                    }
+                  }}
+                  placeholder="请输入工作流名称"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                />
+              </div>
+              <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSaveAsDialog(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={confirmSaveAs}
+                  disabled={!saveAsName.trim()}
+                >
+                  保存
+                </Button>
+              </div>
+            </motion.div>
+          </>
+        )}
         {showExportDialog && (
           <>
             <motion.div

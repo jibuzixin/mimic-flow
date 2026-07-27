@@ -178,6 +178,8 @@ export default function Logs() {
         msg.includes('节点执行失败') ||
         msg.includes('📤') ||
         msg.includes('📢') ||
+        msg.includes('⚠️') ||
+        msg.includes('🔍') ||
         msg.includes('🔄') ||
         msg.includes('▶️') ||
         msg.includes('✓') ||
@@ -426,7 +428,8 @@ export default function Logs() {
                           const isNodeStart = log.message.includes('开始执行节点');
                           const isNodeEnd =
                             log.message.includes('节点执行完成') || log.message.includes('节点执行失败');
-                          const isVariable = log.message.includes('📤') || log.message.includes('📢');
+                          const isVariable = log.message.includes('📤') || log.message.includes('📢') || log.message.includes('⚠️') || log.message.includes('❌') || log.message.includes('🔍');
+                          const isLogOutput = log.message.includes('📢') || log.message.includes('⚠️') || log.message.includes('❌') || log.message.includes('🔍');
                           const isWorkflowStart = log.message.includes('▶️') || log.message.includes('工作流开始');
                           const isWorkflowEnd = log.message.includes('🏁') || log.message.includes('工作流结束') || log.message.includes('工作流执行成功') || log.message.includes('工作流执行失败');
                           const isSleep = log.message.includes('⏱️');
@@ -458,10 +461,12 @@ export default function Logs() {
                                 'text-sm rounded-lg border p-2.5',
                                 log.level === 'error' && 'bg-rose-50 border-rose-100 text-rose-800',
                                 log.level === 'warn' && 'bg-amber-50 border-amber-100 text-amber-800',
+                                log.level === 'debug' && 'bg-slate-100 border-slate-200 text-slate-600',
                                 log.level === 'info' && !isNodeStart && !isNodeEnd && !isVariable && !isWorkflowStart && !isWorkflowEnd && !isSleep && 'bg-slate-50 border-slate-100 text-slate-700',
                                 isNodeStart && 'bg-sky-50 border-sky-100 text-sky-800',
                                 isNodeEnd && log.level === 'info' && 'bg-emerald-50 border-emerald-100 text-emerald-800',
-                                isVariable && 'bg-violet-50/50 border-violet-100 text-violet-800',
+                                isLogOutput && log.level === 'info' && 'bg-violet-50/50 border-violet-100 text-violet-800',
+                                !isLogOutput && isVariable && log.level === 'info' && 'bg-violet-50/50 border-violet-100 text-violet-800',
                                 isWorkflowStart && 'bg-indigo-50 border-indigo-100 text-indigo-800',
                                 isWorkflowEnd && 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium',
                                 isSleep && 'bg-amber-50 border-amber-100 text-amber-800'
@@ -471,6 +476,15 @@ export default function Logs() {
                                 <span className="text-[10px] opacity-60 font-mono">
                                   {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false })}
                                 </span>
+                                <Badge variant="outline" className={cn(
+                                  'text-[10px] h-4 px-1.5 uppercase',
+                                  log.level === 'error' && 'border-rose-200 bg-rose-100 text-rose-700',
+                                  log.level === 'warn' && 'border-amber-200 bg-amber-100 text-amber-700',
+                                  log.level === 'debug' && 'border-slate-200 bg-slate-100 text-slate-600',
+                                  log.level === 'info' && 'border-sky-200 bg-sky-50 text-sky-700'
+                                )}>
+                                  {log.level}
+                                </Badge>
                                 {(log as any).nodeName && (
                                   <Badge variant="outline" className="text-[10px] h-4 px-1">
                                     {(log as any).nodeName}

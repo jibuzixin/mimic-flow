@@ -613,7 +613,7 @@ export class FlowScheduler extends EventEmitter {
   }
 
   private executeLogNode(node: FlowNode): void {
-    const { message } = node.nodeParams as any;
+    const { message, level = 'info' } = node.nodeParams as any;
     let content = '';
 
     if (message && typeof message === 'string') {
@@ -640,11 +640,19 @@ export class FlowScheduler extends EventEmitter {
       state.output = content;
     }
 
+    const levelIcons: Record<string, string> = {
+      info: '📢',
+      warn: '⚠️',
+      error: '❌',
+      debug: '🔍',
+    };
+    const icon = levelIcons[level as string] || '📢';
+
     this.addLog({
-      level: 'info',
+      level: level as 'info' | 'warn' | 'error' | 'debug',
       source: 'scheduler',
       nodeId: node.id,
-      message: `📢 ${content}`,
+      message: `${icon} ${content}`,
     });
   }
 

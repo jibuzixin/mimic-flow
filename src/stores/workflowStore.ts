@@ -702,9 +702,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         case 'log': {
           const { entry } = runtimeEvent;
           const levelMap: Record<string, string> = {
-            debug: 'info',
+            debug: 'debug',
             info: 'info',
-            warn: 'info',
+            warn: 'warn',
             error: 'error',
           };
           get().addExecutionLog({
@@ -1141,6 +1141,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             edges: edgesWithType,
             history: initialHistory,
             historyIndex: 0,
+            savedSnapshot: initialHistory[0],
             selectedNodeId: null,
           });
           return;
@@ -1337,6 +1338,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       selectedNodeId: null,
       history: initialHistory,
       historyIndex: 0,
+      savedSnapshot: null,
     });
 
     get().saveDraftToStorage();
@@ -1395,6 +1397,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
       set({
         workflows: [...state.workflows, newRecord],
+        currentWorkflow: updatedWorkflow,
         originalWorkflowId: newId,
         isDirty: false,
         savedSnapshot: snapshot,
@@ -1413,16 +1416,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const now = Date.now();
     const wfName = name || `${state.currentWorkflow.flowMeta.name || '工作流'} (副本)`;
 
+    const newWorkflow = {
+      ...JSON.parse(JSON.stringify(state.currentWorkflow)),
+      flowMeta: {
+        ...state.currentWorkflow.flowMeta,
+        name: wfName,
+        updatedAt: now,
+      },
+    };
+
     const newRecord: WorkflowRecord = {
       id: newId,
-      workflow: {
-        ...JSON.parse(JSON.stringify(state.currentWorkflow)),
-        flowMeta: {
-          ...state.currentWorkflow.flowMeta,
-          name: wfName,
-          updatedAt: now,
-        },
-      },
+      workflow: newWorkflow,
       nodePositions: { ...state.nodePositions },
       edges: JSON.parse(JSON.stringify(state.edges)),
       createdAt: now,
@@ -1430,10 +1435,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       bgGradient: getRandomGradient(),
     };
 
+    const snapshot = cloneHistoryState(newWorkflow, state.nodePositions, newRecord.edges);
+
     set({
       workflows: [...state.workflows, newRecord],
+      currentWorkflow: newWorkflow,
       originalWorkflowId: newId,
       isDirty: false,
+      savedSnapshot: snapshot,
     });
 
     get().saveWorkflowsToStorage();
