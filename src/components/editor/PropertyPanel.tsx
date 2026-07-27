@@ -71,6 +71,161 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ text }) => {
   );
 };
 
+interface KeyboardGroupsEditorProps {
+  value: unknown;
+  onChange: (value: { keys: string[] }[]) => void;
+}
+
+const KeyboardGroupsEditor: React.FC<KeyboardGroupsEditorProps> = ({ value, onChange }) => {
+  const groups = Array.isArray(value) ? value as { keys: string[] }[] : [{ keys: [] }];
+  const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+  const recordingRef = useRef<{ keys: Set<string>; cleanup: () => void } | null>(null);
+
+  const updateGroup = (index: number, updates: Partial<{ keys: string[] }>) => {
+    const newGroups = [...groups];
+    newGroups[index] = { ...newGroups[index], ...updates };
+    onChange(newGroups);
+  };
+
+  const addGroup = () => {
+    const newGroups = [...groups, { keys: [] }];
+    onChange(newGroups);
+  };
+
+  const removeGroup = (index: number) => {
+    if (groups.length <= 1) return;
+    const newGroups = groups.filter((_, i) => i !== index);
+    onChange(newGroups);
+  };
+
+  const startRecording = (index: number) => {
+    if (recordingIndex !== null) return;
+    setRecordingIndex(index);
+
+    const pressedKeys = new Set<string>();
+
+    const keyMap: Record<string, string> = {
+      ' ': 'space',
+      'Control': 'ctrl',
+      'Meta': 'cmd',
+      'Command': 'cmd',
+      'ArrowUp': 'up',
+      'ArrowDown': 'down',
+      'ArrowLeft': 'left',
+      'ArrowRight': 'right',
+      'Escape': 'esc',
+      'Enter': 'enter',
+      'Tab': 'tab',
+      'Backspace': 'backspace',
+      'Delete': 'delete',
+      'Home': 'home',
+      'End': 'end',
+      'PageUp': 'pageup',
+      'PageDown': 'pagedown',
+    };
+
+    const normalizeKey = (e: KeyboardEvent): string => {
+      if (e.key.length === 1) {
+        return e.key.toLowerCase();
+      }
+      return keyMap[e.key] || e.key.toLowerCase();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = normalizeKey(e);
+      if (!pressedKeys.has(key)) {
+        pressedKeys.add(key);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const keys = Array.from(pressedKeys);
+      updateGroup(index, { keys });
+      cleanup();
+    };
+
+    const cleanup = () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('keyup', handleKeyUp, true);
+      setRecordingIndex(null);
+      recordingRef.current = null;
+    };
+
+    recordingRef.current = { keys: pressedKeys, cleanup };
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keyup', handleKeyUp, true);
+  };
+
+  const formatKeys = (keys: string[]) => {
+    if (keys.length === 0) return '未设置';
+    return keys.join(' + ');
+  };
+
+  return (
+    <div className="space-y-2">
+      {recordingIndex !== null && (
+        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 text-center font-medium animate-pulse">
+          🔴 正在录制按键...按下组合键后松开完成
+        </div>
+      )}
+      {groups.map((group, i) => (
+        <div
+          key={i}
+          className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 shrink-0">#{i + 1}</span>
+            <div className={`flex-1 px-2 py-1.5 border rounded-lg text-xs font-mono truncate ${
+              recordingIndex === i
+                ? 'bg-amber-50 border-amber-300 text-amber-700'
+                : 'bg-white border-gray-200 text-gray-700'
+            }`}>
+              {recordingIndex === i ? '录制中...' : formatKeys(group.keys)}
+            </div>
+            <button
+              type="button"
+              onClick={() => startRecording(i)}
+              disabled={recordingIndex !== null}
+              className={`px-2 py-1 text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1 ${
+                recordingIndex === i
+                  ? 'bg-amber-100 text-amber-700'
+                  : recordingIndex !== null
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'text-violet-600 bg-violet-50 hover:bg-violet-100'
+              }`}
+            >
+              <Keyboard className="h-3 w-3" />
+              {recordingIndex === i ? '录制中' : '录制'}
+            </button>
+            {groups.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeGroup(i)}
+                className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addGroup}
+        disabled={recordingIndex !== null}
+        className="w-full px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Plus className="h-4 w-4" />
+        添加按键组
+      </button>
+    </div>
+  );
+};
+
 export const PropertyPanel: React.FC = () => {
   const { currentWorkflow, selectedNodeId, setSelectedNode, updateNodeParams, updateNode, deleteNode, nodeOutputs } =
     useWorkflowStore();
@@ -729,152 +884,11 @@ export const PropertyPanel: React.FC = () => {
       }
 
       case 'keyboard-groups': {
-        const groups = Array.isArray(value) ? value as { keys: string[] }[] : [{ keys: [] }];
-        const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
-        const recordingRef = useRef<{ keys: Set<string>; cleanup: () => void } | null>(null);
-
-        const updateGroup = (index: number, updates: Partial<{ keys: string[] }>) => {
-          const newGroups = [...groups];
-          newGroups[index] = { ...newGroups[index], ...updates };
-          handleParamChange(field.key, newGroups);
-        };
-
-        const addGroup = () => {
-          const newGroups = [...groups, { keys: [] }];
-          handleParamChange(field.key, newGroups);
-        };
-
-        const removeGroup = (index: number) => {
-          if (groups.length <= 1) return;
-          const newGroups = groups.filter((_, i) => i !== index);
-          handleParamChange(field.key, newGroups);
-        };
-
-        const startRecording = (index: number) => {
-          if (recordingIndex !== null) return;
-          setRecordingIndex(index);
-
-          const pressedKeys = new Set<string>();
-
-          const keyMap: Record<string, string> = {
-            ' ': 'space',
-            'Control': 'ctrl',
-            'Meta': 'cmd',
-            'Command': 'cmd',
-            'ArrowUp': 'up',
-            'ArrowDown': 'down',
-            'ArrowLeft': 'left',
-            'ArrowRight': 'right',
-            'Escape': 'esc',
-            'Enter': 'enter',
-            'Tab': 'tab',
-            'Backspace': 'backspace',
-            'Delete': 'delete',
-            'Home': 'home',
-            'End': 'end',
-            'PageUp': 'pageup',
-            'PageDown': 'pagedown',
-          };
-
-          const normalizeKey = (e: KeyboardEvent): string => {
-            if (e.key.length === 1) {
-              return e.key.toLowerCase();
-            }
-            return keyMap[e.key] || e.key.toLowerCase();
-          };
-
-          const handleKeyDown = (e: KeyboardEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const key = normalizeKey(e);
-            if (!pressedKeys.has(key)) {
-              pressedKeys.add(key);
-            }
-          };
-
-          const handleKeyUp = (e: KeyboardEvent) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const keys = Array.from(pressedKeys);
-            updateGroup(index, { keys });
-            cleanup();
-          };
-
-          const cleanup = () => {
-            document.removeEventListener('keydown', handleKeyDown, true);
-            document.removeEventListener('keyup', handleKeyUp, true);
-            setRecordingIndex(null);
-            recordingRef.current = null;
-          };
-
-          recordingRef.current = { keys: pressedKeys, cleanup };
-          document.addEventListener('keydown', handleKeyDown, true);
-          document.addEventListener('keyup', handleKeyUp, true);
-        };
-
-        const formatKeys = (keys: string[]) => {
-          if (keys.length === 0) return '未设置';
-          return keys.join(' + ');
-        };
-
         return (
-          <div className="space-y-2">
-            {recordingIndex !== null && (
-              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 text-center font-medium animate-pulse">
-                🔴 正在录制按键...按下组合键后松开完成
-              </div>
-            )}
-            {groups.map((group, i) => (
-              <div
-                key={i}
-                className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-gray-500 shrink-0">#{i + 1}</span>
-                  <div className={`flex-1 px-2 py-1.5 border rounded-lg text-xs font-mono truncate ${
-                    recordingIndex === i
-                      ? 'bg-amber-50 border-amber-300 text-amber-700'
-                      : 'bg-white border-gray-200 text-gray-700'
-                  }`}>
-                    {recordingIndex === i ? '录制中...' : formatKeys(group.keys)}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => startRecording(i)}
-                    disabled={recordingIndex !== null}
-                    className={`px-2 py-1 text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1 ${
-                      recordingIndex === i
-                        ? 'bg-amber-100 text-amber-700'
-                        : recordingIndex !== null
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'text-violet-600 bg-violet-50 hover:bg-violet-100'
-                    }`}
-                  >
-                    <Keyboard className="h-3 w-3" />
-                    {recordingIndex === i ? '录制中' : '录制'}
-                  </button>
-                  {groups.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeGroup(i)}
-                      className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addGroup}
-              disabled={recordingIndex !== null}
-              className="w-full px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus className="h-4 w-4" />
-              添加按键组
-            </button>
-          </div>
+          <KeyboardGroupsEditor
+            value={value}
+            onChange={(newGroups) => handleParamChange(field.key, newGroups)}
+          />
         );
       }
 
