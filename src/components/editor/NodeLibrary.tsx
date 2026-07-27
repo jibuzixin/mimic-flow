@@ -12,7 +12,7 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
   const [searchTerm, setSearchTerm] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<NodeCategory>>(
-    new Set(['control', 'ai-action', 'ai-query', 'wait']),
+    new Set(['control', 'ai-action', 'ai-query', 'wait', 'system']),
   );
 
   const { pinnedNodeTypes, pinNode, unpinNode } = useWorkflowStore();
@@ -31,6 +31,7 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
       'ai-action': [],
       'ai-query': [],
       wait: [],
+      system: [],
     };
     filteredConfigs.forEach((c) => {
       groups[c.category].push(c);

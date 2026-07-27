@@ -44,7 +44,15 @@ export type IpcChannel =
   | 'execution:stats'
   | 'execution:reportPath'
   | 'execution:openReport'
-  | 'execution:getBaseDir';
+  | 'execution:getBaseDir'
+  | 'system:pick-coordinate'
+  | 'system:record-keys'
+  | 'system:get-dpi-scale'
+  | 'system:set-dpi-scale'
+  | 'window:restore-main'
+  | 'window:close-floating'
+  | 'floating:get-state'
+  | 'execution:setBaseDir';
 
 const api = {
   platform: process.platform,

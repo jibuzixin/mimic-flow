@@ -17,6 +17,16 @@ export type FlowNodeType =
   | 'midscene.boolean'
   | 'midscene.waitFor'
   | 'midscene.sleep'
+  // --- System 系统操作引擎节点 ---
+  | 'system.click'
+  | 'system.doubleClick'
+  | 'system.rightClick'
+  | 'system.hover'
+  | 'system.input'
+  | 'system.keyboard'
+  | 'system.scroll'
+  | 'system.waitForImage'
+  | 'system.sleep'
   // --- 控制流节点（调度层原生处理）---
   | 'control.start'
   | 'control.end'
@@ -131,7 +141,7 @@ export interface SegmentResult {
 
 export interface EngineInitConfig {
   displayId?: string;
-  models: {
+  models?: {
     default: ModelProfileLite;
     insight?: ModelProfileLite;
     planning?: ModelProfileLite;

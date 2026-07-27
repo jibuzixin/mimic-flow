@@ -55,7 +55,11 @@ type MimicIpcChannel =
   | 'execution:reportPath'
   | 'execution:openReport'
   | 'execution:getBaseDir'
-  | 'execution:setBaseDir';
+  | 'execution:setBaseDir'
+  | 'system:pick-coordinate'
+  | 'system:record-keys'
+  | 'system:get-dpi-scale'
+  | 'system:set-dpi-scale';
 
 declare global {
   interface Window {

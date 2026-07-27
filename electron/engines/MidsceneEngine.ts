@@ -40,6 +40,10 @@ export class MidsceneEngine implements FlowEngine {
     this.initConfig = config;
     this.segmentCount = 0;
 
+    if (!config.models || !config.models.default) {
+      throw new Error('Midscene engine requires a default model configuration');
+    }
+
     try {
       const { ReportMergingTool } = this.requireMidscene('@midscene/core/report');
       this.reportMerger = new ReportMergingTool();
@@ -212,7 +216,10 @@ export class MidsceneEngine implements FlowEngine {
             break;
         }
 
-        const nodeOutput = result?.[outputKey];
+        let nodeOutput = result?.[outputKey];
+        if (node.nodeType === 'midscene.waitFor') {
+          nodeOutput = true;
+        }
         outputs[node.id] = nodeOutput;
         onEvent({ type: 'node:complete', nodeId: node.id, output: nodeOutput });
       }
@@ -227,6 +234,15 @@ export class MidsceneEngine implements FlowEngine {
       if (signal.aborted || errorMsg === 'aborted') {
         this.log.info('[MidsceneEngine] Segment aborted by user', { duration });
         return { success: false, outputs: {}, error: '用户取消', aborted: true };
+      }
+
+      const lastNode = segment[segment.length - 1];
+      if (segment.length === 1 && lastNode.nodeType === 'midscene.waitFor') {
+        this.log.info('[MidsceneEngine] waitFor timed out, returning false', { duration });
+        const outputs: Record<string, unknown> = {};
+        outputs[lastNode.id] = false;
+        onEvent({ type: 'node:complete', nodeId: lastNode.id, output: false });
+        return { success: true, outputs };
       }
 
       this.log.error('[MidsceneEngine] Segment failed', { error: errorMsg, duration });

@@ -14,6 +14,7 @@ import type {
 } from '../../types/flow-v2.js';
 import { EngineRegistry } from '../engines/EngineRegistry.js';
 import { MidsceneEngine } from '../engines/MidsceneEngine.js';
+import { SystemEngine } from '../engines/SystemEngine.js';
 import { getLogger } from '../logger.js';
 import { getStore } from '../store.js';
 import type { ModelProfile } from '../../types/index.js';
@@ -25,7 +26,11 @@ function isControlNode(nodeType: FlowNodeType): boolean {
 }
 
 function isSleepNode(nodeType: FlowNodeType): boolean {
-  return nodeType === 'midscene.sleep';
+  return nodeType === 'midscene.sleep' || nodeType === 'system.sleep';
+}
+
+function isBranchingNode(nodeType: FlowNodeType): boolean {
+  return nodeType === 'midscene.waitFor' || nodeType === 'system.waitForImage';
 }
 
 function getPathValue(obj: Record<string, unknown>, path: string): unknown {
@@ -165,6 +170,7 @@ export class FlowScheduler extends EventEmitter {
 
     this.engineRegistry = new EngineRegistry();
     this.engineRegistry.register(new MidsceneEngine());
+    this.engineRegistry.register(new SystemEngine());
   }
 
   getStatus(): FlowStatus {
@@ -225,6 +231,8 @@ export class FlowScheduler extends EventEmitter {
 
     if (engineName === 'midscene') {
       await this.initMidsceneEngine();
+    } else if (engineName === 'system') {
+      this.engineRegistry.setInitConfig('system', {});
     }
   }
 
@@ -509,7 +517,22 @@ export class FlowScheduler extends EventEmitter {
         }
         const segment = this.collectSegment(node);
         const lastNode = segment[segment.length - 1];
-        await this.executeNextNodes(lastNode);
+
+        if (isBranchingNode(lastNode.nodeType)) {
+          const outputs = this.variablePool.outputs as Record<string, unknown>;
+          const result = outputs[lastNode.id];
+          const boolResult = result === true || result === 'true';
+          this.addLog({
+            level: 'info',
+            source: 'scheduler',
+            nodeId: lastNode.id,
+            message: `条件判断结果: ${boolResult}`,
+            data: { result },
+          });
+          await this.executeBranchNode(lastNode, boolResult);
+        } else {
+          await this.executeNextNodes(lastNode);
+        }
       }
     } catch (error) {
       state.retryCount++;
@@ -1266,6 +1289,25 @@ export class FlowScheduler extends EventEmitter {
     }
   }
 
+  private async executeBranchNode(node: FlowNode, result: boolean): Promise<void> {
+    const trueBranch = node.nextNodes.find((n) => n.condition === 'true');
+    const falseBranch = node.nextNodes.find((n) => n.condition === 'false');
+
+    const nextNodeId = result
+      ? trueBranch?.nodeId
+      : falseBranch?.nodeId;
+
+    if (nextNodeId) {
+      try {
+        await this.executeNode(nextNodeId);
+      } catch (e) {
+        if (this.status === 'running') {
+          this.status = 'failed';
+        }
+      }
+    }
+  }
+
   private resetLoopBodyNodes(loopNodeId: string, bodyStartNodeId: string): void {
     const visited = new Set<string>();
     const queue: string[] = [bodyStartNodeId];
@@ -1620,6 +1662,10 @@ export class FlowScheduler extends EventEmitter {
     const segment: FlowNode[] = [startNode];
     let cursor = startNode;
 
+    if (isBranchingNode(startNode.nodeType)) {
+      return segment;
+    }
+
     while (true) {
       const next = cursor.nextNodes.find((n) => !n.condition);
       if (!next) break;
@@ -1628,12 +1674,13 @@ export class FlowScheduler extends EventEmitter {
       if (!nextNode) break;
 
       if (isControlNode(nextNode.nodeType)) break;
+      if (isBranchingNode(nextNode.nodeType)) break;
 
       if (isSleepNode(nextNode.nodeType)) {
         const afterNext = nextNode.nextNodes.find((n) => !n.condition);
         if (afterNext) {
           const afterNextNode = this.nodeMap.get(afterNext.nodeId);
-          if (afterNextNode && !isControlNode(afterNextNode.nodeType) && !isSleepNode(afterNextNode.nodeType)) {
+          if (afterNextNode && !isControlNode(afterNextNode.nodeType) && !isSleepNode(afterNextNode.nodeType) && !isBranchingNode(afterNextNode.nodeType)) {
             const startEngine = this.engineRegistry.findEngineForNode(startNode.nodeType, startNode.engine);
             const afterNextEngine = this.engineRegistry.findEngineForNode(afterNextNode.nodeType, afterNextNode.engine);
             if (startEngine && afterNextEngine && startEngine.name === afterNextEngine.name) {

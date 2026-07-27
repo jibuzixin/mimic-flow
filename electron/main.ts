@@ -25,7 +25,8 @@ type StoreKey =
   | 'defaultModelIds'
   | 'logSavePath'
   | 'workflowSavePath'
-  | 'ui.sidebarCollapsed';
+  | 'ui.sidebarCollapsed'
+  | 'systemDpiScale';
 
 const midsceneAdapter = new MidsceneAdapter();
 const flowRuntimeService = new FlowRuntimeService(midsceneAdapter);
@@ -943,5 +944,182 @@ ipcMain.handle('usage:get', async () => {
 ipcMain.handle('usage:reset', async () => {
   resetUsageStatistics();
   getLogger().info('Usage statistics reset');
+  return true;
+});
+
+// ====== System IPC Handlers ======
+
+let robot: any = null;
+let systemRobotLoaded = false;
+
+function loadSystemRobot(): any {
+  if (systemRobotLoaded) return robot;
+  systemRobotLoaded = true;
+  try {
+    const { createRequire } = require('module');
+    const req = createRequire(import.meta.url);
+    robot = req('robotjs');
+    getLogger().info('[System] robotjs loaded');
+    return robot;
+  } catch (e) {
+    getLogger().warn('[System] robotjs not available', { error: (e as Error).message });
+    return null;
+  }
+}
+
+ipcMain.handle('system:pick-coordinate', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) throw new Error('无法获取窗口');
+
+  const display = screen.getPrimaryDisplay();
+  const pickerWin = new BrowserWindow({
+    width: display.bounds.width,
+    height: display.bounds.height,
+    x: display.bounds.x,
+    y: display.bounds.y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    focusable: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  pickerWin.setAlwaysOnTop(true, 'screen-saver');
+  pickerWin.setIgnoreMouseEvents(false);
+
+  const crosshairHtml = `
+    <html>
+    <head><style>
+      * { box-sizing: border-box; }
+      body { margin:0; cursor:crosshair; background:rgba(0,0,0,0.1); 
+        width:100vw; height:100vh; overflow:hidden; }
+      .hint { position:fixed; top:24px; left:50%; transform:translateX(-50%); 
+        background:rgba(0,0,0,0.75); color:white; padding:10px 20px; border-radius:8px;
+        font-family:system-ui; font-size:13px; pointer-events:none; z-index:9999;
+        white-space:nowrap; }
+      .crosshair-v { position:fixed; top:0; bottom:0; width:1px; 
+        background:rgba(255,107,107,0.5); pointer-events:none; z-index:9998; }
+      .crosshair-h { position:fixed; left:0; right:0; height:1px; 
+        background:rgba(255,107,107,0.5); pointer-events:none; z-index:9998; }
+    </style></head>
+    <body>
+      <div class="hint">点击屏幕任意位置拾取坐标 &nbsp;|&nbsp; 按 ESC 取消</div>
+      <div class="crosshair-v" id="cv"></div>
+      <div class="crosshair-h" id="ch"></div>
+      <script>
+        window.__pickClicked = false;
+        window.__pickCancelled = false;
+        var cv = document.getElementById('cv');
+        var ch = document.getElementById('ch');
+        document.addEventListener('mousemove', function(e) {
+          cv.style.left = e.clientX + 'px';
+          ch.style.top = e.clientY + 'px';
+        });
+        document.addEventListener('click', function() {
+          window.__pickClicked = true;
+        });
+        document.addEventListener('contextmenu', function(e) {
+          e.preventDefault();
+          window.__pickCancelled = true;
+        });
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') {
+            window.__pickCancelled = true;
+          }
+        });
+      </script>
+    </body>
+    </html>
+  `;
+
+  const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(crosshairHtml);
+  await pickerWin.loadURL(dataUrl);
+
+  win.hide();
+  pickerWin.focus();
+
+  return new Promise<{ x: number; y: number }>((resolve, reject) => {
+    const cleanup = () => {
+      try {
+        if (!pickerWin.isDestroyed()) {
+          pickerWin.close();
+        }
+      } catch (e) {}
+      win.show();
+      win.focus();
+    };
+
+    pickerWin.on('closed', () => {
+      reject(new Error('用户取消拾取'));
+    });
+
+    const checkResult = setInterval(() => {
+      if (pickerWin.isDestroyed()) {
+        clearInterval(checkResult);
+        return;
+      }
+      pickerWin.webContents.executeJavaScript('window.__pickClicked || window.__pickCancelled').then((clicked: any) => {
+        if (clicked) {
+          clearInterval(checkResult);
+          pickerWin.webContents.executeJavaScript('window.__pickCancelled').then((cancelled: any) => {
+            const point = screen.getCursorScreenPoint();
+            cleanup();
+            if (cancelled) {
+              reject(new Error('用户取消拾取'));
+            } else {
+              resolve({ x: point.x, y: point.y });
+            }
+          }).catch(() => {
+            cleanup();
+            reject(new Error('拾取失败'));
+          });
+        }
+      }).catch(() => {});
+    }, 30);
+  });
+});
+
+ipcMain.handle('system:record-keys', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) throw new Error('无法获取窗口');
+
+  return new Promise<{ keys: string[] }>((resolve, reject) => {
+    try {
+      win.webContents.send('system:start-key-record');
+
+      const onRecordResult = (_event: any, result: { keys: string[]; cancelled: boolean }) => {
+        ipcMain.removeListener('system:key-record-result', onRecordResult);
+        if (result.cancelled) {
+          reject(new Error('用户取消录制'));
+        } else {
+          resolve({ keys: result.keys });
+        }
+      };
+
+      ipcMain.on('system:key-record-result', onRecordResult);
+    } catch (e) {
+      reject(e);
+    }
+  });
+});
+
+ipcMain.handle('system:get-dpi-scale', async () => {
+  const stored = getStore().get('systemDpiScale') as number | undefined;
+  if (stored !== undefined && stored !== null) {
+    return stored;
+  }
+  const platform = process.platform;
+  if (platform === 'darwin') return 2.0;
+  return 1.0;
+});
+
+ipcMain.handle('system:set-dpi-scale', async (_event, scale: number) => {
+  getStore().set('systemDpiScale', scale);
   return true;
 });

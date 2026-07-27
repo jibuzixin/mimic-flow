@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick, FileText, Plus } from 'lucide-react';
+import { HelpCircle, Settings, Trash2, X, ChevronUp, MousePointerClick, FileText, Plus, Image, Keyboard, Target } from 'lucide-react';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { getNodeConfig, type PropertyField } from './nodeConfigs';
 import { VariableInput } from './VariableInput';
@@ -564,6 +564,316 @@ export const PropertyPanel: React.FC = () => {
                 </label>
               </div>
             )}
+          </div>
+        );
+      }
+
+      case 'coordinate': {
+        const params = selectedNode?.nodeParams as Record<string, unknown> || {};
+        const x = params.x as number ?? 0;
+        const y = params.y as number ?? 0;
+        const pickCoordinate = async () => {
+          try {
+            const result = await window.mimic.invoke('system:pick-coordinate') as { x: number; y: number };
+            if (result && typeof result === 'object' && 'x' in result && 'y' in result) {
+              if (selectedNode) {
+                updateNodeParams(selectedNode.id, { x: result.x, y: result.y });
+              }
+            }
+          } catch (e) {
+            console.error('拾取坐标失败', e);
+          }
+        };
+        return (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <div className="flex-1 space-y-1">
+                <label className="text-[11px] text-gray-500">X 坐标</label>
+                <input
+                  type="number"
+                  value={x}
+                  onChange={(e) => handleParamChange('x', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all bg-white"
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <label className="text-[11px] text-gray-500">Y 坐标</label>
+                <input
+                  type="number"
+                  value={y}
+                  onChange={(e) => handleParamChange('y', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all bg-white"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={pickCoordinate}
+              className="w-full px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+            >
+              <Target className="h-4 w-4" />
+              点击拾取坐标
+            </button>
+          </div>
+        );
+      }
+
+      case 'image-template': {
+        const imgValue = String(value ?? '');
+        const hasImage = imgValue.length > 0;
+
+        const selectImageFile = async () => {
+          try {
+            const result = await window.mimic.invoke('dialog:select-file', {
+              multiSelections: false,
+              filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }],
+            });
+            if (result && typeof result === 'string') {
+              handleParamChange(field.key, result);
+            }
+          } catch (e) {
+            console.error('选择图片失败', e);
+          }
+        };
+
+        const handlePaste = async (e: React.ClipboardEvent) => {
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+              e.preventDefault();
+              const file = item.getAsFile();
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = reader.result as string;
+                  handleParamChange(field.key, base64);
+                };
+                reader.readAsDataURL(file);
+              }
+              break;
+            }
+          }
+        };
+
+        const clearImage = () => {
+          handleParamChange(field.key, '');
+        };
+
+        return (
+          <div className="space-y-2" onPaste={handlePaste}>
+            {hasImage ? (
+              <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                <img
+                  src={imgValue}
+                  alt="模板图片"
+                  className="w-full h-32 object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  className="absolute top-2 right-2 w-6 h-6 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="px-3 py-6 border-2 border-dashed border-gray-300 rounded-xl text-center text-xs text-gray-400">
+                <Image className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                未选择模板图片
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={selectImageFile}
+                className="flex-1 px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                选择图片
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const clipItems = await navigator.clipboard.read();
+                    for (const item of clipItems) {
+                      const imgType = item.types.find((t) => t.startsWith('image/'));
+                      if (imgType) {
+                        const blob = await item.getType(imgType);
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const base64 = reader.result as string;
+                          handleParamChange(field.key, base64);
+                        };
+                        reader.readAsDataURL(blob);
+                        break;
+                      }
+                    }
+                  } catch (e) {
+                    console.error('读取剪贴板失败，请在图片区域按 Ctrl+V 粘贴', e);
+                  }
+                }}
+                className="px-3 py-2 text-sm text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5"
+                title="也可以在图片区域按 Ctrl+V 粘贴"
+              >
+                粘贴
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 text-center">
+              提示：在图片区域按 Ctrl+V 可直接粘贴
+            </p>
+          </div>
+        );
+      }
+
+      case 'keyboard-groups': {
+        const groups = Array.isArray(value) ? value as { keys: string[] }[] : [{ keys: [] }];
+        const [recordingIndex, setRecordingIndex] = useState<number | null>(null);
+        const recordingRef = useRef<{ keys: Set<string>; cleanup: () => void } | null>(null);
+
+        const updateGroup = (index: number, updates: Partial<{ keys: string[] }>) => {
+          const newGroups = [...groups];
+          newGroups[index] = { ...newGroups[index], ...updates };
+          handleParamChange(field.key, newGroups);
+        };
+
+        const addGroup = () => {
+          const newGroups = [...groups, { keys: [] }];
+          handleParamChange(field.key, newGroups);
+        };
+
+        const removeGroup = (index: number) => {
+          if (groups.length <= 1) return;
+          const newGroups = groups.filter((_, i) => i !== index);
+          handleParamChange(field.key, newGroups);
+        };
+
+        const startRecording = (index: number) => {
+          if (recordingIndex !== null) return;
+          setRecordingIndex(index);
+
+          const pressedKeys = new Set<string>();
+
+          const keyMap: Record<string, string> = {
+            ' ': 'space',
+            'Control': 'ctrl',
+            'Meta': 'cmd',
+            'Command': 'cmd',
+            'ArrowUp': 'up',
+            'ArrowDown': 'down',
+            'ArrowLeft': 'left',
+            'ArrowRight': 'right',
+            'Escape': 'esc',
+            'Enter': 'enter',
+            'Tab': 'tab',
+            'Backspace': 'backspace',
+            'Delete': 'delete',
+            'Home': 'home',
+            'End': 'end',
+            'PageUp': 'pageup',
+            'PageDown': 'pagedown',
+          };
+
+          const normalizeKey = (e: KeyboardEvent): string => {
+            if (e.key.length === 1) {
+              return e.key.toLowerCase();
+            }
+            return keyMap[e.key] || e.key.toLowerCase();
+          };
+
+          const handleKeyDown = (e: KeyboardEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const key = normalizeKey(e);
+            if (!pressedKeys.has(key)) {
+              pressedKeys.add(key);
+            }
+          };
+
+          const handleKeyUp = (e: KeyboardEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const keys = Array.from(pressedKeys);
+            updateGroup(index, { keys });
+            cleanup();
+          };
+
+          const cleanup = () => {
+            document.removeEventListener('keydown', handleKeyDown, true);
+            document.removeEventListener('keyup', handleKeyUp, true);
+            setRecordingIndex(null);
+            recordingRef.current = null;
+          };
+
+          recordingRef.current = { keys: pressedKeys, cleanup };
+          document.addEventListener('keydown', handleKeyDown, true);
+          document.addEventListener('keyup', handleKeyUp, true);
+        };
+
+        const formatKeys = (keys: string[]) => {
+          if (keys.length === 0) return '未设置';
+          return keys.join(' + ');
+        };
+
+        return (
+          <div className="space-y-2">
+            {recordingIndex !== null && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 text-center font-medium animate-pulse">
+                🔴 正在录制按键...按下组合键后松开完成
+              </div>
+            )}
+            {groups.map((group, i) => (
+              <div
+                key={i}
+                className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-gray-500 shrink-0">#{i + 1}</span>
+                  <div className={`flex-1 px-2 py-1.5 border rounded-lg text-xs font-mono truncate ${
+                    recordingIndex === i
+                      ? 'bg-amber-50 border-amber-300 text-amber-700'
+                      : 'bg-white border-gray-200 text-gray-700'
+                  }`}>
+                    {recordingIndex === i ? '录制中...' : formatKeys(group.keys)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => startRecording(i)}
+                    disabled={recordingIndex !== null}
+                    className={`px-2 py-1 text-xs rounded-lg transition-colors shrink-0 flex items-center gap-1 ${
+                      recordingIndex === i
+                        ? 'bg-amber-100 text-amber-700'
+                        : recordingIndex !== null
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'text-violet-600 bg-violet-50 hover:bg-violet-100'
+                    }`}
+                  >
+                    <Keyboard className="h-3 w-3" />
+                    {recordingIndex === i ? '录制中' : '录制'}
+                  </button>
+                  {groups.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeGroup(i)}
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1 shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addGroup}
+              disabled={recordingIndex !== null}
+              className="w-full px-3 py-2 text-sm text-violet-600 bg-violet-50 hover:bg-violet-100 rounded-xl transition-colors font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="h-4 w-4" />
+              添加按键组
+            </button>
           </div>
         );
       }

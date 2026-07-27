@@ -39,6 +39,7 @@ import {
   Heart,
   Github as GithubIcon,
   Globe,
+  MousePointerClick,
 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { invoke } from '../lib/api';
@@ -640,6 +641,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
     loadDefaults();
   }, []);
   const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0 });
+  const [systemDpiScale, setSystemDpiScale] = useState(1.0);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState('simple');
@@ -687,9 +689,20 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   }, [uiSettings]);
 
   useEffect(() => {
-    invoke<IpcResponse<{ globalRuntimeOption: { defaultTimeout: number; defaultRetry: number } }>>('config:get').then((res) => {
-      if (res.success && res.data?.globalRuntimeOption) {
-        setLocalRuntimeOption(res.data.globalRuntimeOption);
+    Promise.all([
+      invoke<IpcResponse<{ globalRuntimeOption: { defaultTimeout: number; defaultRetry: number } }>>('config:get'),
+      invoke<number>('system:get-dpi-scale'),
+    ]).then(([configRes, dpiRes]) => {
+      if (configRes.success && configRes.data?.globalRuntimeOption) {
+        setLocalRuntimeOption(configRes.data.globalRuntimeOption);
+      }
+      if (dpiRes && typeof dpiRes === 'number') {
+        setSystemDpiScale(dpiRes);
+      } else if (typeof dpiRes === 'object' && dpiRes && (dpiRes as any).success !== undefined) {
+        const data = (dpiRes as any).data ?? (dpiRes as any).value;
+        if (typeof data === 'number') {
+          setSystemDpiScale(data);
+        }
       }
       setInitialLoaded(true);
     }).catch(() => {
@@ -767,6 +780,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
       await setWorkflowSavePath(localWorkflowPath);
       await setUiSettings(localUiSettings);
       await invoke('config:set', { globalRuntimeOption: localRuntimeOption });
+      await invoke('system:set-dpi-scale', systemDpiScale);
       setLocalDefaultIds(nextDefaultIds);
       setStatus({ type: 'success', message: '设置已保存' });
       setTimeout(() => {
@@ -1175,6 +1189,48 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                     }
                     className="bg-white"
                   />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm bg-white">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MousePointerClick className="w-5 h-5 text-violet-500" />
+                系统操作引擎
+              </CardTitle>
+              <CardDescription>配置系统级自动化操作的参数。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>屏幕 DPI 缩放比例</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      min={0.5}
+                      max={4}
+                      step={0.1}
+                      value={systemDpiScale}
+                      onChange={(e) => setSystemDpiScale(Number(e.target.value))}
+                      className="bg-white"
+                    />
+                    <span className="text-xs text-muted-foreground">倍</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Retina 屏幕通常为 2.0，普通屏幕为 1.0。用于坐标计算和图片匹配。
+                  </p>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
+                <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1.5">
+                  <span className="w-1 h-1 rounded-full bg-amber-500" />
+                  权限提示
+                </div>
+                <div className="text-[12px] leading-relaxed text-amber-600">
+                  macOS 需要在「系统设置 → 隐私与安全性 → 辅助功能」中授权本应用控制电脑。
+                  首次使用系统操作节点时如遇无响应，请检查权限设置。
                 </div>
               </div>
             </CardContent>

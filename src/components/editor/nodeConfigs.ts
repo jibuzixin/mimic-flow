@@ -3,20 +3,21 @@ import {
   Search, CheckCircle, ToggleLeft,
   Clock, Timer,
   Variable, GitBranch, Repeat, FileText, Flag, StopCircle,
+  Image, Move,
 } from 'lucide-react';
 
-export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait';
+export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait' | 'system';
 
 export interface PropertyField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name' | 'file-path' | 'image-list';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'switch' | 'variable' | 'key-select' | 'var-name' | 'file-path' | 'image-list' | 'coordinate' | 'key-record' | 'image-template' | 'keyboard-groups';
   description?: string;
   placeholder?: string;
   options?: { label: string; value: string }[];
   defaultValue?: unknown;
   sensitive?: boolean;
-  showWhen?: Record<string, string>;
+  showWhen?: Record<string, string | boolean>;
   multiFile?: boolean;
 }
 
@@ -704,6 +705,347 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'duration', label: '等待时间(ms)', type: 'number', defaultValue: 1000 },
     ],
   },
+
+  // ====== 系统操作 ======
+  {
+    type: 'system.click',
+    name: '左键单击',
+    category: 'system',
+    icon: MousePointerClick,
+    description: '在指定位置单击鼠标左键',
+    color: '#8b5cf6',
+    defaultParams: {
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      moveDuration: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.doubleClick',
+    name: '左键双击',
+    category: 'system',
+    icon: MousePointer2,
+    description: '在指定位置双击鼠标左键',
+    color: '#8b5cf6',
+    defaultParams: {
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      moveDuration: 200,
+      clickInterval: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      { key: 'clickInterval', label: '点击间隔(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.rightClick',
+    name: '右键单击',
+    category: 'system',
+    icon: Hand,
+    description: '在指定位置单击鼠标右键',
+    color: '#8b5cf6',
+    defaultParams: {
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      moveDuration: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.hover',
+    name: '鼠标悬停',
+    category: 'system',
+    icon: Move,
+    description: '将鼠标移动到指定位置（不点击）',
+    color: '#8b5cf6',
+    defaultParams: {
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      moveDuration: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.input',
+    name: '输入文本',
+    category: 'system',
+    icon: Type,
+    description: '在指定位置输入文本',
+    color: '#8b5cf6',
+    defaultParams: {
+      needLocate: false,
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      value: '',
+      moveDuration: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      { key: 'value', label: '输入内容', type: 'textarea', placeholder: '输入要输入的文本内容' },
+      { key: 'needLocate', label: '先定位再输入', type: 'switch', defaultValue: false },
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        showWhen: { needLocate: 'true' },
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { needLocate: 'true', locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { needLocate: 'true', locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { needLocate: 'true', locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200, showWhen: { needLocate: 'true' } },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { needLocate: 'true', locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.keyboard',
+    name: '系统按键',
+    category: 'system',
+    icon: Keyboard,
+    description: '按下系统按键或组合键，支持多组依次执行',
+    color: '#8b5cf6',
+    defaultParams: {
+      keyGroups: [{ keys: [] }],
+      groupInterval: 300,
+    },
+    propertyFields: [
+      { key: 'keyGroups', label: '按键组', type: 'keyboard-groups' },
+      { key: 'groupInterval', label: '组间间隔(ms)', type: 'number', defaultValue: 300 },
+    ],
+  },
+  {
+    type: 'system.scroll',
+    name: '滚轮滑动',
+    category: 'system',
+    icon: Scroll,
+    description: '滚动鼠标滚轮',
+    color: '#8b5cf6',
+    defaultParams: {
+      needLocate: false,
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      direction: 'down',
+      amount: 3,
+      moveDuration: 200,
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'direction',
+        label: '滚动方向',
+        type: 'select',
+        defaultValue: 'down',
+        options: [
+          { label: '向上', value: 'up' },
+          { label: '向下', value: 'down' },
+          { label: '向左', value: 'left' },
+          { label: '向右', value: 'right' },
+        ],
+      },
+      { key: 'amount', label: '滚动格数', type: 'number', defaultValue: 3 },
+      { key: 'needLocate', label: '先定位再滚动', type: 'switch', defaultValue: false },
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        showWhen: { needLocate: 'true' },
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { needLocate: 'true', locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { needLocate: 'true', locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { needLocate: 'true', locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200, showWhen: { needLocate: 'true' } },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { needLocate: 'true', locateMode: 'image' },
+      },
+    ],
+  },
+  {
+    type: 'system.waitForImage',
+    name: '图片条件等待',
+    category: 'system',
+    icon: Image,
+    description: '等待图片出现，匹配到走true分支，超时走false分支',
+    color: '#f59e0b',
+    defaultParams: {
+      templateImage: '',
+      confidence: 0.9,
+      timeout: 30000,
+      checkInterval: 500,
+    },
+    propertyFields: [
+      { key: 'templateImage', label: '模板图片', type: 'image-template' },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9 },
+      { key: 'timeout', label: '超时时间(ms)', type: 'number', defaultValue: 30000 },
+      { key: 'checkInterval', label: '检测间隔(ms)', type: 'number', defaultValue: 500 },
+    ],
+  },
+  {
+    type: 'system.sleep',
+    name: '等待时间',
+    category: 'system',
+    icon: Clock,
+    description: '等待指定的毫秒数',
+    color: '#8b5cf6',
+    defaultParams: {
+      duration: 1000,
+    },
+    propertyFields: [
+      { key: 'duration', label: '等待时间(ms)', type: 'number', defaultValue: 1000 },
+    ],
+  },
 ];
 
 export const categoryLabels: Record<NodeCategory, string> = {
@@ -711,6 +1053,7 @@ export const categoryLabels: Record<NodeCategory, string> = {
   'ai-action': 'AI 操作',
   'ai-query': 'AI 查询',
   wait: '等待',
+  system: '系统操作',
 };
 
 export const getNodeConfig = (type: string): NodeConfig | undefined => {

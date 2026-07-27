@@ -27,11 +27,12 @@ export const getNodeHandles = (nodeType: string) => {
   const isEndNode = nodeType === 'control.end';
   const isIfNode = nodeType === 'control.if';
   const isLoopNode = nodeType === 'control.loop';
+  const isBranchingWait = nodeType === 'system.waitForImage' || nodeType === 'midscene.waitFor';
 
   return {
     inputs: isStartNode ? 0 : 1,
-    outputs: isEndNode ? 0 : (isIfNode ? 2 : isLoopNode ? 2 : 1),
-    outputLabels: isIfNode ? ['true', 'false'] : isLoopNode ? ['body', 'exit'] : ['out'],
+    outputs: isEndNode ? 0 : (isIfNode || isBranchingWait ? 2 : isLoopNode ? 2 : 1),
+    outputLabels: isIfNode || isBranchingWait ? ['true', 'false'] : isLoopNode ? ['body', 'exit'] : ['out'],
   };
 };
 
