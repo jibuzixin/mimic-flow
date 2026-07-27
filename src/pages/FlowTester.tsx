@@ -206,7 +206,6 @@ export default function FlowTester() {
           case 'flow:start':
             setStatus('running');
             setIsRunning(true);
-            appendLog({ level: 'info', source: 'scheduler', message: '▶ 工作流开始执行' });
             break;
           case 'flow:complete':
             setStatus(data.status);

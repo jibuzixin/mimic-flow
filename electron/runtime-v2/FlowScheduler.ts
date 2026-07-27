@@ -590,7 +590,6 @@ export class FlowScheduler extends EventEmitter {
   private async executeControlNode(node: FlowNode): Promise<boolean> {
     switch (node.nodeType) {
       case 'control.start':
-        this.addLog({ level: 'info', source: 'scheduler', nodeId: node.id, message: '▶️ 工作流开始' });
         return true;
       case 'control.end': {
         const { message } = node.nodeParams as any;
@@ -1551,6 +1550,7 @@ export class FlowScheduler extends EventEmitter {
 
     const onEngineEvent = (event: EngineEvent) => {
       if (event.type === 'node:start') {
+        const node = this.nodeMap.get(event.nodeId);
         const state = this.nodeStates.get(event.nodeId);
         if (state) {
           state.status = 'running';
@@ -1559,22 +1559,44 @@ export class FlowScheduler extends EventEmitter {
         this.emit('event', {
           type: 'node:start',
           nodeId: event.nodeId,
+          nodeType: node?.nodeType,
+          nodeName: node?.nodeName,
         } as RuntimeEvent);
         this.addLog({
           level: 'info',
           source: 'scheduler',
           nodeId: event.nodeId,
-          message: `开始执行节点`,
+          message: `开始执行节点: ${node?.nodeName || node?.nodeType || event.nodeId}`,
         });
       } else if (event.type === 'node:complete') {
+        const node = this.nodeMap.get(event.nodeId);
         const state = this.nodeStates.get(event.nodeId);
         if (state) {
+          state.status = 'success';
+          state.endTime = Date.now();
           state.output = event.output;
         }
         const outputs = this.variablePool.outputs as Record<string, unknown>;
         if (event.output !== undefined) {
           outputs[event.nodeId] = event.output;
         }
+        const resolvedParams = this.resolveNodeParams(node?.nodeParams as Record<string, unknown> || {});
+        this.emit('event', {
+          type: 'node:complete',
+          nodeId: event.nodeId,
+          nodeType: node?.nodeType,
+          nodeName: node?.nodeName,
+          duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0,
+          output: event.output,
+          resolvedParams,
+        } as RuntimeEvent);
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: event.nodeId,
+          message: `节点执行完成: ${node?.nodeName || node?.nodeType || event.nodeId}`,
+          data: { duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0 },
+        });
       } else if (event.type === 'log') {
         this.addLog({
           level: event.level as any,
@@ -1631,13 +1653,15 @@ export class FlowScheduler extends EventEmitter {
 
     for (const segNode of segment) {
       const state = this.nodeStates.get(segNode.id);
+      const isAlreadyCompleted = state?.status === 'success';
+
       if (state && state.status === 'running') {
         state.status = 'success';
         state.endTime = Date.now();
       }
 
       const nodeOutput = result.outputs[segNode.id];
-      if (nodeOutput !== undefined) {
+      if (nodeOutput !== undefined && !isAlreadyCompleted) {
         const outputs = this.variablePool.outputs as Record<string, unknown>;
         outputs[segNode.id] = nodeOutput;
 
@@ -1656,21 +1680,25 @@ export class FlowScheduler extends EventEmitter {
         }
       }
 
-      const resolvedParams = this.resolveNodeParams(segNode.nodeParams as Record<string, unknown> || {});
-      this.emit('event', {
-        type: 'node:complete',
-        nodeId: segNode.id,
-        duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0,
-        output: state?.output,
-        resolvedParams,
-      } as RuntimeEvent);
+      if (!isAlreadyCompleted) {
+        const resolvedParams = this.resolveNodeParams(segNode.nodeParams as Record<string, unknown> || {});
+        this.emit('event', {
+          type: 'node:complete',
+          nodeId: segNode.id,
+          nodeType: segNode.nodeType,
+          nodeName: segNode.nodeName,
+          duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0,
+          output: state?.output,
+          resolvedParams,
+        } as RuntimeEvent);
 
-      this.addLog({
-        level: 'info',
-        source: 'scheduler',
-        nodeId: segNode.id,
-        message: `✓ 节点完成: ${segNode.nodeName || segNode.nodeType}`,
-      });
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: segNode.id,
+          message: `✓ 节点完成: ${segNode.nodeName || segNode.nodeType}`,
+        });
+      }
     }
 
     return true;
