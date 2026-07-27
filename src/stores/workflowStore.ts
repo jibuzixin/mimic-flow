@@ -1414,7 +1414,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();
-    const wfName = name || `${state.currentWorkflow.flowMeta.name || '工作流'} (副本)`;
+    const wfName = name || state.currentWorkflow.flowMeta.name || '工作流';
 
     const newWorkflow = {
       ...JSON.parse(JSON.stringify(state.currentWorkflow)),
@@ -1491,7 +1491,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
     newRecord.workflow.flowMeta = {
       ...newRecord.workflow.flowMeta,
-      name: `${record.workflow.flowMeta.name} (副本)`,
+      name: record.workflow.flowMeta.name,
     };
 
     set({

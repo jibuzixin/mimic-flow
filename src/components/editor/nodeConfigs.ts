@@ -692,7 +692,7 @@ export const nodeConfigs: NodeConfig[] = [
     ],
   },
   {
-    type: 'midscene.sleep',
+    type: 'control.sleep',
     name: '等待时间',
     category: 'wait',
     icon: Timer,
@@ -749,6 +749,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -795,6 +796,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -839,6 +841,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -883,6 +886,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -932,6 +936,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { needLocate: true, locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -948,6 +953,7 @@ export const nodeConfigs: NodeConfig[] = [
     propertyFields: [
       { key: 'keyGroups', label: '按键组', type: 'keyboard-groups' },
       { key: 'groupInterval', label: '组间间隔(ms)', type: 'number', defaultValue: 300 },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -1010,6 +1016,7 @@ export const nodeConfigs: NodeConfig[] = [
         ],
         showWhen: { needLocate: true, locateMode: 'image' },
       },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
     ],
   },
   {
@@ -1030,20 +1037,6 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9 },
       { key: 'timeout', label: '超时时间(ms)', type: 'number', defaultValue: 30000 },
       { key: 'checkInterval', label: '检测间隔(ms)', type: 'number', defaultValue: 500 },
-    ],
-  },
-  {
-    type: 'system.sleep',
-    name: '等待时间',
-    category: 'system',
-    icon: Clock,
-    description: '等待指定的毫秒数',
-    color: '#8b5cf6',
-    defaultParams: {
-      duration: 1000,
-    },
-    propertyFields: [
-      { key: 'duration', label: '等待时间(ms)', type: 'number', defaultValue: 1000 },
     ],
   },
 ];

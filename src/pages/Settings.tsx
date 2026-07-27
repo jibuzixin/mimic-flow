@@ -28,6 +28,7 @@ import {
   Cpu,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   RotateCcw,
   Database,
   Settings as SettingsIcon,
@@ -48,6 +49,7 @@ import type { ModelProfile, ModelTag, EngineModelConfig, DefaultModelSelection }
 import { MODEL_TAG_META } from '../../types';
 import type { IpcResponse } from '../../types/flow';
 import { v4 as uuidv4 } from 'uuid';
+import { nodeConfigs, categoryLabels, type NodeCategory } from '../components/editor/nodeConfigs';
 
 const TAG_ICONS: Record<ModelTag, React.ElementType> = {
   multimodal: Eye,
@@ -626,6 +628,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   const [localUiSettings, setLocalUiSettings] = useState(uiSettings);
   const [defaultPaths, setDefaultPaths] = useState<{ log: string; workflow: string; userData: string } | null>(null);
   const [titleClickCount, setTitleClickCount] = useState(0);
+  const [expandedSortCategory, setExpandedSortCategory] = useState<NodeCategory | null>(null);
 
   useEffect(() => {
     const loadDefaults = async () => {
@@ -640,7 +643,7 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
     };
     loadDefaults();
   }, []);
-  const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0 });
+  const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0, systemNodePostDelay: 500 });
   const [systemDpiScale, setSystemDpiScale] = useState(1.0);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -694,7 +697,10 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
       invoke<number>('system:get-dpi-scale'),
     ]).then(([configRes, dpiRes]) => {
       if (configRes.success && configRes.data?.globalRuntimeOption) {
-        setLocalRuntimeOption(configRes.data.globalRuntimeOption);
+        setLocalRuntimeOption({
+          systemNodePostDelay: 500,
+          ...configRes.data.globalRuntimeOption,
+        });
       }
       if (dpiRes && typeof dpiRes === 'number') {
         setSystemDpiScale(dpiRes);
@@ -1222,6 +1228,25 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                     Retina 屏幕通常为 2.0，普通屏幕为 1.0。用于坐标计算和图片匹配。
                   </p>
                 </div>
+                <div className="space-y-2">
+                  <Label>节点结束后默认等待（毫秒）</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={100}
+                    value={localRuntimeOption.systemNodePostDelay ?? 500}
+                    onChange={(e) =>
+                      setLocalRuntimeOption((p) => ({
+                        ...p,
+                        systemNodePostDelay: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    className="bg-white"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    每个系统操作节点执行完成后的默认等待时间，避免操作过快。可在单个节点属性中覆盖。
+                  </p>
+                </div>
               </div>
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
                 <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1.5">
@@ -1478,6 +1503,162 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                       )}
                     />
                   </button>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-border/40">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">节点库排序</Label>
+                  <p className="text-xs text-muted-foreground">
+                    自定义节点库中分类和节点的显示顺序。点击分类可调整该分类下节点的顺序。
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                    <span>分类顺序</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defaults = ['control', 'ai-action', 'ai-query', 'wait', 'system'];
+                        setLocalUiSettings((p) => ({ ...p, nodeCategoryOrder: defaults, nodeOrderWithinCategory: {} }));
+                      }}
+                      className="ml-auto text-violet-600 hover:text-violet-700 hover:underline"
+                    >
+                      重置默认
+                    </button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {localUiSettings.nodeCategoryOrder.map((cat, idx) => {
+                      const catKey = cat as NodeCategory;
+                      const catNodes = nodeConfigs.filter((c) => c.category === catKey);
+                      const isExpanded = expandedSortCategory === catKey;
+                      const nodeOrder = localUiSettings.nodeOrderWithinCategory?.[catKey] || catNodes.map((n) => n.type);
+
+                      const moveNode = (nodeIdx: number, direction: 'up' | 'down') => {
+                        const newOrder = [...nodeOrder];
+                        const targetIdx = direction === 'up' ? nodeIdx - 1 : nodeIdx + 1;
+                        [newOrder[nodeIdx], newOrder[targetIdx]] = [newOrder[targetIdx], newOrder[nodeIdx]];
+                        setLocalUiSettings((p) => ({
+                          ...p,
+                          nodeOrderWithinCategory: {
+                            ...p.nodeOrderWithinCategory,
+                            [catKey]: newOrder,
+                          },
+                        }));
+                      };
+
+                      return (
+                        <div key={cat} className="rounded-xl border border-gray-200 overflow-hidden">
+                          <div
+                            className="flex items-center gap-2 px-3 py-2 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                            onClick={() => setExpandedSortCategory(isExpanded ? null : catKey)}
+                          >
+                            <span className="text-xs text-gray-400 w-5 text-center">{idx + 1}</span>
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-400" />
+                            )}
+                            <span className="text-sm font-medium flex-1">
+                              {categoryLabels[catKey] || cat}
+                            </span>
+                            <span className="text-xs text-gray-400">{catNodes.length} 个</span>
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={() => {
+                                  setLocalUiSettings((p) => {
+                                    const order = [...p.nodeCategoryOrder];
+                                    [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+                                    return { ...p, nodeCategoryOrder: order };
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="上移"
+                              >
+                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === localUiSettings.nodeCategoryOrder.length - 1}
+                                onClick={() => {
+                                  setLocalUiSettings((p) => {
+                                    const order = [...p.nodeCategoryOrder];
+                                    [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+                                    return { ...p, nodeCategoryOrder: order };
+                                  });
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="下移"
+                              >
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="border-t border-gray-200 p-2 space-y-1 bg-white">
+                              {nodeOrder.map((nodeType, nodeIdx) => {
+                                const nodeConfig = catNodes.find((n) => n.type === nodeType);
+                                if (!nodeConfig) return null;
+                                const Icon = nodeConfig.icon;
+                                return (
+                                  <div
+                                    key={nodeType}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50"
+                                  >
+                                    <span className="text-xs text-gray-300 w-5 text-center">{nodeIdx + 1}</span>
+                                    <div
+                                      className="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+                                      style={{ backgroundColor: `${nodeConfig.color}15`, color: nodeConfig.color }}
+                                    >
+                                      {Icon && <Icon className="w-3.5 h-3.5" />}
+                                    </div>
+                                    <span className="text-sm flex-1 truncate">{nodeConfig.name}</span>
+                                    <div className="flex items-center gap-0.5">
+                                      <button
+                                        type="button"
+                                        disabled={nodeIdx === 0}
+                                        onClick={() => moveNode(nodeIdx, 'up')}
+                                        className="p-1 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                        title="上移"
+                                      >
+                                        <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={nodeIdx === nodeOrder.length - 1}
+                                        onClick={() => moveNode(nodeIdx, 'down')}
+                                        className="p-1 rounded-md hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                        title="下移"
+                                      >
+                                        <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLocalUiSettings((p) => {
+                                    const next = { ...p.nodeOrderWithinCategory };
+                                    delete next[catKey];
+                                    return { ...p, nodeOrderWithinCategory: next };
+                                  });
+                                }}
+                                className="w-full text-xs text-violet-600 hover:text-violet-700 py-1.5 hover:bg-violet-50 rounded-lg transition-colors"
+                              >
+                                重置此分类顺序
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </CardContent>

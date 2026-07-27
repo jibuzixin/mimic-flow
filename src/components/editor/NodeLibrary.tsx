@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, GripVertical, Layers, ChevronUp, Pin, PinOff } from 'lucide-react';
 import { nodeConfigs, categoryLabels, type NodeCategory, type NodeConfig } from './nodeConfigs';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { useAppStore } from '../../stores/appStore';
 
 interface NodeLibraryProps {
   onDragStart: (nodeType: string) => void;
@@ -16,6 +17,7 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
   );
 
   const { pinnedNodeTypes, pinNode, unpinNode } = useWorkflowStore();
+  const { uiSettings } = useAppStore();
 
   const filteredConfigs = useMemo(() => {
     if (!searchTerm) return nodeConfigs;
@@ -36,8 +38,35 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
     filteredConfigs.forEach((c) => {
       groups[c.category].push(c);
     });
-    return groups;
-  }, [filteredConfigs]);
+
+    const categoryOrder = uiSettings.nodeCategoryOrder as NodeCategory[];
+    const sortedCategories = categoryOrder.filter((c) => groups[c as NodeCategory]?.length > 0);
+    const defaultCategories = (Object.keys(groups) as NodeCategory[]).filter(
+      (c) => !categoryOrder.includes(c) && groups[c].length > 0,
+    );
+    const orderedCategories = [...sortedCategories, ...defaultCategories];
+
+    const orderedGroups: Record<string, NodeConfig[]> = {};
+    for (const cat of orderedCategories) {
+      const nodes = groups[cat];
+      const nodeOrder = uiSettings.nodeOrderWithinCategory?.[cat];
+      if (nodeOrder && nodeOrder.length > 0) {
+        const ordered = [...nodes].sort((a, b) => {
+          const aIdx = nodeOrder.indexOf(a.type);
+          const bIdx = nodeOrder.indexOf(b.type);
+          if (aIdx === -1 && bIdx === -1) return 0;
+          if (aIdx === -1) return 1;
+          if (bIdx === -1) return -1;
+          return aIdx - bIdx;
+        });
+        orderedGroups[cat] = ordered;
+      } else {
+        orderedGroups[cat] = nodes;
+      }
+    }
+
+    return { categories: orderedCategories, groups: orderedGroups };
+  }, [filteredConfigs, uiSettings.nodeCategoryOrder, uiSettings.nodeOrderWithinCategory]);
 
   const toggleCategory = (cat: NodeCategory) => {
     setExpandedCategories((prev) => {
@@ -101,8 +130,8 @@ export const NodeLibrary: React.FC<NodeLibraryProps> = ({ onDragStart, onDragEnd
             </div>
 
             <div className="overflow-y-auto p-2.5 pt-0 flex-1 min-h-0">
-              {(Object.keys(groupedConfigs) as NodeCategory[]).map((category) => {
-                const items = groupedConfigs[category];
+              {groupedConfigs.categories.map((category) => {
+                const items = groupedConfigs.groups[category] || [];
                 if (items.length === 0) return null;
                 const isExpanded = expandedCategories.has(category);
 

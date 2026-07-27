@@ -87,8 +87,11 @@ export class SystemEngine implements FlowEngine {
     onEvent: (event: EngineEvent) => void,
   ): Promise<SegmentResult> {
     const outputs: Record<string, unknown> = {};
+    const globalConfig = getStore().get('globalRuntimeOption') as { systemNodePostDelay?: number };
+    const defaultPostDelay = globalConfig?.systemNodePostDelay ?? 500;
 
-    for (const node of segment) {
+    for (let i = 0; i < segment.length; i++) {
+      const node = segment[i];
       if (signal.aborted) {
         return { success: false, outputs, aborted: true };
       }
@@ -99,6 +102,18 @@ export class SystemEngine implements FlowEngine {
         const result = await this.executeNode(node, variablePool, signal, onEvent);
         outputs[node.id] = result;
         onEvent({ type: 'node:complete', nodeId: node.id, output: result });
+
+        const params = node.nodeParams as any;
+        const postDelay = typeof params?.postDelay === 'number' ? params.postDelay : defaultPostDelay;
+        if (postDelay > 0 && i < segment.length - 1) {
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, postDelay);
+            if (signal.aborted) {
+              clearTimeout(timer);
+              resolve();
+            }
+          });
+        }
       } catch (error) {
         const errorMsg = (error as Error).message;
         onEvent({ type: 'node:error', nodeId: node.id, error: errorMsg });

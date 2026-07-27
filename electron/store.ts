@@ -12,6 +12,7 @@ interface AppStore {
   globalRuntimeOption: {
     defaultTimeout: number;
     defaultRetry: number;
+    systemNodePostDelay: number;
   };
   shortcutKeys: {
     recordToggle: string;
@@ -90,6 +91,7 @@ const defaultModelIds: DefaultModelSelection = {
 const defaultGlobalRuntimeOption: AppStore['globalRuntimeOption'] = {
   defaultTimeout: 300000,
   defaultRetry: 0,
+  systemNodePostDelay: 500,
 };
 
 const defaultUsageStatistics: UsageStatistics = {

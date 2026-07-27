@@ -572,7 +572,29 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
 
   let flowName = flow.flowMeta?.name || '工作流';
   let wfId = options?.workflowId || flowName;
-  let totalNodes = flow.nodes.filter((n) => n.nodeType !== 'control.start' && n.nodeType !== 'control.end').length;
+
+  const startNode2 = flow.nodes.find((n) => n.nodeType === 'control.start');
+  const reachableNodeIds = new Set<string>();
+  if (startNode2) {
+    const queue: string[] = [startNode2.id];
+    reachableNodeIds.add(startNode2.id);
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const currentNode = flow.nodes.find((n) => n.id === currentId);
+      if (!currentNode) continue;
+      const nextList = currentNode.nextNodes || [];
+      for (const next of nextList) {
+        if (!reachableNodeIds.has(next.nodeId)) {
+          reachableNodeIds.add(next.nodeId);
+          queue.push(next.nodeId);
+        }
+      }
+    }
+  }
+  let totalNodes = Array.from(reachableNodeIds).filter((id) => {
+    const node = flow.nodes.find((n) => n.id === id);
+    return node && node.nodeType !== 'control.start' && node.nodeType !== 'control.end';
+  }).length;
 
   let lastDuration: number | null = null;
   try {

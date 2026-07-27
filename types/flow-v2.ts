@@ -34,6 +34,7 @@ export type FlowNodeType =
   | 'control.loop'
   | 'control.var'
   | 'control.log'
+  | 'control.sleep'
   // --- Nut.js 引擎节点 ---
   | 'nutjs.hotkey'
   | 'nutjs.clipboard';

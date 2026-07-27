@@ -344,7 +344,8 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
       break;
     }
 
-    case 'midscene.sleep': {
+    case 'midscene.sleep':
+    case 'control.sleep': {
       const duration = params.duration ?? params.ms ?? 1000;
       lines.push(`      - sleep: ${duration}`);
       break;

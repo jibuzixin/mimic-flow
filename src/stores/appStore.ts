@@ -21,6 +21,8 @@ interface AppState {
     showAllPinned: boolean;
     fullMenuSort: 'default' | 'name' | 'category';
     enableValidation: boolean;
+    nodeCategoryOrder: string[];
+    nodeOrderWithinCategory: Record<string, string[]>;
   };
   isLoading: boolean;
 
@@ -61,6 +63,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     showAllPinned: true,
     fullMenuSort: 'default',
     enableValidation: true,
+    nodeCategoryOrder: ['control', 'ai-action', 'ai-query', 'wait', 'system'],
+    nodeOrderWithinCategory: {},
   },
   isLoading: true,
 
@@ -101,6 +105,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         showAllPinned: true,
         fullMenuSort: 'default',
         enableValidation: true,
+        nodeCategoryOrder: ['control', 'ai-action', 'ai-query', 'wait', 'system'],
+        nodeOrderWithinCategory: {},
         ...(uiSettings || {}),
       },
       isLoading: false,
@@ -165,7 +171,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true, nodeCategoryOrder: ['control', 'ai-action', 'ai-query', 'wait', 'system'], nodeOrderWithinCategory: {} },
     });
   },
 
@@ -179,7 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       defaultModelIds: getDefaultModelIds(),
       logSavePath: '',
       workflowSavePath: '',
-      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true },
+      uiSettings: { nodeWidthMultiplier: 2, edgeStyle: 'bezier', edgeAvoidNodes: true, contextMenuMode: 'simple', recentNodeCount: 5, showAllPinned: true, fullMenuSort: 'default', enableValidation: true, nodeCategoryOrder: ['control', 'ai-action', 'ai-query', 'wait', 'system'], nodeOrderWithinCategory: {} },
     });
   },
 }));

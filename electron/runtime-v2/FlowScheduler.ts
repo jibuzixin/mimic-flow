@@ -26,7 +26,7 @@ function isControlNode(nodeType: FlowNodeType): boolean {
 }
 
 function isSleepNode(nodeType: FlowNodeType): boolean {
-  return nodeType === 'midscene.sleep' || nodeType === 'system.sleep';
+  return nodeType === 'midscene.sleep' || nodeType === 'system.sleep' || nodeType === 'control.sleep';
 }
 
 function isBranchingNode(nodeType: FlowNodeType): boolean {
@@ -1527,28 +1527,46 @@ export class FlowScheduler extends EventEmitter {
       data: { nodeIds: segment.map((n) => n.id) },
     });
 
-    for (const segNode of segment) {
-      const state = this.nodeStates.get(segNode.id);
-      if (state) {
-        state.status = 'running';
-        state.startTime = Date.now();
+    if (engine.name === 'midscene') {
+      for (const segNode of segment) {
+        const state = this.nodeStates.get(segNode.id);
+        if (state) {
+          state.status = 'running';
+          state.startTime = Date.now();
+        }
+        this.emit('event', {
+          type: 'node:start',
+          nodeId: segNode.id,
+          nodeType: segNode.nodeType,
+          nodeName: segNode.nodeName,
+        } as RuntimeEvent);
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: segNode.id,
+          message: `开始执行节点: ${segNode.nodeName || segNode.nodeType}`,
+        });
       }
-      this.emit('event', {
-        type: 'node:start',
-        nodeId: segNode.id,
-        nodeType: segNode.nodeType,
-        nodeName: segNode.nodeName,
-      } as RuntimeEvent);
-      this.addLog({
-        level: 'info',
-        source: 'scheduler',
-        nodeId: segNode.id,
-        message: `开始执行节点: ${segNode.nodeName || segNode.nodeType}`,
-      });
     }
 
     const onEngineEvent = (event: EngineEvent) => {
-      if (event.type === 'node:complete') {
+      if (event.type === 'node:start') {
+        const state = this.nodeStates.get(event.nodeId);
+        if (state) {
+          state.status = 'running';
+          state.startTime = Date.now();
+        }
+        this.emit('event', {
+          type: 'node:start',
+          nodeId: event.nodeId,
+        } as RuntimeEvent);
+        this.addLog({
+          level: 'info',
+          source: 'scheduler',
+          nodeId: event.nodeId,
+          message: `开始执行节点`,
+        });
+      } else if (event.type === 'node:complete') {
         const state = this.nodeStates.get(event.nodeId);
         if (state) {
           state.output = event.output;
@@ -1677,13 +1695,37 @@ export class FlowScheduler extends EventEmitter {
       if (isBranchingNode(nextNode.nodeType)) break;
 
       if (isSleepNode(nextNode.nodeType)) {
+        const startEngine = this.engineRegistry.findEngineForNode(startNode.nodeType, startNode.engine);
+        const sleepEngine = this.engineRegistry.findEngineForNode(nextNode.nodeType, nextNode.engine);
+
+        if (nextNode.nodeType === 'control.sleep') {
+          if (!startEngine || startEngine.name !== 'midscene') {
+            break;
+          }
+          const afterNext = nextNode.nextNodes.find((n) => !n.condition);
+          if (afterNext) {
+            const afterNextNode = this.nodeMap.get(afterNext.nodeId);
+            if (afterNextNode && !isControlNode(afterNextNode.nodeType) && !isSleepNode(afterNextNode.nodeType) && !isBranchingNode(afterNextNode.nodeType)) {
+              const afterNextEngine = this.engineRegistry.findEngineForNode(afterNextNode.nodeType, afterNextNode.engine);
+              if (afterNextEngine && afterNextEngine.name === 'midscene') {
+                segment.push(nextNode);
+                cursor = nextNode;
+                continue;
+              }
+            }
+          }
+          break;
+        }
+
+        if (!startEngine || !sleepEngine || startEngine.name !== sleepEngine.name) {
+          break;
+        }
         const afterNext = nextNode.nextNodes.find((n) => !n.condition);
         if (afterNext) {
           const afterNextNode = this.nodeMap.get(afterNext.nodeId);
           if (afterNextNode && !isControlNode(afterNextNode.nodeType) && !isSleepNode(afterNextNode.nodeType) && !isBranchingNode(afterNextNode.nodeType)) {
-            const startEngine = this.engineRegistry.findEngineForNode(startNode.nodeType, startNode.engine);
             const afterNextEngine = this.engineRegistry.findEngineForNode(afterNextNode.nodeType, afterNextNode.engine);
-            if (startEngine && afterNextEngine && startEngine.name === afterNextEngine.name) {
+            if (afterNextEngine && startEngine.name === afterNextEngine.name) {
               segment.push(nextNode);
               cursor = nextNode;
               continue;
@@ -1712,18 +1754,28 @@ export class FlowScheduler extends EventEmitter {
   private isSleepStandalone(node: FlowNode): boolean {
     if (!isSleepNode(node.nodeType)) return false;
 
+    if (node.nodeType === 'system.sleep') return true;
+    if (node.nodeType === 'midscene.sleep') return false;
+
     const prevNodes = this.findPrevNodes(node.id);
     const nextUnconditional = node.nextNodes.find((n) => !n.condition);
     const nextNode = nextUnconditional ? this.nodeMap.get(nextUnconditional.nodeId) : undefined;
 
+    const isMidsceneNode = (n: FlowNode | undefined): boolean => {
+      if (!n) return false;
+      if (isControlNode(n.nodeType) || isSleepNode(n.nodeType)) return false;
+      const engine = this.engineRegistry.findEngineForNode(n.nodeType, n.engine);
+      return engine?.name === 'midscene';
+    };
+
     const prevHasMidscene = prevNodes.some((prevId) => {
       const prev = this.nodeMap.get(prevId);
-      return prev && !isControlNode(prev.nodeType) && !isSleepNode(prev.nodeType);
+      return isMidsceneNode(prev);
     });
 
-    const nextHasMidscene = nextNode && !isControlNode(nextNode.nodeType) && !isSleepNode(nextNode.nodeType);
+    const nextHasMidscene = isMidsceneNode(nextNode);
 
-    return !prevHasMidscene && !nextHasMidscene;
+    return !(prevHasMidscene && nextHasMidscene);
   }
 
   private findPrevNodes(nodeId: string): string[] {

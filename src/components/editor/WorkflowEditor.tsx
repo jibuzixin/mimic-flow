@@ -770,7 +770,7 @@ function WorkflowEditorInner() {
   }, [isRunning, startExecution, stopExecution, validationWarnings.errorCount]);
 
   const handleSaveAs = useCallback(() => {
-    setSaveAsName(currentWorkflow?.flowMeta.name ? `${currentWorkflow.flowMeta.name} (副本)` : '新建工作流');
+    setSaveAsName(currentWorkflow?.flowMeta.name || '新建工作流');
     setShowSaveAsDialog(true);
     setTimeout(() => {
       saveAsInputRef.current?.focus();
