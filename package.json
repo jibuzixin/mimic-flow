@@ -1,6 +1,6 @@
 {
   "name": "mimic-flow",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI驱动的跨平台桌面自动化工作流工具",
   "main": "dist-electron/electron/main.js",
   "author": "mimic-flow",
