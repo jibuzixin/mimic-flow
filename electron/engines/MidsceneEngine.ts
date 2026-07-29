@@ -36,12 +36,50 @@ export class MidsceneEngine implements FlowEngine {
     return require(modulePath);
   }
 
+  private checkImageMatchingDependencies(): { ok: boolean; details: { name: string; ok: boolean; error?: string }[] } {
+    const require = createRequire(import.meta.url);
+    const deps = [
+      { name: 'opencv-wasm', desc: 'OpenCV WASM (图片模板匹配引擎)' },
+      { name: 'sharp', desc: 'Sharp (图片处理/像素转换)' },
+      { name: 'screenshot-desktop', desc: 'Screenshot Desktop (屏幕截图)' },
+    ];
+    const details = deps.map(({ name, desc }) => {
+      try {
+        const resolved = require.resolve(name);
+        const mod = require(name);
+        if (name === 'opencv-wasm') {
+          const ready = mod.cvReady instanceof Promise ? 'Promise' : typeof mod.cvReady;
+          const hasCv = !!mod.cv;
+          return { name: `${name} (${desc})`, ok: hasCv, error: hasCv ? undefined : `cvReady=${ready} 但 cv 未导出` };
+        }
+        return { name: `${name} (${desc})`, ok: true, resolved };
+      } catch (e: any) {
+        return { name: `${name} (${desc})`, ok: false, error: e?.message || String(e) };
+      }
+    });
+    const ok = details.every((d) => d.ok);
+    return { ok, details };
+  }
+
   async initialize(config: EngineInitConfig): Promise<void> {
     this.initConfig = config;
     this.segmentCount = 0;
 
     if (!config.models || !config.models.default) {
       throw new Error('Midscene engine requires a default model configuration');
+    }
+
+    const depCheck = this.checkImageMatchingDependencies();
+    if (!depCheck.ok) {
+      const failedList = depCheck.details.filter((d) => !d.ok);
+      const summary = failedList
+        .map((d) => `  - ❌ ${d.name}: ${d.error || '加载失败'}`)
+        .join('\n');
+      this.log.error('[MidsceneEngine] 图片匹配依赖缺失，打包后未正确包含:\n' + summary);
+    } else {
+      this.log.info('[MidsceneEngine] 图片匹配依赖检查通过', {
+        deps: depCheck.details.map((d) => d.name),
+      });
     }
 
     try {
@@ -181,6 +219,13 @@ export class MidsceneEngine implements FlowEngine {
       const duration = Date.now() - startTime;
       this.log.info('[MidsceneEngine] Segment completed', { duration, nodeCount: segment.length });
 
+      try {
+        this.log.debug('[MidsceneEngine] Raw Midscene result keys: ' + Object.keys(result || {}).join(', '));
+        this.log.debug('[MidsceneEngine] Raw Midscene result content: ' + JSON.stringify(result || {}, null, 2));
+      } catch (e) {
+        this.log.debug('[MidsceneEngine] Failed to serialize Midscene result', { error: String(e) });
+      }
+
       if (this.reportMerger && this.agent.reportFile) {
         try {
           this.reportMerger.append({
@@ -206,8 +251,6 @@ export class MidsceneEngine implements FlowEngine {
 
         switch (node.nodeType) {
           case 'midscene.query':
-            outputKey = String(params.name || node.id);
-            break;
           case 'midscene.assert':
           case 'midscene.boolean':
             if (params.outputVar) {
@@ -220,6 +263,17 @@ export class MidsceneEngine implements FlowEngine {
         if (node.nodeType === 'midscene.waitFor') {
           nodeOutput = true;
         }
+        if (nodeOutput === undefined && outputKey !== node.id) {
+          nodeOutput = result?.[node.id];
+        }
+        this.log.debug('[MidsceneEngine] Extracting node output', {
+          nodeId: node.id,
+          nodeType: node.nodeType,
+          outputKey,
+          hasOutputVar: !!params.outputVar,
+          nodeOutputExists: nodeOutput !== undefined,
+          resultKeys: Object.keys(result || {}),
+        });
         outputs[node.id] = nodeOutput;
         onEvent({ type: 'node:complete', nodeId: node.id, output: nodeOutput });
       }

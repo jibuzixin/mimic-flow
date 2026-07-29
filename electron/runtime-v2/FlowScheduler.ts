@@ -1576,9 +1576,23 @@ export class FlowScheduler extends EventEmitter {
           state.endTime = Date.now();
           state.output = event.output;
         }
-        const outputs = this.variablePool.outputs as Record<string, unknown>;
         if (event.output !== undefined) {
+          const outputs = this.variablePool.outputs as Record<string, unknown>;
           outputs[event.nodeId] = event.output;
+
+          const outputVar = node?.nodeParams?.outputVar;
+          if (outputVar && typeof outputVar === 'string') {
+            (this.variablePool.globalVars as Record<string, unknown>)[outputVar] = event.output;
+            const outputStr = typeof event.output === 'string'
+              ? event.output.slice(0, 200)
+              : JSON.stringify(event.output).slice(0, 200);
+            this.addLog({
+              level: 'info',
+              source: 'scheduler',
+              nodeId: event.nodeId,
+              message: `📤 查询结果 → ${outputVar}: ${outputStr}`,
+            });
+          }
         }
         const resolvedParams = this.resolveNodeParams(node?.nodeParams as Record<string, unknown> || {});
         this.emit('event', {
@@ -1653,7 +1667,6 @@ export class FlowScheduler extends EventEmitter {
 
     for (const segNode of segment) {
       const state = this.nodeStates.get(segNode.id);
-      const isAlreadyCompleted = state?.status === 'success';
 
       if (state && state.status === 'running') {
         state.status = 'success';
@@ -1661,43 +1674,19 @@ export class FlowScheduler extends EventEmitter {
       }
 
       const nodeOutput = result.outputs[segNode.id];
-      if (nodeOutput !== undefined && !isAlreadyCompleted) {
+      if (nodeOutput !== undefined) {
         const outputs = this.variablePool.outputs as Record<string, unknown>;
-        outputs[segNode.id] = nodeOutput;
+        if (outputs[segNode.id] === undefined) {
+          outputs[segNode.id] = nodeOutput;
+        }
 
         const outputVar = segNode.nodeParams?.outputVar;
         if (outputVar && typeof outputVar === 'string') {
-          (this.variablePool.globalVars as Record<string, unknown>)[outputVar] = nodeOutput;
-          const outputStr = typeof nodeOutput === 'string'
-            ? nodeOutput.slice(0, 200)
-            : JSON.stringify(nodeOutput).slice(0, 200);
-          this.addLog({
-            level: 'info',
-            source: 'scheduler',
-            nodeId: segNode.id,
-            message: `📤 查询结果 → ${outputVar}: ${outputStr}`,
-          });
+          const globalVars = this.variablePool.globalVars as Record<string, unknown>;
+          if (globalVars[outputVar] === undefined) {
+            globalVars[outputVar] = nodeOutput;
+          }
         }
-      }
-
-      if (!isAlreadyCompleted) {
-        const resolvedParams = this.resolveNodeParams(segNode.nodeParams as Record<string, unknown> || {});
-        this.emit('event', {
-          type: 'node:complete',
-          nodeId: segNode.id,
-          nodeType: segNode.nodeType,
-          nodeName: segNode.nodeName,
-          duration: state?.endTime && state?.startTime ? state.endTime - state.startTime : 0,
-          output: state?.output,
-          resolvedParams,
-        } as RuntimeEvent);
-
-        this.addLog({
-          level: 'info',
-          source: 'scheduler',
-          nodeId: segNode.id,
-          message: `✓ 节点完成: ${segNode.nodeName || segNode.nodeType}`,
-        });
       }
     }
 
