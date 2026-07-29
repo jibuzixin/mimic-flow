@@ -272,13 +272,13 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
 
     case 'midscene.query': {
       const prompt = String(params.prompt ?? '');
-      const name = params.name || node.id;
+      const name = params.outputVar || node.id;
       const hasImages = Array.isArray(params.images) && params.images.length > 0;
       
       if (hasImages) {
         lines.push(`      - aiQuery:`);
         lines.push(`          prompt: ${yamlEscape(prompt)}`);
-        const imgLines = generateImagesYaml(params.images as unknown[], '        ');
+        const imgLines = generateImagesYaml(params.images as unknown[], '          ');
         lines.push(...imgLines);
         if (params.convertHttpImage2Base64 !== undefined) {
           lines.push(`          convertHttpImage2Base64: ${params.convertHttpImage2Base64}`);
@@ -293,42 +293,44 @@ function buildTaskFlow(node: FlowNode, params: Record<string, unknown>): string[
 
     case 'midscene.assert': {
       const prompt = String(params.prompt ?? '');
+      const name = params.outputVar || node.id;
       const hasImages = Array.isArray(params.images) && params.images.length > 0;
       
       if (hasImages) {
         lines.push(`      - aiAssert:`);
         lines.push(`          prompt: ${yamlEscape(prompt)}`);
-        const imgLines = generateImagesYaml(params.images as unknown[], '        ');
+        const imgLines = generateImagesYaml(params.images as unknown[], '          ');
         lines.push(...imgLines);
         if (params.convertHttpImage2Base64 !== undefined) {
           lines.push(`          convertHttpImage2Base64: ${params.convertHttpImage2Base64}`);
         }
         if (params.errorMessage) lines.push(`          errorMessage: ${yamlEscape(String(params.errorMessage))}`);
-        if (params.outputVar) lines.push(`          name: ${yamlEscape(String(params.outputVar))}`);
+        lines.push(`          name: ${yamlEscape(String(name))}`);
       } else {
         lines.push(`      - aiAssert: ${yamlEscape(prompt)}`);
         if (params.errorMessage) lines.push(`        errorMessage: ${yamlEscape(String(params.errorMessage))}`);
-        if (params.outputVar) lines.push(`        name: ${yamlEscape(String(params.outputVar))}`);
+        lines.push(`        name: ${yamlEscape(String(name))}`);
       }
       break;
     }
 
     case 'midscene.boolean': {
       const prompt = String(params.prompt ?? '');
+      const name = params.outputVar || node.id;
       const hasImages = Array.isArray(params.images) && params.images.length > 0;
       
       if (hasImages) {
         lines.push(`      - aiBoolean:`);
         lines.push(`          prompt: ${yamlEscape(prompt)}`);
-        const imgLines = generateImagesYaml(params.images as unknown[], '        ');
+        const imgLines = generateImagesYaml(params.images as unknown[], '          ');
         lines.push(...imgLines);
         if (params.convertHttpImage2Base64 !== undefined) {
           lines.push(`          convertHttpImage2Base64: ${params.convertHttpImage2Base64}`);
         }
-        if (params.outputVar) lines.push(`          name: ${yamlEscape(String(params.outputVar))}`);
+        lines.push(`          name: ${yamlEscape(String(name))}`);
       } else {
         lines.push(`      - aiBoolean: ${yamlEscape(prompt)}`);
-        if (params.outputVar) lines.push(`        name: ${yamlEscape(String(params.outputVar))}`);
+        lines.push(`        name: ${yamlEscape(String(name))}`);
       }
       break;
     }

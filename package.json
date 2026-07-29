@@ -56,6 +56,8 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
     "robotjs": "^0.8.0",
+    "screenshot-desktop": "^1.15.4",
+    "sharp": "^0.35.3",
     "sql.js": "^1.14.1",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
@@ -74,7 +76,6 @@
     "electron": "^32.1.2",
     "electron-builder": "^25.1.0",
     "postcss": "^8.4.47",
-    "sharp": "^0.35.3",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",
     "vite": "^5.4.8"
@@ -95,8 +96,16 @@
       "node_modules/@midscene/**",
       "node_modules/@playwright/**",
       "node_modules/playwright/**",
-      "node_modules/@computer-use/**"
+      "node_modules/@computer-use/**",
+      "node_modules/opencv-wasm/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**",
+      "node_modules/screenshot-desktop/**",
+      "node_modules/robotjs/**",
+      "node_modules/sql.js/**",
+      "node_modules/better-sqlite3/**"
     ],
+    "npmRebuild": true,
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
