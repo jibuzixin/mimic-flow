@@ -4,6 +4,7 @@ import {
   Clock, Timer,
   Variable, GitBranch, Repeat, FileText, Flag, StopCircle,
   Image, Move, CircleDot, Circle,
+  ArrowDownToLine, ArrowUpFromLine,
 } from 'lucide-react';
 
 export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait' | 'system';
@@ -1167,17 +1168,26 @@ export const nodeConfigs: NodeConfig[] = [
     name: '鼠标抬起',
     category: 'system',
     icon: Circle,
-    description: '抬起之前按下的鼠标按键，与鼠标按下节点配对使用',
+    description: '抬起之前按下的鼠标按键（默认自动同步上方最近一次的鼠标按下节点），与鼠标按下节点配对使用',
     color: '#8b5cf6',
     defaultParams: {
+      autoSync: true,
       button: 'left',
     },
     propertyFields: [
+      {
+        key: 'autoSync',
+        label: '自动同步上方最近的鼠标按下',
+        type: 'switch',
+        defaultValue: true,
+        description: '开启时无需手动选择按键；关闭后才使用下方的按键配置',
+      },
       {
         key: 'button',
         label: '鼠标按键',
         type: 'select',
         defaultValue: 'left',
+        showWhen: { autoSync: false },
         options: [
           { label: '左键', value: 'left' },
           { label: '右键', value: 'right' },
@@ -1191,7 +1201,7 @@ export const nodeConfigs: NodeConfig[] = [
     type: 'system.keyDown',
     name: '键盘按下',
     category: 'system',
-    icon: CircleDot,
+    icon: ArrowDownToLine,
     description: '按下指定键盘按键（不抬起），支持修饰键组合。后续需配合键盘抬起节点使用',
     color: '#8b5cf6',
     defaultParams: {
@@ -1211,18 +1221,27 @@ export const nodeConfigs: NodeConfig[] = [
     type: 'system.keyUp',
     name: '键盘抬起',
     category: 'system',
-    icon: Circle,
-    description: '抬起之前按下的键盘按键，顺序与键盘按下节点相反。与键盘按下节点配对使用',
+    icon: ArrowUpFromLine,
+    description: '抬起之前按下的键盘按键（默认自动同步上方最近一次的键盘按下节点），与键盘按下节点配对使用',
     color: '#8b5cf6',
     defaultParams: {
+      autoSync: true,
       keyGroups: [{ keys: [] }],
     },
     propertyFields: [
       {
+        key: 'autoSync',
+        label: '自动同步上方最近的键盘按下',
+        type: 'switch',
+        defaultValue: true,
+        description: '开启时无需手动填写按键组，会按按下栈的逆序自动抬起；关闭后才使用下方的按键组配置',
+      },
+      {
         key: 'keyGroups',
         label: '按键组（抬起顺序）',
         type: 'keyboard-groups',
-        description: '按照按下时的逆序抬起。例如先按的 Shift+A，这里先抬起 A 再抬起 Shift',
+        description: '关闭自动同步时生效：按照按下时的逆序抬起。例如先按的 Shift+A，这里先抬起 A 再抬起 Shift',
+        showWhen: { autoSync: false },
       },
       { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 200 },
     ],

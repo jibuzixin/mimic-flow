@@ -40,7 +40,7 @@ export default function WorkflowList() {
     loadWorkflowToCanvas,
     deleteWorkflow,
     duplicateWorkflow,
-    renameWorkflow,
+    updateWorkflowRecordMeta,
     exportWorkflow,
     importWorkflow,
     hasUnsavedChanges,
@@ -61,7 +61,7 @@ export default function WorkflowList() {
   const [showExportDialog, setShowExportDialog] = useState<string | null>(null);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [showGradientPicker, setShowGradientPicker] = useState(false);
-  const [renameDialog, setRenameDialog] = useState<{ id: string; name: string } | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{ id: string; name: string; desc: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -239,15 +239,18 @@ export default function WorkflowList() {
     setActiveMenu(null);
   };
 
-  const handleRename = (id: string, currentName: string) => {
-    setRenameDialog({ id, name: currentName });
+  const handleRename = (id: string, currentName: string, currentDesc = '') => {
+    setRenameDialog({ id, name: currentName, desc: currentDesc });
     setActiveMenu(null);
     setMenuPosition(null);
   };
 
   const confirmRename = () => {
     if (renameDialog && renameDialog.name.trim()) {
-      renameWorkflow(renameDialog.id, renameDialog.name.trim());
+      updateWorkflowRecordMeta(renameDialog.id, {
+        name: renameDialog.name.trim(),
+        desc: (renameDialog.desc || '').slice(0, 200),
+      });
     }
     setRenameDialog(null);
   };
@@ -618,7 +621,7 @@ export default function WorkflowList() {
               onClick={(e) => {
                 e.stopPropagation();
                 const wf = workflows.find(w => w.id === activeMenu);
-                if (wf) handleRename(wf.id, wf.workflow.flowMeta.name);
+                if (wf) handleRename(wf.id, wf.workflow.flowMeta.name, wf.workflow.flowMeta.desc || '');
                 setActiveMenu(null);
                 setMenuPosition(null);
               }}
@@ -767,22 +770,36 @@ export default function WorkflowList() {
             className="absolute inset-0 bg-black/20"
             onClick={() => setRenameDialog(null)}
           />
-          <div className="relative w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
-            <div className="p-4 pb-0">
-              <h3 className="text-sm font-semibold text-gray-800">重命名工作流</h3>
+          <div className="relative w-96 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
+            <div className="p-4 pb-2">
+              <h3 className="text-sm font-semibold text-gray-800">编辑工作流信息</h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">修改名称和简介，简介会显示在工作流卡片上。</p>
             </div>
-            <div className="p-4">
-              <input
-                type="text"
-                value={renameDialog.name}
-                onChange={(e) => setRenameDialog({ ...renameDialog, name: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') confirmRename();
-                }}
-                autoFocus
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                placeholder="请输入工作流名称"
-              />
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-[11px] text-gray-500 mb-1 block">名称</label>
+                <input
+                  type="text"
+                  value={renameDialog.name}
+                  onChange={(e) => setRenameDialog({ ...renameDialog, name: e.target.value })}
+                  autoFocus
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                  placeholder="请输入工作流名称"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-500 mb-1 flex items-center justify-between">
+                  <span>简介</span>
+                  <span className="text-[10px] text-gray-400">{(renameDialog.desc || '').length} / 200</span>
+                </label>
+                <textarea
+                  value={renameDialog.desc}
+                  onChange={(e) => setRenameDialog({ ...renameDialog, desc: e.target.value.slice(0, 200) })}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 resize-none"
+                  placeholder="一句话描述这个工作流的用途，例如：每周一导出销售报表并发送邮件…"
+                />
+              </div>
             </div>
             <div className="p-4 pt-0 flex justify-end gap-2">
               <Button
@@ -792,7 +809,7 @@ export default function WorkflowList() {
               >
                 取消
               </Button>
-              <Button size="sm" onClick={confirmRename}>
+              <Button size="sm" onClick={confirmRename} disabled={!renameDialog.name.trim()}>
                 确定
               </Button>
             </div>

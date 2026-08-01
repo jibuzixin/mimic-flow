@@ -61,6 +61,7 @@ type MimicIpcChannel =
   | 'system:get-dpi-scale'
   | 'system:set-dpi-scale'
   | 'system:move-mouse'
+  | 'system:open-clt-installer'
   | 'scheduled-tasks:list'
   | 'scheduled-tasks:add'
   | 'scheduled-tasks:update'

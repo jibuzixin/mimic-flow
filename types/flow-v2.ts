@@ -116,6 +116,13 @@ export interface FlowMeta {
   source?: 'manual' | 'video' | 'nl' | 'file';
   createdAt?: number;
   updatedAt?: number;
+  /** 画布布局信息（用于导出后导入时保持节点位置不乱） */
+  canvas?: {
+    /** key: nodeId → value: 画布上的坐标 */
+    nodePositions?: Record<string, { x: number; y: number }>;
+    /** 画布整体缩放 & 滚动偏移（可选，用于导入时还原视图） */
+    viewport?: { zoom?: number; panX?: number; panY?: number };
+  };
 }
 
 export interface FlowSchema {

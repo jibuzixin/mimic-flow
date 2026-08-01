@@ -975,6 +975,9 @@ ipcMain.handle('usage:reset', async () => {
 
 let robot: any = null;
 let systemRobotLoaded = false;
+/** 跟踪鼠标按下状态 — 平滑移动时有按下键就用 dragMouse，否则 moveMouse */
+const devPressedMouseButtons = new Set<string>();
+const MODIFIER_KEYS = new Set(['control', 'shift', 'command', 'alt']);
 
 function loadSystemRobot(): any {
   if (systemRobotLoaded) return robot;
@@ -1157,6 +1160,214 @@ ipcMain.handle('system:move-mouse', async (_event, x: number, y: number) => {
     console.error('[system:move-mouse] failed:', error);
     return false;
   }
+});
+
+// macOS：一键唤起系统自带的 Xcode Command Line Tools 安装弹框
+// ⚠️ 不会「静默安装」：xcode-select --install 只会弹出 macOS 标准的 CLT 安装窗口，
+//    用户需要手动点击「安装」→「同意许可」，安装进程归系统所有，我们不做任何绕过。
+ipcMain.handle('system:open-clt-installer', async () => {
+  if (process.platform !== 'darwin') return { ok: false, reason: 'only-macos' };
+  try {
+    const cp = await import('child_process');
+    cp.execFile('/usr/bin/xcode-select', ['--install'], (err) => {
+      if (err) {
+        // xcode-select --install 正常情况下会启动安装弹框然后立即 exit(1) 加 stderr 提示，
+        // 这是 Apple 设计的行为，不是错误。
+        console.warn('[system:open-clt-installer] xcode-select exit (expected):', String(err?.message || err));
+      }
+    });
+    return { ok: true, note: '已弹出 macOS 系统安装引导，请在系统弹窗中点击「安装」' };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message ?? String(e) };
+  }
+});
+
+// ========== 开发者模式：系统底层功能测试 API（单个操作）==========
+ipcMain.handle('system:dev-get-mouse-pos', async () => {
+  try {
+    const robot = loadSystemRobot();
+    if (!robot) return null;
+    return robot.getMousePos();
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('system:dev-mouse-click', async (_event, button: 'left' | 'right' | 'middle' = 'left') => {
+  try {
+    const robot = loadSystemRobot();
+    if (!robot) return { ok: false, error: 'robotjs 未加载' };
+    robot.mouseClick(button);
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-mouse-down', async (_event, button: 'left' | 'right' | 'middle' = 'left') => {
+  try {
+    const r = loadSystemRobot();
+    if (!r) return { ok: false, error: 'robotjs 未加载' };
+    // robotjs: mouseToggle(state, button)
+    r.mouseToggle('down', button);
+    devPressedMouseButtons.add(button);
+
+    // macOS Finder 拖拽必须：120ms 等待 Finder 进入准备拖动状态 + 轻微抖动突破 drag-threshold
+    await new Promise((res) => setTimeout(res, 120));
+    const p = r.getMousePos();
+    const jx = Number(p.x) || 0;
+    const jy = Number(p.y) || 0;
+    r.dragMouse(jx + 3, jy + 2);
+    await new Promise((res) => setTimeout(res, 20));
+    r.dragMouse(jx, jy);
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-mouse-up', async (_event, button: 'left' | 'right' | 'middle' = 'left') => {
+  try {
+    const r = loadSystemRobot();
+    if (!r) return { ok: false, error: 'robotjs 未加载' };
+    r.mouseToggle('up', button);
+    devPressedMouseButtons.delete(button);
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-mouse-scroll', async (_event, direction: 'up' | 'down' | 'left' | 'right' = 'down', amount = 3) => {
+  try {
+    const robot = loadSystemRobot();
+    if (!robot) return { ok: false, error: 'robotjs 未加载' };
+    const map: Record<string, [number, number]> = {
+      up: [0, amount],
+      down: [0, -amount],
+      left: [-amount, 0],
+      right: [amount, 0],
+    };
+    const [dx, dy] = map[direction] || map.down;
+    robot.scrollMouse(dx, dy);
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-smooth-move-mouse', async (_event, payload: { x: number; y: number; duration?: number; mode?: 'ease' | 'linear' }) => {
+  try {
+    const r = loadSystemRobot();
+    if (!r) return { ok: false, error: 'robotjs 未加载' };
+    const duration = Math.max(0, Number(payload.duration ?? 200));
+    const mode = payload.mode === 'linear' ? 'linear' : 'ease';
+    const isDrag = devPressedMouseButtons.size > 0;
+    const stepFn = (x: number, y: number) =>
+      isDrag ? r.dragMouse(x, y) : r.moveMouse(x, y);
+
+    const startPos = r.getMousePos();
+    const fromX = Number(startPos.x) || 0;
+    const fromY = Number(startPos.y) || 0;
+    const dx = payload.x - fromX;
+    const dy = payload.y - fromY;
+
+    if (duration <= 0 || (dx === 0 && dy === 0)) {
+      stepFn(payload.x, payload.y);
+      return { ok: true };
+    }
+
+    const stepInterval = 8;
+    const totalSteps = Math.max(1, Math.round(duration / stepInterval));
+    const actualInterval = duration / totalSteps;
+
+    for (let i = 1; i <= totalSteps; i++) {
+      const t = i / totalSteps;
+      const easeT = mode === 'linear' ? t : t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const x = Math.round(fromX + dx * easeT);
+      const y = Math.round(fromY + dy * easeT);
+      stepFn(x, y);
+      if (i < totalSteps) {
+        await new Promise((res) => setTimeout(res, actualInterval));
+      }
+    }
+    stepFn(payload.x, payload.y);
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+function normalizeKeyName(raw: string): string {
+  const map: Record<string, string> = {
+    ctrl: 'control', control: 'control',
+    shift: 'shift',
+    alt: 'alt', option: 'alt',
+    cmd: 'command', command: 'command', win: 'command', meta: 'command', '⌘': 'command',
+    ' ': 'space', space: 'space',
+    return: 'enter', '↵': 'enter',
+    esc: 'escape',
+    '←': 'left', '→': 'right', '↑': 'up', '↓': 'down',
+  };
+  const lower = raw.trim().toLowerCase();
+  return map[lower] ?? lower;
+}
+
+ipcMain.handle('system:dev-key-tap', async (_event, keys: string[]) => {
+  try {
+    const robot = loadSystemRobot();
+    if (!robot) return { ok: false, error: 'robotjs 未加载' };
+    const arr = Array.isArray(keys) ? keys.map((k) => normalizeKeyName(k)) : [];
+    if (arr.length === 0) return { ok: false, error: '未指定按键' };
+    if (arr.length === 1) {
+      robot.keyTap(arr[0]);
+    } else {
+      robot.keyTap(arr[arr.length - 1], arr.slice(0, -1));
+    }
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-key-down', async (_event, keys: string[]) => {
+  try {
+    const r = loadSystemRobot();
+    if (!r) return { ok: false, error: 'robotjs 未加载' };
+    const arr = Array.isArray(keys) ? keys.map((k) => normalizeKeyName(k)) : [];
+    if (arr.length === 0) return { ok: false, error: '未指定按键' };
+
+    const modifiers = arr.filter((k) => MODIFIER_KEYS.has(k));
+    const nonModifiers = arr.filter((k) => !MODIFIER_KEYS.has(k));
+
+    // 修饰键：用 keyToggle 逐个保持按下
+    for (const m of modifiers) {
+      r.keyToggle(m, 'down');
+      await new Promise((res) => setTimeout(res, 8));
+    }
+    // 非修饰字符：一个都不 keyToggle 'down'（macOS 会判定为"长按字符输入"→ 触发输入法）
+    //              → 全部改用 keyTap(普通键, [已按下的修饰符]) 一次完成
+    if (nonModifiers.length > 0) {
+      for (let n = 0; n < nonModifiers.length - 1; n++) {
+        r.keyTap(nonModifiers[n], modifiers.slice());
+        await new Promise((res) => setTimeout(res, 50));
+      }
+      const last = nonModifiers[nonModifiers.length - 1];
+      r.keyTap(last, modifiers.slice());
+    }
+    return { ok: true, keys: arr };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+});
+
+ipcMain.handle('system:dev-key-up', async (_event, keys: string[]) => {
+  try {
+    const r = loadSystemRobot();
+    if (!r) return { ok: false, error: 'robotjs 未加载' };
+    const arr = Array.isArray(keys) ? keys.map((k) => normalizeKeyName(k)) : [];
+
+    const modifiers = arr.filter((k) => MODIFIER_KEYS.has(k));
+    const nonModifiers = arr.filter((k) => !MODIFIER_KEYS.has(k));
+
+    // 先兜底抬起非修饰符（虽然 keyTap 通常自己弹了，但 keyToggle 可能保持，安全起见挨个 up 一下）
+    for (let i = nonModifiers.length - 1; i >= 0; i--) {
+      try { r.keyToggle(nonModifiers[i], 'up'); } catch { /* noop */ }
+      await new Promise((res) => setTimeout(res, 5));
+    }
+    // 修饰键逆序抬起
+    for (let i = modifiers.length - 1; i >= 0; i--) {
+      r.keyToggle(modifiers[i], 'up');
+      await new Promise((res) => setTimeout(res, 8));
+    }
+    return { ok: true, keys: arr };
+  } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
 });
 
 // ========== 定时任务调度器 ==========

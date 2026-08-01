@@ -75,6 +75,7 @@ function WorkflowEditorInner() {
   const [editingName, setEditingName] = useState('');
   const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
+  const [saveAsDesc, setSaveAsDesc] = useState('');
   const saveAsInputRef = useRef<HTMLInputElement>(null);
   const isSyncingFromStore = useRef(false);
   const lastMouseDownButton = useRef<number>(2);
@@ -333,11 +334,19 @@ function WorkflowEditorInner() {
       if (sort === 'name') {
         sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
       } else if (sort === 'category') {
+        // 和 NodeCategory / appStore.ts nodeCategoryOrder 保持一致
+        const catOrder: Array<'control' | 'ai-action' | 'ai-query' | 'wait' | 'system'> = uiSettings.nodeCategoryOrder?.length === 5
+          ? uiSettings.nodeCategoryOrder as any
+          : ['control', 'ai-action', 'ai-query', 'wait', 'system'];
         sorted.sort((a, b) => {
-          const catOrder = ['control', 'ai', 'data', 'browser'];
-          const aIdx = catOrder.indexOf(a.category);
-          const bIdx = catOrder.indexOf(b.category);
-          if (aIdx !== bIdx) return aIdx - bIdx;
+          const aIdx = catOrder.indexOf(a.category as any);
+          const bIdx = catOrder.indexOf(b.category as any);
+          if (aIdx !== bIdx) return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+          const withinA = (uiSettings.nodeOrderWithinCategory?.[a.category] as string[] | undefined)?.indexOf(a.type);
+          const withinB = (uiSettings.nodeOrderWithinCategory?.[b.category] as string[] | undefined)?.indexOf(b.type);
+          if (withinA !== undefined && withinB !== undefined && withinA !== -1 && withinB !== -1 && withinA !== withinB) {
+            return withinA - withinB;
+          }
           return a.name.localeCompare(b.name, 'zh-CN');
         });
       }
@@ -771,6 +780,7 @@ function WorkflowEditorInner() {
 
   const handleSaveAs = useCallback(() => {
     setSaveAsName(currentWorkflow?.flowMeta.name || '新建工作流');
+    setSaveAsDesc(currentWorkflow?.flowMeta.desc || '');
     setShowSaveAsDialog(true);
     setTimeout(() => {
       saveAsInputRef.current?.focus();
@@ -781,7 +791,7 @@ function WorkflowEditorInner() {
   const confirmSaveAs = useCallback(() => {
     const name = saveAsName.trim();
     if (!name) return;
-    saveAsNewWorkflow(name);
+    saveAsNewWorkflow(name, { desc: (saveAsDesc || '').slice(0, 200) });
     setShowSaveAsDialog(false);
     setSaveStatus('saved');
     if (saveTimeoutRef.current) {
@@ -790,7 +800,7 @@ function WorkflowEditorInner() {
     saveTimeoutRef.current = setTimeout(() => {
       setSaveStatus('idle');
     }, 2000);
-  }, [saveAsName, saveAsNewWorkflow]);
+  }, [saveAsName, saveAsDesc, saveAsNewWorkflow]);
 
   const handleSave = useCallback(() => {
     if (!originalWorkflowId) {
@@ -1209,14 +1219,18 @@ function WorkflowEditorInner() {
                   </div>
                 ) : uiSettings.contextMenuMode === 'full' && uiSettings.fullMenuSort === 'category' ? (
                   <>
-                    {['control', 'ai', 'data', 'browser'].map((cat) => {
+                    {(uiSettings.nodeCategoryOrder?.length === 5
+                      ? uiSettings.nodeCategoryOrder
+                      : ['control', 'ai-action', 'ai-query', 'wait', 'system'] as const
+                    ).map((cat) => {
                       const catNodes = contextMenuNodes.filter((n) => n.config.category === cat);
                       if (catNodes.length === 0) return null;
                       const catLabels: Record<string, string> = {
-                        control: '控制',
-                        ai: 'AI 操作',
-                        data: '数据',
-                        browser: '浏览器',
+                        control: '控制流',
+                        'ai-action': 'AI 操作',
+                        'ai-query': 'AI 查询',
+                        wait: '等待',
+                        system: '系统操作',
                       };
                       return (
                         <div key={cat}>
@@ -1368,41 +1382,68 @@ function WorkflowEditorInner() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 bg-white rounded-xl shadow-2xl border border-gray-200/60 overflow-hidden z-[100]"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 bg-white rounded-xl shadow-2xl border border-gray-200/60 overflow-hidden z-[100]"
             >
               <div className="px-4 py-3 border-b border-gray-100">
                 <h3 className="text-base font-semibold text-gray-800">保存为新工作流</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">填个简介，之后在工作流库里一眼就能认出它～</p>
               </div>
-              <div className="px-4 py-3">
-                <input
-                  ref={saveAsInputRef}
-                  type="text"
-                  value={saveAsName}
-                  onChange={(e) => setSaveAsName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      confirmSaveAs();
-                    }
-                  }}
-                  placeholder="请输入工作流名称"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                />
+              <div className="px-4 py-3 space-y-3">
+                <div>
+                  <label className="text-[11px] text-gray-500 mb-1 block">名称</label>
+                  <input
+                    ref={saveAsInputRef}
+                    type="text"
+                    value={saveAsName}
+                    onChange={(e) => setSaveAsName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.metaKey) {
+                        confirmSaveAs();
+                      }
+                    }}
+                    placeholder="请输入工作流名称"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-gray-500 mb-1 flex items-center justify-between">
+                    <span>简介</span>
+                    <span className="text-[10px] text-gray-400">{(saveAsDesc || '').length} / 200</span>
+                  </label>
+                  <textarea
+                    value={saveAsDesc}
+                    onChange={(e) => setSaveAsDesc(e.target.value.slice(0, 200))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.metaKey) {
+                        confirmSaveAs();
+                      }
+                    }}
+                    rows={3}
+                    placeholder="一句话描述这个工作流的用途（可选），例如：每天 9:30 抓取竞品价格并汇总 PDF…"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none"
+                  />
+                </div>
               </div>
-              <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowSaveAsDialog(false)}
-                >
-                  取消
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={confirmSaveAs}
-                  disabled={!saveAsName.trim()}
-                >
-                  保存
-                </Button>
+              <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+                <p className="text-[10px] text-gray-400">
+                  ⌘ + Enter 快速保存
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowSaveAsDialog(false)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={confirmSaveAs}
+                    disabled={!saveAsName.trim()}
+                  >
+                    保存
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </>

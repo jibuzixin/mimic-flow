@@ -7,6 +7,7 @@ import {
   Sparkles,
   Terminal,
   FileJson,
+  Wrench,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from './lib/utils';
@@ -19,6 +20,7 @@ import Logs from './pages/Logs';
 import FlowTester from './pages/FlowTester';
 import SettingsPage from './pages/Settings';
 import FloatingProgress from './pages/FloatingProgress';
+import SystemDevTester from './pages/SystemDevTester';
 
 type NavItem = {
   path: string;
@@ -128,7 +130,10 @@ function AppContent() {
 
   const navItemsWithDev = [...navItems];
   if (devMode) {
-    navItemsWithDev.splice(navItemsWithDev.length - 1, 0, { path: '/flow-tester', label: 'Flow Tester', icon: FileJson });
+    navItemsWithDev.splice(navItemsWithDev.length - 1, 0,
+      { path: '/flow-tester', label: 'Flow Tester', icon: FileJson },
+      { path: '/system-dev', label: '系统功能测试', icon: Wrench }
+    );
   }
 
   return (
@@ -149,6 +154,7 @@ function AppContent() {
             <Route path="/workflows/editor" element={<WorkflowEditor />} />
             <Route path="/logs" element={<Logs />} />
             {devMode && <Route path="/flow-tester" element={<FlowTester />} />}
+            {devMode && <Route path="/system-dev" element={<SystemDevTester />} />}
             <Route path="/settings" element={<SettingsPage onDevModeToggle={() => setDevMode((v) => !v)} devMode={devMode} />} />
             <Route path="/floating" element={<FloatingProgress />} />
           </Routes>

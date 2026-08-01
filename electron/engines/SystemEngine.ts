@@ -10,7 +10,121 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { promisify } from 'util';
+import { exec as execCP } from 'child_process';
 import { getStore } from '../store.js';
+
+const exec = promisify(execCP);
+
+/**
+ * CoreGraphics (Quartz) 合成带 modifier flags 的鼠标 click 工具 —— 解决 robotjs mouseToggle 不会继承当前 modifier 的问题。
+ *
+ * 编译：clang -o /tmp/mimicflow_modclick -framework CoreGraphics -framework CoreFoundation
+ * 用法：/tmp/mimicflow_modclick <x_POINT> <y_POINT> <button:left/right/middle> <clicks:1/2> <flags_hex_0x>
+ *   注意：x/y 传「点 (point, 逻辑坐标, 和 CGDisplayBounds 单位一致)」，C 代码内部会自动按主屏幕的 backingScaleFactor 转 pixel（像素），
+ *        不需要调用方自己乘 dpiScale，避免 DPI 搞混导致坐标翻倍点到屏外。
+ *   flags_hex: 0 表示无修饰符；按位或组合：
+ *     kCGEventFlagMaskShift   = (1 << 17) = 0x00020000
+ *     kCGEventFlagMaskControl = (1 << 18) = 0x00040000
+ *     kCGEventFlagMaskAlternate = (1 << 19) = 0x00080000 (option)
+ *     kCGEventFlagMaskCommand = (1 << 20) = 0x00100000
+ *
+ * macOS 自带 clang，无需任何额外依赖。
+ */
+const MODCLICK_SRC = `
+#include <CoreGraphics/CoreGraphics.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+int main(int argc, char *argv[]) {
+  if (argc != 6) {
+    fprintf(stderr, "Usage: %s <x_POINT> <y_POINT> <left/right/middle> <clicks> <flags_hex_0x>\\n", argv[0]);
+    return 1;
+  }
+  // x/y 先按「点」读，然后按主屏幕 backingScaleFactor 转 pixel
+  CGFloat xPoint = (CGFloat)atof(argv[1]);
+  CGFloat yPoint = (CGFloat)atof(argv[2]);
+  const char *btn = argv[3];
+  int clicks = atoi(argv[4]);
+  uint64_t flags = (uint64_t)strtoull(argv[5], NULL, 16);
+
+  // 自动读 macOS 主屏幕 backing scale factor：backingScaleFactor = pixel / point
+  CGDirectDisplayID mainDisplay = kCGDirectMainDisplay;
+  size_t pixelWide = CGDisplayPixelsWide(mainDisplay);
+  CGRect bounds = CGDisplayBounds(mainDisplay);
+  double scale = (bounds.size.width > 0) ? ((double)pixelWide / (double)bounds.size.width) : 1.0;
+  if (scale < 1.0) scale = 1.0;
+
+  CGFloat x = xPoint * scale;
+  CGFloat y = yPoint * scale;
+  fprintf(stderr, "[modclick] inputPoint={%.1f,%.1f} scale=%.2f → pixel={%.1f,%.1f} flags=0x%llx\\n",
+    xPoint, yPoint, scale, x, y, flags);
+
+  CGMouseButton mouseBtn = kCGMouseButtonLeft;
+  CGEventType leftDown = kCGEventLeftMouseDown;
+  CGEventType leftUp = kCGEventLeftMouseUp;
+  if (strcmp(btn, "right") == 0) {
+    mouseBtn = kCGMouseButtonRight;
+    leftDown = kCGEventRightMouseDown;
+    leftUp = kCGEventRightMouseUp;
+  } else if (strcmp(btn, "middle") == 0) {
+    mouseBtn = kCGMouseButtonCenter;
+    leftDown = kCGEventOtherMouseDown;
+    leftUp = kCGEventOtherMouseUp;
+  }
+
+  CGPoint point = CGPointMake(x, y);
+  CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+  if (!src) {
+    fprintf(stderr, "CGEventSourceCreate failed\\n");
+    return 2;
+  }
+
+  for (int i = 0; i < clicks; i++) {
+    CGEventRef evDown = CGEventCreateMouseEvent(src, leftDown, point, mouseBtn);
+    if (!evDown) { continue; }
+    if (flags != 0) {
+      CGEventSetFlags(evDown, (CGEventFlags)flags);
+    }
+    if (i > 0) {
+      struct timespec ts = {0, 100 * 1000 * 1000 }; // 100ms
+      nanosleep(&ts, NULL);
+    }
+    CGEventPost(kCGHIDEventTap, evDown);
+
+    struct timespec ts1 = {0, 50 * 1000 * 1000}; // 50ms hold
+    nanosleep(&ts1, NULL);
+
+    CGEventRef evUp = CGEventCreateMouseEvent(src, leftUp, point, mouseBtn);
+    if (evUp) {
+      if (flags != 0) {
+        CGEventSetFlags(evUp, (CGEventFlags)flags);
+      }
+      CGEventPost(kCGHIDEventTap, evUp);
+      CFRelease(evUp);
+    }
+    CFRelease(evDown);
+  }
+  CFRelease(src);
+  return 0;
+}
+`;
+// modifier -> CGEventFlags bit
+const CG_FLAG = {
+  shift:   0x00020000,
+  control: 0x00040000,
+  alt:     0x00080000,
+  command: 0x00100000,
+} as const;
+
+function computeCGFlags(mods: string[]): number {
+  let flags = 0;
+  for (const m of mods) flags |= (CG_FLAG as Record<string, number>)[m] ?? 0;
+  return flags;
+}
 
 export class SystemEngine implements FlowEngine {
   name = 'system';
@@ -26,9 +140,95 @@ export class SystemEngine implements FlowEngine {
   private cvReady: Promise<void> | null = null;
   private dpiScale: number = 1;
   private require: NodeRequire;
+  /** 跟踪当前按下的鼠标键 — 平滑移动时据此调用 dragMouse 而不是 moveMouse */
+  private readonly pressedMouseButtons = new Set<string>();
+  /** 跟踪当前按下的键盘修饰符 (command/shift/alt/control) — click 前会强制重按保证修饰生效 */
+  private readonly pressedModifierKeys = new Set<string>();
+  /** 运行时按下栈（segment 生命周期内）— keyUp/mouseUp autoSync 时自动从栈顶找最近一次按下的内容 */
+  private readonly pressStack: Array<
+    | { type: 'mouseDown'; button: string }
+    | { type: 'keyDown'; keyGroups: { keys: string[] }[] }
+  > = [];
+  /** 缓存编译好的 modclick 可执行文件路径（只编译一次） */
+  private modClickPath: string | null = null;
+  private modClickPromise: Promise<string> | null = null;
 
   constructor() {
     this.require = createRequire(import.meta.url);
+  }
+
+  /**
+   * 编译一次性的 modclick 辅助程序（Quartz/CoreGraphics 直接合成带 modifier flags 的 click），
+   * 只编译一次，缓存到 os.tmpdir()/mimicflow_modclick_<hash>
+   * ⚠️ 仅 macOS (darwin) 有用，Win/Linux 不需要 — 因为 Win32 SendInput / Linux X11 XTestFakeButtonEvent
+   *    会自动从全局 modifier 状态表里把 flags 附加到 mouse event 上，直接通过 robotjs keyToggle + mouseToggle 就能生效。
+   */
+  private ensureModClickBinary(): Promise<string> {
+    if (process.platform !== 'darwin') {
+      return Promise.reject(new Error(`ensureModClickBinary() only supported on macOS, got ${process.platform}`));
+    }
+    const MODCLICK_VERSION = 2; // bump this whenever MODCLICK_SRC changes
+    const dir = os.tmpdir();
+    const hash = `${process.getuid?.() || 'user'}_${process.arch}_${process.platform}_v${MODCLICK_VERSION}`;
+    const outPath = path.join(dir, `mimicflow_modclick_${hash}`);
+    if (this.modClickPath === outPath) return Promise.resolve(outPath);
+    try {
+      fs.accessSync(outPath, fs.constants.X_OK);
+      this.modClickPath = outPath;
+      return Promise.resolve(outPath);
+    } catch { /* need compile */ }
+
+    if (this.modClickPromise) return this.modClickPromise;
+    this.modClickPromise = (async () => {
+      // 🔍 先判断系统有没有 clang / xcodebuild / xcode-select CLT，失败时向前端发专属提示
+      const hasClang = await (async () => {
+        try {
+          await exec('command -v clang >/dev/null 2>&1');
+          return true;
+        } catch { return false; }
+      })();
+      if (!hasClang) {
+        // 把"缺 CLT"这个信息通过两个渠道打出去：
+        //   1) this.log.warn(data: { action: 'openCltInstaller' }) → 引擎日志，FlowRuntimeService 会封装成 RuntimeEvent.type='log' entry
+        //   2) workflowStore 前端收到 entry.level==='warn' && entry.data?.action==='openCltInstaller' → 弹窗确认 → invoke('system:open-clt-installer')
+        this.log.warn('[modclick] 未检测到 clang（Xcode Command Line Tools），修饰符+点击多选可能不稳定。', {
+          action: 'openCltInstaller',
+          why: 'clang 未安装 → mimicflow_modclick 无法编译；已自动 fallback 到 robotjs',
+        });
+      }
+
+      const srcPath = path.join(dir, `mimicflow_modclick_${hash}.c`);
+      fs.writeFileSync(srcPath, MODCLICK_SRC, 'utf8');
+      const compileCmd = `clang -O2 -o ${JSON.stringify(outPath)} ${JSON.stringify(srcPath)} -framework CoreGraphics -framework CoreFoundation`;
+      this.log.info(`[modclick] compiling (v${MODCLICK_VERSION}): ${compileCmd}`);
+      try {
+        const { stderr } = await exec(compileCmd, { timeout: 15000 });
+        if (stderr) this.log.info(`[modclick] clang stderr: ${stderr}`);
+        fs.accessSync(outPath, fs.constants.X_OK);
+        this.modClickPath = outPath;
+        this.log.info(`[modclick] compiled successfully → ${outPath}`);
+        return outPath;
+      } catch (e: any) {
+        const err = (e as Error).message;
+        this.log.error(`[modclick] compile FAILED: ${err}`, hasClang ? undefined : { action: 'openCltInstaller', why: '建议安装 Xcode Command Line Tools' });
+        this.modClickPromise = null;
+        throw new Error(`modclick 编译失败（需要 macOS 自带 clang）: ${err}`);
+      }
+    })();
+    return this.modClickPromise;
+  }
+
+  /**
+   * Linux: 如果系统里装了 xdotool（debian/ubuntu apt install xdotool / arch pacman -S xdotool），
+   * 优先用 xdotool click --window ... 配合 key 命令合成带 modifier 的 click，比 robotjs 更稳。
+   */
+  private async hasXdotool(): Promise<boolean> {
+    try {
+      await exec('command -v xdotool >/dev/null 2>&1');
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async initialize(config: EngineInitConfig): Promise<void> {
@@ -90,38 +290,82 @@ export class SystemEngine implements FlowEngine {
     const globalConfig = getStore().get('globalRuntimeOption') as { systemNodePostDelay?: number };
     const defaultPostDelay = globalConfig?.systemNodePostDelay ?? 500;
 
-    for (let i = 0; i < segment.length; i++) {
-      const node = segment[i];
-      if (signal.aborted) {
-        return { success: false, outputs, aborted: true };
-      }
+    // segment 开始前：清理运行时按下栈 + OS 级残留的按键（上一次执行异常中断时）
+    this.pressStack.length = 0;
+    this.clearHeldInputState();
 
-      onEvent({ type: 'node:start', nodeId: node.id });
+    const cleanup = () => {
+      this.pressStack.length = 0;
+      this.clearHeldInputState();
+    };
 
-      try {
-        const result = await this.executeNode(node, variablePool, signal, onEvent);
-        outputs[node.id] = result;
-        onEvent({ type: 'node:complete', nodeId: node.id, output: result });
-
-        const params = node.nodeParams as any;
-        const postDelay = typeof params?.postDelay === 'number' ? params.postDelay : defaultPostDelay;
-        if (postDelay > 0 && i < segment.length - 1) {
-          await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, postDelay);
-            if (signal.aborted) {
-              clearTimeout(timer);
-              resolve();
-            }
-          });
+    try {
+      for (let i = 0; i < segment.length; i++) {
+        const node = segment[i];
+        if (signal.aborted) {
+          cleanup();
+          return { success: false, outputs, aborted: true };
         }
-      } catch (error) {
-        const errorMsg = (error as Error).message;
-        onEvent({ type: 'node:error', nodeId: node.id, error: errorMsg });
-        return { success: false, outputs, error: errorMsg };
-      }
-    }
 
-    return { success: true, outputs };
+        onEvent({ type: 'node:start', nodeId: node.id });
+
+        try {
+          const result = await this.executeNode(node, variablePool, signal, onEvent, segment, i);
+          outputs[node.id] = result;
+          onEvent({ type: 'node:complete', nodeId: node.id, output: result });
+
+          const params = node.nodeParams as any;
+          const postDelay = typeof params?.postDelay === 'number' ? params.postDelay : defaultPostDelay;
+          if (postDelay > 0 && i < segment.length - 1) {
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, postDelay);
+              if (signal.aborted) {
+                clearTimeout(timer);
+                resolve();
+              }
+            });
+          }
+        } catch (error) {
+          const errorMsg = (error as Error).message;
+          onEvent({ type: 'node:error', nodeId: node.id, error: errorMsg });
+          cleanup();
+          return { success: false, outputs, error: errorMsg };
+        }
+      }
+
+      cleanup();
+      return { success: true, outputs };
+    } catch (e) {
+      cleanup();
+      throw e;
+    }
+  }
+
+  /** segment 结束或异常中断时：OS 级把还按着的鼠标键 / 修饰符全部抬起，防止用户自己的输入被锁住 */
+  private clearHeldInputState(): void {
+    try {
+      if (!this.robot) return;
+      for (const btn of Array.from(this.pressedMouseButtons)) {
+        try { this.robot.mouseToggle('up', btn); } catch { /* noop */ }
+      }
+      this.pressedMouseButtons.clear();
+      for (const m of Array.from(this.pressedModifierKeys)) {
+        try { this.robot.keyToggle(m, 'up'); } catch { /* noop */ }
+      }
+      this.pressedModifierKeys.clear();
+    } catch { /* noop */ }
+  }
+
+  /** 向前 segment 里找最近一个匹配的按下节点作为兜底 */
+  private findNearestPressNode(
+    segment: FlowNode[],
+    currentIndex: number,
+    targetType: 'system.mouseDown' | 'system.keyDown',
+  ): FlowNode | null {
+    for (let j = currentIndex - 1; j >= 0; j--) {
+      if (segment[j].nodeType === targetType) return segment[j];
+    }
+    return null;
   }
 
   private async executeNode(
@@ -129,8 +373,13 @@ export class SystemEngine implements FlowEngine {
     variablePool: Record<string, unknown>,
     signal: AbortSignal,
     onEvent: (event: EngineEvent) => void,
+    segment: FlowNode[],
+    currentIndex: number,
   ): Promise<unknown> {
     const params = node.nodeParams as any;
+    const emitLog = (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => {
+      onEvent({ type: 'log', level, message, data });
+    };
 
     switch (node.nodeType) {
       case 'system.sleep':
@@ -139,19 +388,23 @@ export class SystemEngine implements FlowEngine {
       case 'system.doubleClick':
       case 'system.rightClick':
       case 'system.hover':
-        return this.executeMouseAction(node.nodeType, params, variablePool);
+        return this.executeMouseAction(node.nodeType, params, variablePool, emitLog);
       case 'system.mouseDown':
         return this.executeMouseDown(params, variablePool);
-      case 'system.mouseUp':
-        return this.executeMouseUp(params);
+      case 'system.mouseUp': {
+        const resolved = this.resolveMouseUpParams(params, segment, currentIndex);
+        return this.executeMouseUp(resolved);
+      }
       case 'system.input':
         return this.executeInput(params, variablePool);
       case 'system.keyboard':
         return this.executeKeyboard(params, variablePool);
       case 'system.keyDown':
-        return this.executeKeyToggle(params, variablePool, 'down');
-      case 'system.keyUp':
-        return this.executeKeyToggle(params, variablePool, 'up');
+        return this.executeKeyToggle(params, variablePool, 'down', emitLog);
+      case 'system.keyUp': {
+        const resolved = this.resolveKeyUpParams(params, segment, currentIndex);
+        return this.executeKeyToggle(resolved, variablePool, 'up', emitLog);
+      }
       case 'system.scroll':
         return this.executeScroll(params, variablePool);
       case 'system.waitForImage':
@@ -172,8 +425,14 @@ export class SystemEngine implements FlowEngine {
     nodeType: string,
     params: any,
     variablePool: Record<string, unknown>,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<{ x: number; y: number }> {
     this.ensureRobot();
+
+    const log = (msg: string) => {
+      this.log.info(msg);
+      emitLog?.('info', msg);
+    };
 
     const locateMode = params.locateMode || 'coordinate';
     let targetX = 0;
@@ -210,7 +469,89 @@ export class SystemEngine implements FlowEngine {
     const interval = Number(params.clickInterval || 200);
 
     for (let i = 0; i < clicks; i++) {
-      this.robot.mouseClick(button);
+      const mods = Array.from(this.pressedModifierKeys);
+
+      if (mods.length > 0) {
+        // —— 三平台分派 ——
+        //   macOS (darwin)：CGEvent flags 缺失问题，走自建 CoreGraphics modclick 工具（flags 直接写进 CGEventSetFlags）
+        //   Linux           ：X11/XTestFakeButtonEvent 正确读全局 modifier mask，若装了 xdotool 就优先用它（更稳），否则 robotjs
+        //   Windows (win32)：SendInput 的 mouse event 会自动合并全局 VK_ 修饰键状态（应用通过 GetKeyState(VK_SHIFT) 读取），直接 robotjs + 重按修饰符 + 足够长 sleep
+        const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+        log(`[CLICK 🖱️ 修饰符路径] pressedModifierKeys=[${mods.join(', ')}]，platform=${platform}`);
+
+        // point → pixel/screen_coords：先读真实光标位置，避免 smoothMoveMouse 产生的浮点 / 累计误差
+        const cur = this.robot.getMousePos();
+        const cx = Number(cur.x) || targetX;
+        const cy = Number(cur.y) || targetY;
+        // ⚠️ 注意：现在 modclick 的 C 代码内部会自己按主屏幕 backingScaleFactor 把 POINT 转 PIXEL，
+        //    所以我们传 cx/cy（robotjs getMousePos 原生返回的点坐标）即可，不要再乘 dpiScale 了！
+        //    之前就是乘了两遍 scale，坐标翻倍，鼠标才会「跑到屏幕右下很远的地方」。
+        const px = cx;
+        const py = cy;
+        const flags = computeCGFlags(mods);
+
+        let dispatched = false;
+        let dispatchError: string | null = null;
+
+        try {
+          if (platform === 'darwin') {
+            log(`[CLICK 🖱️ darwin] 用 CoreGraphics(mimicflow_modclick) 合成带 flags=0x${flags.toString(16)}，modclick 内部会自己 POINT→PIXEL 换算`);
+            const bin = await this.ensureModClickBinary();
+            const cmd = [JSON.stringify(bin), String(Math.round(px)), String(Math.round(py)), button, '1', '0x' + flags.toString(16)].join(' ');
+            log(`[CLICK 🖱️ darwin] $ ${cmd}  (robotjs raw getMousePos={${cx},${cy}}, dpiScale=${this.dpiScale}, **不再乘 dpiScale**)`);
+            const { stderr } = await exec(cmd, { timeout: 8000 });
+            if (stderr) log(`[CLICK 🖱️ darwin] modclick stderr: ${stderr}`); // C 代码里把 input→pixel 换算写到了 stderr，UI 能看到
+            log(`[CLICK 🖱️ darwin] modclick 成功：click(${button}) at POINT={${Math.round(px)},${Math.round(py)}} flags=0x${flags.toString(16)}`);
+            dispatched = true;
+          } else if (platform === 'linux' && (await this.hasXdotool())) {
+            // Linux + xdotool：xdotool 支持 --clearmodifiers / modifiers 合成，更稳
+            // xdotool 里的 button 编号：1 左键、2 中、3 右
+            const btnMap: Record<string, string> = { left: '1', middle: '2', right: '3' };
+            const btn = btnMap[button] ?? '1';
+            // xdotool 的修饰符名称：shift, ctrl, alt, super (command)
+            const xmodMap: Record<string, string> = {
+              shift: 'shift',
+              control: 'ctrl',
+              alt: 'alt',
+              command: 'super',
+            };
+            const downCmds = mods.map((m) => `xdotool keydown ${xmodMap[m] ?? m}`).join(' && ');
+            const clickCmd = `xdotool click ${btn}`;
+            const upCmds = mods.slice().reverse().map((m) => `xdotool keyup ${xmodMap[m] ?? m}`).join(' && ');
+            const cmd = `${downCmds} && sleep 0.05 && ${clickCmd} && sleep 0.05 && ${upCmds}`;
+            log(`[CLICK 🖱️ linux] xdotool：$ ${cmd}`);
+            const { stderr } = await exec(`bash -c ${JSON.stringify(cmd)}`, { timeout: 8000 });
+            if (stderr) log(`[CLICK 🖱️ linux] xdotool stderr: ${stderr}`);
+            log(`[CLICK 🖱️ linux] xdotool 成功：click(${btn}) modifiers=[${mods.join(', ')}]`);
+            dispatched = true;
+          }
+        } catch (e: any) {
+          dispatchError = (e as Error).message;
+          log(`[CLICK 🖱️ platform=${platform} 专用路径失败：${dispatchError}，统一 fallback 到 robotjs]`);
+        }
+
+        // —— Win32 / Linux-xdotool-fallback / Darwin-modclick-fallback 统一走 robotjs ——
+        if (!dispatched) {
+          log(`[CLICK 🖱️ robotjs] platform=${platform}，重按修饰符 [${mods.join(', ')}] + sleep(80) → mouseToggle down/up`);
+          // ① click 前再强制重按一次所有 modifier（keyToggle('down') 幂等）
+          //   Win32：SendInput 把 VK_SHIFT 写入全局输入队列，之后 mouse event 的应用层 GetKeyState() 能读到按下
+          //   Linux / X11：XTestFakeKeyEvent 同样更新 X server 的 modifier mask，XTestFakeButtonEvent 会携带正确 mask
+          //   macOS：fallback 到这里效果不确定，但至少能点到目标坐标
+          for (const m of mods) try { this.robot.keyToggle(m, 'down'); } catch { /* noop */ }
+          await this.sleep(80); // 给系统级修饰键状态表足够时间刷新
+          this.robot.mouseToggle('down', button);
+          await this.sleep(80); // 给应用层足够窗口读取 "按住 modifier 期间点了鼠标" 的组合态
+          this.robot.mouseToggle('up', button);
+          log(`[CLICK 🖱️ robotjs] click(${button}) 完成`);
+        }
+
+      } else {
+        log(`[CLICK 🖱️] 无修饰符，mouseToggle(down, ${button}) → sleep(50) → up`);
+        this.robot.mouseToggle('down', button);
+        await this.sleep(50);
+        this.robot.mouseToggle('up', button);
+      }
+
       if (i < clicks - 1) {
         await this.sleep(interval);
       }
@@ -327,47 +668,194 @@ export class SystemEngine implements FlowEngine {
     const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
     await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
 
+    // 注意：robotjs 的 mouseToggle 签名是 mouseToggle(state, button)，state 在前 button 在后
     const button = params.button || 'left';
     this.robot.mouseToggle('down', button);
+    this.pressedMouseButtons.add(button);
+
+    // macOS Finder 拖拽需要两个额外触发条件，否则按下→移动会被当成普通点击：
+    //  1) 按下后保持 ~120ms 等待 Finder 进入 "准备拖动" 状态
+    //  2) 先微小抖动 (±3px) 突破系统 drag-threshold 才会判定开始拖拽
+    await this.sleep(120);
+    const jitterPos = this.robot.getMousePos();
+    const jx = Number(jitterPos.x) || 0;
+    const jy = Number(jitterPos.y) || 0;
+    this.robot.dragMouse(jx + 3, jy + 2);
+    await this.sleep(20);
+    this.robot.dragMouse(jx, jy);
+
+    // 入运行时按下栈：后面的 mouseUp autoSync=true 时会自动从栈顶取对应 button
+    this.pressStack.push({ type: 'mouseDown', button });
 
     return { x: targetX, y: targetY };
   }
 
+  private resolveMouseUpParams(
+    params: any,
+    segment: FlowNode[],
+    currentIndex: number,
+  ): { button: string } {
+    const autoSync = params?.autoSync !== false; // 默认 true
+    if (!autoSync) return { button: String(params?.button || 'left') };
+
+    // 1. 先看按下栈顶有没有 mouseDown
+    for (let j = this.pressStack.length - 1; j >= 0; j--) {
+      const e = this.pressStack[j];
+      if (e.type === 'mouseDown') {
+        const entry = this.pressStack.splice(j, 1)[0] as Extract<typeof e, { type: 'mouseDown' }>;
+        return { button: entry.button };
+      }
+    }
+    // 2. 栈空兜底：向前 segment 找最近的 system.mouseDown
+    const nearest = this.findNearestPressNode(segment, currentIndex, 'system.mouseDown');
+    if (nearest) {
+      const p = nearest.nodeParams as any;
+      return { button: String(p?.button || 'left') };
+    }
+    // 3. 还找不到，就 left 兜底
+    return { button: String(params?.button || 'left') };
+  }
+
+  private resolveKeyUpParams(
+    params: any,
+    segment: FlowNode[],
+    currentIndex: number,
+  ): { keyGroups: { keys: string[] }[] } {
+    const autoSync = params?.autoSync !== false; // 默认 true
+    const emptyKeyGroups: { keys: string[] }[] = [{ keys: [] }];
+    if (!autoSync) return { keyGroups: Array.isArray(params?.keyGroups) ? params.keyGroups : emptyKeyGroups };
+
+    // 1. 先看按下栈顶有没有 keyDown（最近一次按下的）
+    for (let j = this.pressStack.length - 1; j >= 0; j--) {
+      const e = this.pressStack[j];
+      if (e.type === 'keyDown') {
+        const entry = this.pressStack.splice(j, 1)[0] as Extract<typeof e, { type: 'keyDown' }>;
+        return { keyGroups: entry.keyGroups };
+      }
+    }
+    // 2. 栈空兜底：向前 segment 找最近的 system.keyDown
+    const nearest = this.findNearestPressNode(segment, currentIndex, 'system.keyDown');
+    if (nearest) {
+      const p = nearest.nodeParams as any;
+      return { keyGroups: Array.isArray(p?.keyGroups) ? p.keyGroups : emptyKeyGroups };
+    }
+    // 3. 兜底：用当前配置
+    return { keyGroups: Array.isArray(params?.keyGroups) ? params.keyGroups : emptyKeyGroups };
+  }
+
   private executeMouseUp(params: any): boolean {
     this.ensureRobot();
+    // 注意：robotjs 的 mouseToggle 签名是 mouseToggle(state, button)，state 在前 button 在后
     const button = params.button || 'left';
     this.robot.mouseToggle('up', button);
+    this.pressedMouseButtons.delete(button);
     return true;
   }
+
+  private static readonly MODIFIER_KEYS = new Set([
+    'control', 'shift', 'command', 'alt',
+  ]);
 
   private async executeKeyToggle(
     params: any,
     variablePool: Record<string, unknown>,
     direction: 'down' | 'up',
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<boolean> {
     this.ensureRobot();
 
-    const keyGroups = Array.isArray(params.keyGroups) ? params.keyGroups : [];
+    const log = (msg: string) => {
+      this.log.info(msg);
+      emitLog?.('info', msg);
+    };
+
+    const rawGroups = Array.isArray(params.keyGroups) ? params.keyGroups : [];
     const groupInterval = Number(params.groupInterval || 100);
+
+    // ⬇️ 关键修复点 1：抬起 keyUp 时 —— 整体 groups 执行顺序要和按下逆序
+    //     例：按下 group1(cmd) → group2(a)，抬起必须先抬 a 再抬 cmd
+    const keyGroups = direction === 'down' ? rawGroups : rawGroups.slice().reverse();
 
     for (let i = 0; i < keyGroups.length; i++) {
       const group = keyGroups[i];
-      const keys = Array.isArray(group.keys) ? group.keys : [];
+      const rawKeys: string[] = Array.isArray(group.keys) ? group.keys : [];
+      const keys = rawKeys.map((k) => this.normalizeKeyName(k));
 
       if (keys.length === 0) continue;
 
-      if (keys.length === 1) {
-        const keyName = this.normalizeKeyName(keys[0]);
-        this.robot.keyToggle(keyName, direction);
+      // 同组内的按键顺序：按下时正序，抬起时整体也要逆序
+      // 例：[cmd, a] 按下顺序 cmd → a；抬起顺序 a → cmd
+      const orderedKeys = direction === 'down' ? keys.slice() : keys.slice().reverse();
+
+      const modifiers = orderedKeys.filter((k) => SystemEngine.MODIFIER_KEYS.has(k));
+      const nonModifiers = orderedKeys.filter((k) => !SystemEngine.MODIFIER_KEYS.has(k));
+
+      if (direction === 'down') {
+        // 1) 修饰符依次按下 → 同步跟踪 pressedModifierKeys（给后面 click 用）
+        for (const m of modifiers) {
+          log(`[KEYDOWN ⬇️ 修饰符] ${m} 按下（保持按住，直到对应 keyUp）`);
+          this.robot.keyToggle(m, 'down');
+          this.pressedModifierKeys.add(m);
+          await this.sleep(8);
+        }
+        // 2) non-modifier 键的处理：
+        //    ⚠️ macOS 上 robotjs keyTap(k) 单参数内部是 CGEventCreateKeyboardEvent(NULL, ..., true)，
+        //       eventSource=NULL 时不会继承 IOHID/IO 层面已经按住的 modifier 状态 → 我们的 cmd 真的按住了，
+        //       但 'a' 的 keyDown event 的 flags 字段还是 0 → 系统当裸 'a' 字符输入，不会触发全选，
+        //       只会在文本里打一个 a。这就是用户说的「cmd,a 和 cmd+a 实际操作不一样」的根因。
+        //
+        //    修复：按下每个 non-modifier 时，用 **2 参数版** keyTap(mainKey, currentModifiers)
+        //       让 robotjs 自己把 modifier flags 写进 key event（✅ cmd+a 全选立即生效）。
+        //       但是 keyTap 语义最后会「自动松开 modifier」，所以我们要再 keyToggle(modifier, down) 按一遍，
+        //       抵消这个副作用，恢复「持续按住 modifier」的语义（✅ 后面的 click 依然能带 modifier）。
+        if (nonModifiers.length > 0) {
+          const held: string[] = Array.from(this.pressedModifierKeys);
+          for (const k of nonModifiers) {
+            if (held.length > 0) {
+              log(`[KEYDOWN ⬇️ 字符] keyTap(${k}, modifiers=[${held.join(', ')}]) → 立即重按修饰符抵消 keyTap 自动释放副作用`);
+              // 2 参数版本：keyTap 内部会把 modifier flags 正确附带到 key event → 全选/快捷键生效
+              this.robot.keyTap(k, held);
+              // 立即再按一遍 modifier，恢复「持续按住」
+              for (const m of held) {
+                try { this.robot.keyToggle(m, 'down'); } catch { /* noop */ }
+              }
+              await this.sleep(10);
+            } else {
+              log(`[KEYDOWN ⬇️ 字符] keyTap(${k})`);
+              this.robot.keyTap(k);
+            }
+            await this.sleep(40);
+          }
+        }
       } else {
-        const modifierKeys = keys.slice(0, -1).map((k: string) => this.normalizeKeyName(k));
-        const mainKey = this.normalizeKeyName(keys[keys.length - 1]);
-        this.robot.keyToggle(mainKey, direction, modifierKeys);
+        // keyUp 方向：orderedKeys 已经是组内逆序了（见上文 keys.slice().reverse()）
+        // 所以 nonModifiers / modifiers 的顺序已经是「最后按的先抬」
+        log(`[KEYUP ⬆️ 本组抬键顺序] ${orderedKeys.join(' → ')}`);
+        // 非修饰符兜底 keyToggle up（虽然 keyTap 过的普通键本来就没保持按住，但安全起见）
+        for (const k of nonModifiers) {
+          try { this.robot.keyToggle(k, 'up'); } catch { /* noop */ }
+          await this.sleep(5);
+        }
+        // 修饰符逆序抬起
+        for (const m of modifiers) {
+          log(`[KEYUP ⬆️ 修饰符] ${m} 抬起`);
+          this.robot.keyToggle(m, 'up');
+          this.pressedModifierKeys.delete(m);
+          await this.sleep(8);
+        }
       }
 
       if (i < keyGroups.length - 1) {
         await this.sleep(groupInterval);
       }
+    }
+
+    // keyDown 执行完成后入按下栈（深拷贝一份，避免后面 params 被改）
+    if (direction === 'down') {
+      this.pressStack.push({
+        type: 'keyDown',
+        keyGroups: rawGroups.map((g: any) => ({ keys: Array.isArray(g?.keys) ? g.keys.slice() : [] })),
+      });
     }
 
     return true;
@@ -612,6 +1100,8 @@ export class SystemEngine implements FlowEngine {
    * - duration = 0：立即瞬移
    * - mode = 'ease'  默认，缓动（起步慢→加速→减速到位，自然）
    * - mode = 'linear' 匀速
+   * - 如果当前有鼠标按键保持按下（pressedMouseButtons 非空）→ 使用 dragMouse（触发系统真正的拖拽事件）
+   *   否则使用普通 moveMouse（只改变光标位置不产生 drag）
    */
   private async smoothMoveMouse(
     targetX: number,
@@ -622,8 +1112,12 @@ export class SystemEngine implements FlowEngine {
     this.ensureRobot();
 
     const dur = Math.max(0, Number(duration));
+    const isDrag = this.pressedMouseButtons.size > 0;
+    const stepFn = (x: number, y: number) =>
+      isDrag ? this.robot.dragMouse(x, y) : this.robot.moveMouse(x, y);
+
     if (Number.isNaN(dur) || dur <= 0) {
-      this.robot.moveMouse(targetX, targetY);
+      stepFn(targetX, targetY);
       return;
     }
 
@@ -656,7 +1150,7 @@ export class SystemEngine implements FlowEngine {
       }
       const x = Math.round(fromX + dx * easeT);
       const y = Math.round(fromY + dy * easeT);
-      this.robot.moveMouse(x, y);
+      stepFn(x, y);
 
       if (i < totalSteps) {
         await this.sleep(actualInterval);
@@ -664,7 +1158,7 @@ export class SystemEngine implements FlowEngine {
     }
 
     // 最后确保精准到达目标位置，消除累计舍入误差
-    this.robot.moveMouse(targetX, targetY);
+    stepFn(targetX, targetY);
   }
 
   async dispose(): Promise<void> {

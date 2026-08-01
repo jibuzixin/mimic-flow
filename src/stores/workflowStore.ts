@@ -61,10 +61,12 @@ interface WorkflowState {
   executionLogs: Array<{
     id: string;
     timestamp: number;
-    type: 'info' | 'success' | 'error' | 'node-start' | 'node-success' | 'node-error';
+    type: 'info' | 'success' | 'warn' | 'debug' | 'error' | 'node-start' | 'node-success' | 'node-error';
     nodeId?: string;
     nodeName?: string;
     message: string;
+    /** 可选：日志附带的交互建议（缺 clang 时建议一键装 CLT 等） */
+    suggestAction?: { kind: 'ipc-invoke'; channel: string; btnLabel: string; confirmText: string };
   }>;
   nodePositions: Record<string, { x: number; y: number }>;
   edges: Edge[];
@@ -93,7 +95,7 @@ interface WorkflowState {
   pauseExecution: () => void;
   resumeExecution: () => void;
   clearExecutionState: () => void;
-  addExecutionLog: (log: Omit<{ id: string; timestamp: number; type: string; nodeId?: string; nodeName?: string; message: string }, 'id' | 'timestamp'>) => void;
+  addExecutionLog: (log: Omit<{ id: string; timestamp: number; type: string; nodeId?: string; nodeName?: string; message: string; suggestAction?: { kind: 'ipc-invoke'; channel: string; btnLabel: string; confirmText: string } }, 'id' | 'timestamp'>) => void;
 
   setNodePosition: (nodeId: string, position: { x: number; y: number }) => void;
   setEdges: (edges: Edge[]) => void;
@@ -115,10 +117,11 @@ interface WorkflowState {
   createWorkflow: (name?: string) => string;
   openWorkflow: (id: string) => void;
   saveCurrentWorkflow: () => void;
-  saveAsNewWorkflow: (name?: string) => string;
+  saveAsNewWorkflow: (name?: string, meta?: Partial<{ desc: string }>) => string;
   deleteWorkflow: (id: string) => void;
   duplicateWorkflow: (id: string) => string;
   renameWorkflow: (id: string, name: string) => void;
+  updateWorkflowRecordMeta: (id: string, updates: Partial<{ name: string; desc: string }>) => void;
   setWorkflowGradient: (id: string, gradient: string) => void;
   setWorkflowBgImage: (id: string, imageDataUrl: string | null) => void;
   createNewCanvas: () => void;
@@ -525,6 +528,26 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({
       executionLogs: [...get().executionLogs, newLog],
     });
+
+    // 🔔 日志里带 suggestAction → 弹一个 window.confirm 问用户要不要执行（避免额外依赖 UI 组件）
+    if (newLog.suggestAction?.kind === 'ipc-invoke') {
+      try {
+        const { channel, confirmText, btnLabel } = newLog.suggestAction;
+        // 用 setTimeout 避免在 store reducer 同步期触发 confirm 影响 reducer pure 语义
+        setTimeout(() => {
+          const ok = window.confirm(
+            `${confirmText}\n\n点击「确定」将打开 macOS 系统自带的 Xcode Command Line Tools 安装向导，\n` +
+              `之后按系统提示点击「安装」并同意 Apple 的许可协议即可。\n` +
+              `（${btnLabel}）`
+          );
+          if (ok && (window as any).mimic?.invoke) {
+            (window as any).mimic.invoke(channel).catch((e: any) => console.warn('[suggestAction invoke failed]', e));
+          }
+        }, 150);
+      } catch (e) {
+        console.warn('[suggestAction 弹窗失败]', e);
+      }
+    }
   },
 
   startExecution: async () => {
@@ -707,10 +730,27 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
             warn: 'warn',
             error: 'error',
           };
+          const typedLevel = levelMap[entry.level] || 'info';
+          const hasAction =
+            entry.data &&
+            typeof entry.data === 'object' &&
+            (entry.data as Record<string, unknown>).action === 'openCltInstaller';
           get().addExecutionLog({
-            type: levelMap[entry.level] || 'info',
+            type: typedLevel,
             nodeId: entry.nodeId,
-            message: `[${entry.source}] ${entry.message}${entry.data ? ` - ${JSON.stringify(entry.data)}` : ''}`,
+            message: `[${entry.source}] ${entry.message}${entry.data ? ` - ${typeof entry.data === 'object' && !hasAction ? JSON.stringify(entry.data) : ''}` : ''}`,
+            // 🎯 把引擎层日志里打进来的 action='openCltInstaller' 翻译成 UI 侧可直接点的建议
+            suggestAction: hasAction
+              ? {
+                  kind: 'ipc-invoke' as const,
+                  channel: 'system:open-clt-installer',
+                  btnLabel: '一键安装 Xcode CLT',
+                  confirmText:
+                    '检测到您的 Mac 还没有安装 Xcode Command Line Tools（缺少 clang 编译链），\n' +
+                    '当前已经自动降级到 robotjs fallback，修饰符+点击多选可能不完全生效。\n\n' +
+                    '是否立即打开 macOS 系统自带的安装向导？（安装完成后需要重启本 App）',
+                }
+              : undefined,
           });
           break;
         }
@@ -1314,7 +1354,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       }
     });
 
-    const nodePositions = generateDefaultPositions(workflow);
+    // 导入到画布优先用 flowMeta.canvas.nodePositions（保持导出时的布局），缺失的用 generateDefaultPositions 兜底
+    const defaultPos = generateDefaultPositions(workflow);
+    const injectedPos: Record<string, { x: number; y: number }> = { ...defaultPos };
+    const injected = workflow.flowMeta?.canvas?.nodePositions;
+    if (injected && typeof injected === 'object') {
+      Object.entries(injected).forEach(([nid, pos]) => {
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+          injectedPos[nid] = { x: pos.x, y: pos.y };
+        }
+      });
+    }
+    const nodePositions = injectedPos;
     const edges = generateEdgesFromWorkflow(workflow);
     const edgesWithType = edges.map((e) => ({
       ...e,
@@ -1408,19 +1459,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     get().saveDraftToStorage();
   },
 
-  saveAsNewWorkflow: (name) => {
+  saveAsNewWorkflow: (name, meta) => {
     const state = get();
     if (!state.currentWorkflow) return '';
 
     const newId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();
     const wfName = name || state.currentWorkflow.flowMeta.name || '工作流';
+    const wfDesc = (meta?.desc !== undefined ? meta.desc : (state.currentWorkflow.flowMeta.desc ?? ''));
 
     const newWorkflow = {
       ...JSON.parse(JSON.stringify(state.currentWorkflow)),
       flowMeta: {
         ...state.currentWorkflow.flowMeta,
         name: wfName,
+        desc: wfDesc,
         updatedAt: now,
       },
     };
@@ -1503,8 +1556,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   renameWorkflow: (id, name) => {
+    get().updateWorkflowRecordMeta(id, { name });
+  },
+
+  updateWorkflowRecordMeta: (id, updates) => {
     const state = get();
     const now = Date.now();
+    const patch: Record<string, unknown> = {};
+    if (updates.name !== undefined) patch.name = updates.name;
+    if (updates.desc !== undefined) patch.desc = updates.desc;
 
     set({
       workflows: state.workflows.map((w) =>
@@ -1513,13 +1573,23 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
               ...w,
               workflow: {
                 ...w.workflow,
-                flowMeta: { ...w.workflow.flowMeta, name },
+                flowMeta: { ...w.workflow.flowMeta, ...patch },
               },
               updatedAt: now,
             }
           : w
       ),
     });
+
+    // 如果当前画布正好是这个 id，也同步一下
+    if (state.originalWorkflowId === id && state.currentWorkflow) {
+      set({
+        currentWorkflow: {
+          ...state.currentWorkflow,
+          flowMeta: { ...state.currentWorkflow.flowMeta, ...patch },
+        },
+      });
+    }
 
     get().saveWorkflowsToStorage();
   },
@@ -1567,16 +1637,37 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   exportWorkflow: (id, hideSensitive = false) => {
     const record = get().workflows.find((w) => w.id === id);
     if (record) {
-      return hideSensitive ? maskSensitiveData(record.workflow) : record.workflow;
+      const wf: FlowSchema = hideSensitive ? maskSensitiveData(record.workflow) : record.workflow;
+      // 导出时把 nodePositions 注入到 flowMeta.canvas.nodePositions，导入时再还原
+      return {
+        ...wf,
+        flowMeta: {
+          ...wf.flowMeta,
+          canvas: {
+            ...(wf.flowMeta.canvas || {}),
+            nodePositions: record.nodePositions,
+          },
+        },
+      };
     }
     return get().exportCurrentWorkflow(hideSensitive);
   },
 
   exportCurrentWorkflow: (hideSensitive = false) => {
     if (get().currentWorkflow) {
-      return hideSensitive
+      const wf: FlowSchema = hideSensitive
         ? maskSensitiveData(get().currentWorkflow!)
         : get().currentWorkflow!;
+      return {
+        ...wf,
+        flowMeta: {
+          ...wf.flowMeta,
+          canvas: {
+            ...(wf.flowMeta.canvas || {}),
+            nodePositions: get().nodePositions,
+          },
+        },
+      };
     }
     return get().createEmptyWorkflow();
   },
@@ -1585,7 +1676,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     const id = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const now = Date.now();
 
-    const nodePositions = generateDefaultPositions(workflow);
+    // 导入优先用导出时附带的 flowMeta.canvas.nodePositions（保持布局不乱），
+    // 对于新工作流里多出来的 id 或者导出时没有的 id，用 generateDefaultPositions 兜底。
+    const defaultPos = generateDefaultPositions(workflow);
+    const injectedPos: Record<string, { x: number; y: number }> = { ...defaultPos };
+    const injected = workflow.flowMeta?.canvas?.nodePositions;
+    if (injected && typeof injected === 'object') {
+      Object.entries(injected).forEach(([nid, pos]) => {
+        if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+          injectedPos[nid] = { x: pos.x, y: pos.y };
+        }
+      });
+    }
+    const nodePositions = injectedPos;
     const edges = generateEdgesFromWorkflow(workflow);
 
     const record: WorkflowRecord = {
@@ -1594,6 +1697,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         ...workflow,
         flowMeta: {
           ...workflow.flowMeta,
+          // 导入后清掉 flowMeta.canvas，让 nodePositions 作为 record 专用字段，下一次导出再重写。
+          canvas: undefined,
           createdAt: now,
           updatedAt: now,
         },

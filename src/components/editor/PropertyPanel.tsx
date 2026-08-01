@@ -14,26 +14,77 @@ interface HelpTooltipProps {
 
 const HelpTooltip: React.FC<HelpTooltipProps> = ({ text }) => {
   const [show, setShow] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
   const iconRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<{
+    left: number;
+    top: number;
+    arrowLeft: number | null;
+    above: boolean;
+  } | null>(null);
+
+  const MAX_WIDTH = 300;
+  const VIEWPORT_MARGIN = 12;
+  const GAP = 8; // tooltip 与图标之间的距离
 
   const updatePosition = useCallback(() => {
-    if (iconRef.current) {
-      const rect = iconRef.current.getBoundingClientRect();
-      setPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top,
-      });
+    if (!iconRef.current || !tooltipRef.current) return;
+
+    const iconRect = iconRef.current.getBoundingClientRect();
+    const tooltipWidth = Math.min(MAX_WIDTH, tooltipRef.current.offsetWidth);
+    const tooltipHeight = tooltipRef.current.offsetHeight;
+
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+
+    // 先按居中上方计算，若空间不足则切到下方
+    let top: number;
+    let above = iconRect.top - GAP - tooltipHeight >= VIEWPORT_MARGIN;
+    if (above) {
+      top = iconRect.top - GAP - tooltipHeight;
+    } else {
+      // 下方空间不足时，优先选择剩余更大的一侧
+      const spaceAbove = iconRect.top;
+      const spaceBelow = viewportH - iconRect.bottom;
+      above = spaceAbove > spaceBelow;
+      top = above
+        ? Math.max(VIEWPORT_MARGIN, iconRect.top - GAP - tooltipHeight)
+        : iconRect.bottom + GAP;
     }
+
+    // 水平方向：先按居中，若超出视窗则贴着边缘显示（保证完全可见）
+    const rawLeft = iconRect.left + iconRect.width / 2 - tooltipWidth / 2;
+    const minLeft = VIEWPORT_MARGIN;
+    const maxLeft = viewportW - VIEWPORT_MARGIN - tooltipWidth;
+    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, rawLeft));
+
+    // 计算小箭头应该放在哪（如果 tooltip 被夹边，箭头要指向图标而不是永远居中）
+    const iconCenterX = iconRect.left + iconRect.width / 2;
+    // arrowLeft 是相对于 tooltip 的偏移
+    let arrowLeft: number | null = iconCenterX - clampedLeft;
+    // 限制箭头在 tooltip 合理范围内
+    if (arrowLeft < 16) arrowLeft = 16;
+    if (arrowLeft > tooltipWidth - 16) arrowLeft = tooltipWidth - 16;
+
+    setPlacement({
+      left: clampedLeft,
+      top,
+      arrowLeft,
+      above,
+    });
   }, []);
 
   useEffect(() => {
     if (show) {
-      updatePosition();
+      // 需要下一帧再测量，确保 tooltip DOM 已渲染有尺寸
+      const rafId = requestAnimationFrame(() => {
+        updatePosition();
+      });
       const handler = () => updatePosition();
       window.addEventListener('scroll', handler, true);
       window.addEventListener('resize', handler);
       return () => {
+        cancelAnimationFrame(rafId);
         window.removeEventListener('scroll', handler, true);
         window.removeEventListener('resize', handler);
       };
@@ -53,17 +104,39 @@ const HelpTooltip: React.FC<HelpTooltipProps> = ({ text }) => {
       {show &&
         createPortal(
           <div
-            className="fixed z-[9999] px-3 py-2 text-xs bg-gray-800 text-white rounded-xl shadow-2xl whitespace-nowrap pointer-events-none"
+            ref={tooltipRef}
+            className="fixed z-[9999] px-3 py-2 text-xs bg-gray-800 text-white rounded-xl shadow-2xl pointer-events-none break-words"
             style={{
-              left: position.x,
-              top: position.y - 8,
-              transform: 'translate(-50%, -100%)',
+              maxWidth: MAX_WIDTH,
+              left: placement ? placement.left : -9999,
+              top: placement ? placement.top : -9999,
+              lineHeight: 1.5,
             }}
           >
             {text}
-            <div
-              className="absolute left-1/2 -translate-x-1/2 top-full -mt-1 border-4 border-transparent border-t-gray-800"
-            />
+            {placement && (
+              <div
+                className="absolute w-0 h-0 border-4 border-transparent"
+                style={{
+                  left:
+                    placement.arrowLeft !== null
+                      ? `${placement.arrowLeft - 4}px`
+                      : '50%',
+                  transform: placement.arrowLeft === null ? 'translateX(-50%)' : undefined,
+                  ...(placement.above
+                    ? {
+                        top: '100%',
+                        marginTop: -1,
+                        borderTopColor: '#1f2937',
+                      }
+                    : {
+                        bottom: '100%',
+                        marginBottom: -1,
+                        borderBottomColor: '#1f2937',
+                      }),
+                }}
+              />
+            )}
           </div>,
           document.body
         )}
@@ -1034,6 +1107,111 @@ export const PropertyPanel: React.FC = () => {
                       </div>
                     </div>
                   )}
+
+                  {(() => {
+                    if (selectedNode!.nodeType !== 'system.mouseUp' && selectedNode!.nodeType !== 'system.keyUp') return null;
+                    const isMouseUp = selectedNode!.nodeType === 'system.mouseUp';
+                    const targetType = isMouseUp ? 'system.mouseDown' : 'system.keyDown';
+                    const nodes = currentWorkflow?.nodes || [];
+                    const idx = nodes.findIndex((n) => n.id === selectedNodeId);
+                    let nearest: FlowNode | null = null;
+                    for (let j = idx - 1; j >= 0; j--) {
+                      if (nodes[j].nodeType === targetType) { nearest = nodes[j]; break; }
+                    }
+                    const params = (selectedNode!.nodeParams || {}) as any;
+                    const autoSync = params.autoSync !== false;
+
+                    const applyFill = () => {
+                      if (!nearest || !selectedNode) return;
+                      if (isMouseUp) {
+                        const near = (nearest.nodeParams || {}) as any;
+                        updateNodeParams(selectedNode.id, {
+                          ...params,
+                          autoSync: false,
+                          button: near.button || 'left',
+                        });
+                      } else {
+                        const near = (nearest.nodeParams || {}) as any;
+                        // ⬇️ 编辑态填到 keyUp 面板的 keyGroups 也要按抬起逆序展示：
+                        //   1) 整体组数逆序（先按的组后抬）
+                        //   2) 每个组内的 keys 也要逆序（最后按的键先抬）
+                        const filledGroups = Array.isArray(near.keyGroups)
+                          ? JSON.parse(JSON.stringify(near.keyGroups))
+                          : [{ keys: [] }];
+                        const reversedForUp = filledGroups
+                          .slice()
+                          .reverse()
+                          .map((g: any) => ({
+                            keys: Array.isArray(g?.keys) ? g.keys.slice().reverse() : [],
+                          }));
+                        updateNodeParams(selectedNode.id, {
+                          ...params,
+                          autoSync: false,
+                          keyGroups: reversedForUp,
+                        });
+                      }
+                    };
+
+                    return (
+                      <div
+                        className="p-3 rounded-xl space-y-2"
+                        style={{
+                          backgroundColor: isMouseUp ? '#8b5cf60a' : '#7c3aed0a',
+                          border: `1px solid ${isMouseUp ? '#8b5cf622' : '#7c3aed22'}`,
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: isMouseUp ? '#7c3aed' : '#6d28d9' }}>
+                          <span className="w-1 h-1 rounded-full" style={{ backgroundColor: isMouseUp ? '#7c3aed' : '#6d28d9' }} />
+                          {autoSync ? '🤖 智能同步已开启' : '📝 手动模式'}
+                        </div>
+                        {autoSync ? (
+                          <div className="text-[12px] leading-relaxed" style={{ color: (isMouseUp ? '#7c3aed' : '#6d28d9') + 'cc' }}>
+                            运行时会自动抬起上方最近一次{isMouseUp ? '鼠标按下' : '键盘按下'}节点的内容，无需手动填写。
+                            {nearest
+                              ? (() => {
+                                const np = (nearest.nodeParams || {}) as any;
+                                let detail = '';
+                                if (isMouseUp) {
+                                  detail = `（按键：${np.button || 'left'}）`;
+                                } else {
+                                  const groups = Array.isArray(np.keyGroups) ? np.keyGroups : [];
+                                  // 预览抬键顺序（整体组数逆序 + 每组内 keys 逆序）
+                                  const upOrder = groups
+                                    .slice()
+                                    .reverse()
+                                    .map((g: any) => {
+                                      const keys = Array.isArray(g?.keys) ? g.keys.slice().reverse() : [];
+                                      return `[${keys.join(' + ')}]`;
+                                    })
+                                    .join(' → ');
+                                  detail = `（${groups.length} 组，抬键顺序：${upOrder || '空'}）`;
+                                }
+                                return (
+                                  <span className="block mt-1 text-[11px] opacity-80">
+                                    → 预计同步节点：<code className="bg-white/60 px-1.5 py-0.5 rounded">{nearest.nodeName || nearest.id}</code>
+                                    <span className="block mt-0.5">{detail}</span>
+                                  </span>
+                                );
+                              })()
+                              : <span className="block mt-1 text-[11px] text-rose-500">⚠ 未在当前工作流找到对应的按下节点，请确认连线顺序</span>}
+                          </div>
+                        ) : (
+                          <div className="text-[12px] leading-relaxed" style={{ color: (isMouseUp ? '#7c3aed' : '#6d28d9') + 'cc' }}>
+                            已切换到手动模式，下方的配置项已显示。若想恢复自动同步可打开上方的开关。
+                          </div>
+                        )}
+                        {nearest && (
+                          <button
+                            onClick={applyFill}
+                            className="w-full text-[12px] mt-1 px-3 py-1.5 rounded-lg font-medium transition-all text-white shadow-sm hover:opacity-90"
+                            style={{ background: `linear-gradient(135deg, ${isMouseUp ? '#8b5cf6' : '#7c3aed'}, ${isMouseUp ? '#a78bfa' : '#8b5cf6'})` }}
+                          >
+                            ✨ 把最近按下节点的内容填到这里（自动切手动模式）
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {config!.propertyFields
                     .filter((field) => {
