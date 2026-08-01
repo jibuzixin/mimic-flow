@@ -49,7 +49,13 @@ interface FloatingState {
   workflowName: string;
   currentNode: string;
   startTime: number;
+  /** 参与进度计算的总节点数（去重后、排除 start/end），用作进度条分母 */
   totalNodes: number;
+  /** 去重后的已完成节点数（分子），进度条 = uniqueCompletedNodes/totalNodes，不会因循环越界 */
+  uniqueCompletedNodes: number;
+  /** 累计执行次数（含循环节点重复执行），仅用于展示「已经跑了多少步」」 */
+  totalInvocations: number;
+  /** 兼容旧字段：deprecated，等于 totalInvocations；UI 优先用 uniqueCompletedNodes/totalInvocations */
   completedNodes: number;
   lastDuration: number | null;
   status: 'idle' | 'running' | 'success' | 'failed' | 'stopped';
@@ -62,6 +68,8 @@ let floatingState: FloatingState = {
   currentNode: '',
   startTime: 0,
   totalNodes: 0,
+  uniqueCompletedNodes: 0,
+  totalInvocations: 0,
   completedNodes: 0,
   lastDuration: null,
   status: 'idle',
@@ -617,6 +625,8 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
     currentNode: '准备中...',
     startTime: Date.now(),
     totalNodes,
+    uniqueCompletedNodes: 0,
+    totalInvocations: 0,
     completedNodes: 0,
     lastDuration,
     status: 'running',
@@ -625,6 +635,7 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
   };
 
   let completedNodes = 0;
+  const uniqueCompletedNodeIds = new Set<string>();
 
   runFlowV2(flow, (evt: RuntimeEventV2) => {
     try {
@@ -662,23 +673,38 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       });
     } else if (evt.type === 'node:complete') {
       completedNodes++;
+      const nodeId = (evt as any).nodeId;
+      if (nodeId) uniqueCompletedNodeIds.add(nodeId);
+      floatingState.uniqueCompletedNodes = uniqueCompletedNodeIds.size;
+      floatingState.totalInvocations = completedNodes;
       floatingState.completedNodes = completedNodes;
       const nodeName = floatingState.runningNodes.shift();
       sendToFloating('floating:node-complete', {
-        nodeId: (evt as any).nodeId,
+        nodeId,
         duration: (evt as any).duration,
         completedNodes,
+        uniqueCompletedNodes: uniqueCompletedNodeIds.size,
+        totalInvocations: completedNodes,
+        totalNodes,
         nodeName,
         runningNodes: [...floatingState.runningNodes],
       });
     } else if (evt.type === 'node:error') {
       completedNodes++;
+      const nodeId = (evt as any).nodeId;
+      if (nodeId) uniqueCompletedNodeIds.add(nodeId);
+      floatingState.uniqueCompletedNodes = uniqueCompletedNodeIds.size;
+      floatingState.totalInvocations = completedNodes;
       floatingState.completedNodes = completedNodes;
       const nodeName = floatingState.runningNodes.shift();
       sendToFloating('floating:node-error', {
-        nodeId: (evt as any).nodeId,
+        nodeId,
         duration: (evt as any).duration,
         error: (evt as any).error,
+        completedNodes,
+        uniqueCompletedNodes: uniqueCompletedNodeIds.size,
+        totalInvocations: completedNodes,
+        totalNodes,
         nodeName,
         runningNodes: [...floatingState.runningNodes],
       });
@@ -698,10 +724,18 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       
       floatingState.status = status;
       floatingState.currentNode = status === 'success' ? '执行完成' : status === 'stopped' ? '已停止' : '执行失败';
-      
+      // flow-complete 时进度直接修正到 100%（避免循环等边界情况差一点没满）
+      floatingState.uniqueCompletedNodes = floatingState.totalNodes || uniqueCompletedNodeIds.size;
+      floatingState.totalInvocations = completedNodes;
+      floatingState.completedNodes = completedNodes;
+
       sendToFloating('floating:flow-complete', {
         status,
         duration,
+        // 把最终的进度也一起带过去，flow-complete 直接拉满 100% 视觉
+        uniqueCompletedNodes: floatingState.uniqueCompletedNodes,
+        totalInvocations: completedNodes,
+        totalNodes: floatingState.totalNodes,
       });
       
       try {

@@ -16,8 +16,12 @@ export default function FloatingProgress() {
   const [currentNode, setCurrentNode] = useState('');
   const [startTime, setStartTime] = useState<number>(0);
   const [elapsed, setElapsed] = useState(0);
+  /** 去重后的总节点数（进度条分母） */
   const [totalNodes, setTotalNodes] = useState(0);
-  const [completedNodes, setCompletedNodes] = useState(0);
+  /** 去重后的已完成节点数（进度条分子），不会因循环越界 */
+  const [uniqueCompletedNodes, setUniqueCompletedNodes] = useState(0);
+  /** 累计执行次数（含循环重复执行），仅展示「已经跑了多少步」 */
+  const [totalInvocations, setTotalInvocations] = useState(0);
   const [lastDuration, setLastDuration] = useState<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'failed' | 'stopped'>(
     'idle'
@@ -72,7 +76,8 @@ export default function FloatingProgress() {
           setCurrentNode(s.currentNode || '');
           setStartTime(s.startTime || Date.now());
           setTotalNodes(s.totalNodes || 0);
-          setCompletedNodes(s.completedNodes || 0);
+          setUniqueCompletedNodes(s.uniqueCompletedNodes ?? s.completedNodes ?? 0);
+          setTotalInvocations(s.totalInvocations ?? s.completedNodes ?? 0);
           setLastDuration(s.lastDuration || null);
           setStatus(s.status);
           setRunningNodes(s.runningNodes || []);
@@ -90,7 +95,8 @@ export default function FloatingProgress() {
       setWorkflowName(data.workflowName || '工作流');
       setStartTime(data.startTime || Date.now());
       setTotalNodes(data.totalNodes || 0);
-      setCompletedNodes(0);
+      setUniqueCompletedNodes(0);
+      setTotalInvocations(0);
       setCurrentNode('准备中...');
       setStatus('running');
       setLastDuration(data.lastDuration || null);
@@ -112,11 +118,18 @@ export default function FloatingProgress() {
 
     const offNodeComplete = window.mimic.on('floating:node-complete', (data: any) => {
       if (!mounted) return;
-      if (data.completedNodes !== undefined) {
-        setCompletedNodes(data.completedNodes);
-      } else {
-        setCompletedNodes((prev) => prev + 1);
+      if (data.uniqueCompletedNodes !== undefined) {
+        setUniqueCompletedNodes(data.uniqueCompletedNodes);
       }
+      if (data.totalInvocations !== undefined) {
+        setTotalInvocations(data.totalInvocations);
+      } else if (data.completedNodes !== undefined) {
+        setTotalInvocations(data.completedNodes);
+        setUniqueCompletedNodes((prev) => Math.max(prev, Math.min(data.completedNodes, totalNodes)));
+      } else {
+        setTotalInvocations((prev) => prev + 1);
+      }
+      if (data.totalNodes) setTotalNodes(data.totalNodes);
       if (data.runningNodes) {
         setRunningNodes(data.runningNodes);
       }
@@ -124,7 +137,18 @@ export default function FloatingProgress() {
 
     const offNodeError = window.mimic.on('floating:node-error', (data: any) => {
       if (!mounted) return;
-      setCompletedNodes((prev) => prev + 1);
+      if (data.uniqueCompletedNodes !== undefined) {
+        setUniqueCompletedNodes(data.uniqueCompletedNodes);
+      }
+      if (data.totalInvocations !== undefined) {
+        setTotalInvocations(data.totalInvocations);
+      } else if (data.completedNodes !== undefined) {
+        setTotalInvocations(data.completedNodes);
+        setUniqueCompletedNodes((prev) => Math.max(prev, Math.min(data.completedNodes, totalNodes)));
+      } else {
+        setTotalInvocations((prev) => prev + 1);
+      }
+      if (data.totalNodes) setTotalNodes(data.totalNodes);
       if (data.runningNodes) {
         setRunningNodes(data.runningNodes);
       }
@@ -132,6 +156,13 @@ export default function FloatingProgress() {
 
     const offFlowComplete = window.mimic.on('floating:flow-complete', (data: any) => {
       if (!mounted) return;
+      // flow 完成时直接拉到 100%
+      const finalTotal = data.totalNodes ?? totalNodes;
+      if (finalTotal) {
+        setTotalNodes(finalTotal);
+        setUniqueCompletedNodes(finalTotal);
+      }
+      if (data.totalInvocations !== undefined) setTotalInvocations(data.totalInvocations);
       if (data.status === 'success') {
         setStatus('success');
         setCurrentNode('执行完成');
@@ -183,7 +214,14 @@ export default function FloatingProgress() {
     return `${(ms / 1000).toFixed(1)}秒`;
   };
 
-  const progress = totalNodes > 0 ? Math.round((completedNodes / totalNodes) * 100) : 0;
+  // 进度计算：
+  //   - 进度条（百分比）= 去重后的唯一节点进度，不会因为循环 node-3 跑了 3 次就从 3/9 → 6/9 越界；
+  //   - running 中上限 99.9%，到 flow-complete 再强制拉到 100%，视觉更自然。
+  const isFinished = status === 'success' || status === 'failed' || status === 'stopped';
+  const progressPct = totalNodes > 0 ? (uniqueCompletedNodes / totalNodes) * 100 : 0;
+  const progress = Math.round(
+    isFinished ? Math.max(0, Math.min(100, progressPct)) : Math.min(99.9, progressPct)
+  );
 
   const handleRestore = () => {
     window.mimic.invoke('window:restore-main');
@@ -331,7 +369,7 @@ export default function FloatingProgress() {
           <div className="flex items-center justify-between text-[11px] text-gray-500">
             <span>执行进度</span>
             <span className="font-medium">
-              {completedNodes}/{totalNodes} · {progress}%
+              {uniqueCompletedNodes}/{totalNodes} · {progress}%
             </span>
           </div>
           <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -340,6 +378,14 @@ export default function FloatingProgress() {
               style={{ width: `${progress}%` }}
             />
           </div>
+          {totalInvocations > uniqueCompletedNodes && (
+            <div className="text-[10px] text-violet-500/90 text-right flex items-center justify-end gap-1">
+              <History className="w-3 h-3" />
+              <span>
+                循环运行中 · 累计执行 {totalInvocations} 次
+              </span>
+            </div>
+          )}
         </div>
 
         {/* 时间信息 */}
