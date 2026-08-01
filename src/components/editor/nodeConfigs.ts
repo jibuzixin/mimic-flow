@@ -3,7 +3,7 @@ import {
   Search, CheckCircle, ToggleLeft,
   Clock, Timer,
   Variable, GitBranch, Repeat, FileText, Flag, StopCircle,
-  Image, Move,
+  Image, Move, CircleDot, Circle,
 } from 'lucide-react';
 
 export type NodeCategory = 'control' | 'ai-action' | 'ai-query' | 'wait' | 'system';
@@ -721,6 +721,7 @@ export const nodeConfigs: NodeConfig[] = [
       templateImage: '',
       confidence: 0.9,
       moveDuration: 200,
+      moveMode: 'ease',
       onError: 'stop',
     },
     propertyFields: [
@@ -738,6 +739,17 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+      },
       {
         key: 'onError',
         label: '失败策略',
@@ -766,6 +778,7 @@ export const nodeConfigs: NodeConfig[] = [
       templateImage: '',
       confidence: 0.9,
       moveDuration: 200,
+      moveMode: 'ease',
       clickInterval: 200,
       onError: 'stop',
     },
@@ -784,6 +797,17 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+      },
       { key: 'clickInterval', label: '点击间隔(ms)', type: 'number', defaultValue: 200 },
       {
         key: 'onError',
@@ -813,6 +837,7 @@ export const nodeConfigs: NodeConfig[] = [
       templateImage: '',
       confidence: 0.9,
       moveDuration: 200,
+      moveMode: 'ease',
       onError: 'stop',
     },
     propertyFields: [
@@ -830,6 +855,17 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+      },
       {
         key: 'onError',
         label: '失败策略',
@@ -858,6 +894,7 @@ export const nodeConfigs: NodeConfig[] = [
       templateImage: '',
       confidence: 0.9,
       moveDuration: 200,
+      moveMode: 'ease',
       onError: 'stop',
     },
     propertyFields: [
@@ -875,6 +912,17 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+      },
       {
         key: 'onError',
         label: '失败策略',
@@ -905,6 +953,7 @@ export const nodeConfigs: NodeConfig[] = [
       confidence: 0.9,
       value: '',
       moveDuration: 200,
+      moveMode: 'ease',
       onError: 'stop',
     },
     propertyFields: [
@@ -925,6 +974,18 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { needLocate: true, locateMode: 'image' } },
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { needLocate: true, locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200, showWhen: { needLocate: true } },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+        showWhen: { needLocate: true },
+      },
       {
         key: 'onError',
         label: '失败策略',
@@ -973,6 +1034,7 @@ export const nodeConfigs: NodeConfig[] = [
       direction: 'down',
       amount: 3,
       moveDuration: 200,
+      moveMode: 'ease',
       onError: 'stop',
     },
     propertyFields: [
@@ -1006,6 +1068,18 @@ export const nodeConfigs: NodeConfig[] = [
       { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { needLocate: true, locateMode: 'image' } },
       { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200, showWhen: { needLocate: true } },
       {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+        showWhen: { needLocate: true },
+      },
+      {
         key: 'onError',
         label: '失败策略',
         type: 'select',
@@ -1017,6 +1091,140 @@ export const nodeConfigs: NodeConfig[] = [
         showWhen: { needLocate: true, locateMode: 'image' },
       },
       { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 500 },
+    ],
+  },
+  {
+    type: 'system.mouseDown',
+    name: '鼠标按下',
+    category: 'system',
+    icon: CircleDot,
+    description: '在指定位置按下鼠标按键（不抬起），后续需配合鼠标抬起节点使用',
+    color: '#8b5cf6',
+    defaultParams: {
+      locateMode: 'coordinate',
+      x: 0,
+      y: 0,
+      templateImage: '',
+      confidence: 0.9,
+      button: 'left',
+      moveDuration: 200,
+      moveMode: 'ease',
+      onError: 'stop',
+    },
+    propertyFields: [
+      {
+        key: 'button',
+        label: '鼠标按键',
+        type: 'select',
+        defaultValue: 'left',
+        options: [
+          { label: '左键', value: 'left' },
+          { label: '右键', value: 'right' },
+          { label: '中键', value: 'middle' },
+        ],
+      },
+      {
+        key: 'locateMode',
+        label: '定位方式',
+        type: 'select',
+        defaultValue: 'coordinate',
+        options: [
+          { label: '坐标定位', value: 'coordinate' },
+          { label: '图片匹配', value: 'image' },
+        ],
+      },
+      { key: 'coordinate', label: '目标坐标', type: 'coordinate', showWhen: { locateMode: 'coordinate' } },
+      { key: 'templateImage', label: '模板图片', type: 'image-template', showWhen: { locateMode: 'image' } },
+      { key: 'confidence', label: '匹配置信度', type: 'number', defaultValue: 0.9, showWhen: { locateMode: 'image' } },
+      { key: 'moveDuration', label: '移动时长(ms)', type: 'number', defaultValue: 200 },
+      {
+        key: 'moveMode',
+        label: '移动模式',
+        type: 'select',
+        defaultValue: 'ease',
+        options: [
+          { label: '平滑（缓动，自然）', value: 'ease' },
+          { label: '匀速', value: 'linear' },
+        ],
+        description: '设为 0ms 时瞬移',
+      },
+      {
+        key: 'onError',
+        label: '失败策略',
+        type: 'select',
+        defaultValue: 'stop',
+        options: [
+          { label: '停止流程', value: 'stop' },
+          { label: '继续执行', value: 'continue' },
+        ],
+        showWhen: { locateMode: 'image' },
+      },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 200 },
+    ],
+  },
+  {
+    type: 'system.mouseUp',
+    name: '鼠标抬起',
+    category: 'system',
+    icon: Circle,
+    description: '抬起之前按下的鼠标按键，与鼠标按下节点配对使用',
+    color: '#8b5cf6',
+    defaultParams: {
+      button: 'left',
+    },
+    propertyFields: [
+      {
+        key: 'button',
+        label: '鼠标按键',
+        type: 'select',
+        defaultValue: 'left',
+        options: [
+          { label: '左键', value: 'left' },
+          { label: '右键', value: 'right' },
+          { label: '中键', value: 'middle' },
+        ],
+      },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 200 },
+    ],
+  },
+  {
+    type: 'system.keyDown',
+    name: '键盘按下',
+    category: 'system',
+    icon: CircleDot,
+    description: '按下指定键盘按键（不抬起），支持修饰键组合。后续需配合键盘抬起节点使用',
+    color: '#8b5cf6',
+    defaultParams: {
+      keyGroups: [{ keys: [] }],
+    },
+    propertyFields: [
+      {
+        key: 'keyGroups',
+        label: '按键组（按下顺序）',
+        type: 'keyboard-groups',
+        description: '支持修饰键+主键，按组顺序依次按下。例如要按 Shift+A，一组内选择 Shift 和 A',
+      },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 200 },
+    ],
+  },
+  {
+    type: 'system.keyUp',
+    name: '键盘抬起',
+    category: 'system',
+    icon: Circle,
+    description: '抬起之前按下的键盘按键，顺序与键盘按下节点相反。与键盘按下节点配对使用',
+    color: '#8b5cf6',
+    defaultParams: {
+      keyGroups: [{ keys: [] }],
+    },
+    propertyFields: [
+      {
+        key: 'keyGroups',
+        label: '按键组（抬起顺序）',
+        type: 'keyboard-groups',
+        description: '按照按下时的逆序抬起。例如先按的 Shift+A，这里先抬起 A 再抬起 Shift',
+      },
+      { key: 'postDelay', label: '结束后等待(ms)', type: 'number', defaultValue: 200 },
     ],
   },
   {

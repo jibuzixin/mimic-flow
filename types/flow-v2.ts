@@ -27,6 +27,10 @@ export type FlowNodeType =
   | 'system.scroll'
   | 'system.waitForImage'
   | 'system.sleep'
+  | 'system.mouseDown'
+  | 'system.mouseUp'
+  | 'system.keyDown'
+  | 'system.keyUp'
   // --- 控制流节点（调度层原生处理）---
   | 'control.start'
   | 'control.end'

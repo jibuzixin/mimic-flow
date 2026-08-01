@@ -140,10 +140,18 @@ export class SystemEngine implements FlowEngine {
       case 'system.rightClick':
       case 'system.hover':
         return this.executeMouseAction(node.nodeType, params, variablePool);
+      case 'system.mouseDown':
+        return this.executeMouseDown(params, variablePool);
+      case 'system.mouseUp':
+        return this.executeMouseUp(params);
       case 'system.input':
         return this.executeInput(params, variablePool);
       case 'system.keyboard':
         return this.executeKeyboard(params, variablePool);
+      case 'system.keyDown':
+        return this.executeKeyToggle(params, variablePool, 'down');
+      case 'system.keyUp':
+        return this.executeKeyToggle(params, variablePool, 'up');
       case 'system.scroll':
         return this.executeScroll(params, variablePool);
       case 'system.waitForImage':
@@ -189,9 +197,9 @@ export class SystemEngine implements FlowEngine {
       throw new Error(`未知定位方式: ${locateMode}`);
     }
 
-    const moveDuration = Number(params.moveDuration || 200);
-    this.robot.moveMouse(targetX, targetY);
-    await this.sleep(moveDuration);
+    const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
+    const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+    await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
 
     if (nodeType === 'system.hover') {
       return { x: targetX, y: targetY };
@@ -240,9 +248,9 @@ export class SystemEngine implements FlowEngine {
         targetY = result.y;
       }
 
-      const moveDuration = Number(params.moveDuration || 200);
-      this.robot.moveMouse(targetX, targetY);
-      await this.sleep(moveDuration);
+      const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
+      const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+      await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
       this.robot.mouseClick('left');
       await this.sleep(200);
     }
@@ -287,6 +295,84 @@ export class SystemEngine implements FlowEngine {
     return true;
   }
 
+  private async executeMouseDown(
+    params: any,
+    variablePool: Record<string, unknown>,
+  ): Promise<{ x: number; y: number }> {
+    this.ensureRobot();
+
+    const locateMode = params.locateMode || 'coordinate';
+    let targetX = 0;
+    let targetY = 0;
+
+    if (locateMode === 'coordinate') {
+      targetX = Number(this.resolveValue(params.x, variablePool) || 0);
+      targetY = Number(this.resolveValue(params.y, variablePool) || 0);
+    } else if (locateMode === 'image') {
+      const result = await this.locateImage(params, variablePool);
+      if (!result) {
+        const onError = params.onError || 'stop';
+        if (onError === 'continue') {
+          return { x: -1, y: -1 };
+        }
+        throw new Error('图片匹配失败，未找到目标位置');
+      }
+      targetX = result.x;
+      targetY = result.y;
+    } else {
+      throw new Error(`未知定位方式: ${locateMode}`);
+    }
+
+    const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
+    const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+    await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
+
+    const button = params.button || 'left';
+    this.robot.mouseToggle('down', button);
+
+    return { x: targetX, y: targetY };
+  }
+
+  private executeMouseUp(params: any): boolean {
+    this.ensureRobot();
+    const button = params.button || 'left';
+    this.robot.mouseToggle('up', button);
+    return true;
+  }
+
+  private async executeKeyToggle(
+    params: any,
+    variablePool: Record<string, unknown>,
+    direction: 'down' | 'up',
+  ): Promise<boolean> {
+    this.ensureRobot();
+
+    const keyGroups = Array.isArray(params.keyGroups) ? params.keyGroups : [];
+    const groupInterval = Number(params.groupInterval || 100);
+
+    for (let i = 0; i < keyGroups.length; i++) {
+      const group = keyGroups[i];
+      const keys = Array.isArray(group.keys) ? group.keys : [];
+
+      if (keys.length === 0) continue;
+
+      if (keys.length === 1) {
+        const keyName = this.normalizeKeyName(keys[0]);
+        this.robot.keyToggle(keyName, direction);
+      } else {
+        const modifierKeys = keys.slice(0, -1).map((k: string) => this.normalizeKeyName(k));
+        const mainKey = this.normalizeKeyName(keys[keys.length - 1]);
+        this.robot.keyToggle(mainKey, direction, modifierKeys);
+      }
+
+      if (i < keyGroups.length - 1) {
+        await this.sleep(groupInterval);
+      }
+    }
+
+    return true;
+  }
+
   private async executeScroll(
     params: any,
     variablePool: Record<string, unknown>,
@@ -316,9 +402,9 @@ export class SystemEngine implements FlowEngine {
         targetY = result.y;
       }
 
-      const moveDuration = Number(params.moveDuration || 200);
-      this.robot.moveMouse(targetX, targetY);
-      await this.sleep(moveDuration);
+      const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
+      const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+      await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
     }
 
     const direction = params.direction || 'down';
@@ -519,6 +605,66 @@ export class SystemEngine implements FlowEngine {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 平滑移动鼠标：在 duration 毫秒内，从当前位置插值移动到 (targetX, targetY)
+   * - duration = 0：立即瞬移
+   * - mode = 'ease'  默认，缓动（起步慢→加速→减速到位，自然）
+   * - mode = 'linear' 匀速
+   */
+  private async smoothMoveMouse(
+    targetX: number,
+    targetY: number,
+    duration: number,
+    mode: 'ease' | 'linear' = 'ease',
+  ): Promise<void> {
+    this.ensureRobot();
+
+    const dur = Math.max(0, Number(duration));
+    if (Number.isNaN(dur) || dur <= 0) {
+      this.robot.moveMouse(targetX, targetY);
+      return;
+    }
+
+    const startPos = this.robot.getMousePos();
+    const fromX = Number(startPos.x) || 0;
+    const fromY = Number(startPos.y) || 0;
+
+    const dx = targetX - fromX;
+    const dy = targetY - fromY;
+
+    // 如果距离为 0，就直接等待一段时间，保证和原来的行为兼容
+    if (dx === 0 && dy === 0) {
+      await this.sleep(dur);
+      return;
+    }
+
+    // 每步间隔 8ms ≈ 120fps，足够流畅
+    const stepInterval = 8;
+    const totalSteps = Math.max(1, Math.round(dur / stepInterval));
+    const actualInterval = dur / totalSteps;
+
+    for (let i = 1; i <= totalSteps; i++) {
+      const t = i / totalSteps;
+      let easeT: number;
+      if (mode === 'linear') {
+        easeT = t;
+      } else {
+        // easeInOutQuad：起步慢→加速→减速到位
+        easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      }
+      const x = Math.round(fromX + dx * easeT);
+      const y = Math.round(fromY + dy * easeT);
+      this.robot.moveMouse(x, y);
+
+      if (i < totalSteps) {
+        await this.sleep(actualInterval);
+      }
+    }
+
+    // 最后确保精准到达目标位置，消除累计舍入误差
+    this.robot.moveMouse(targetX, targetY);
   }
 
   async dispose(): Promise<void> {
