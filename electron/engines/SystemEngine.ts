@@ -345,11 +345,19 @@ export class SystemEngine implements FlowEngine {
   private clearHeldInputState(): void {
     try {
       if (!this.robot) return;
-      for (const btn of Array.from(this.pressedMouseButtons)) {
+      const heldButtons = Array.from(this.pressedMouseButtons);
+      const heldModifiers = Array.from(this.pressedModifierKeys);
+      if (heldButtons.length > 0 || heldModifiers.length > 0) {
+        this.log.info('[KEY/MOUSE 🔧 清理残留] 本次 segment 结束/中断，抬起所有未释放的按键', {
+          heldMouseButtons: heldButtons,
+          heldModifierKeys: heldModifiers,
+        });
+      }
+      for (const btn of heldButtons) {
         try { this.robot.mouseToggle('up', btn); } catch { /* noop */ }
       }
       this.pressedMouseButtons.clear();
-      for (const m of Array.from(this.pressedModifierKeys)) {
+      for (const m of heldModifiers) {
         try { this.robot.keyToggle(m, 'up'); } catch { /* noop */ }
       }
       this.pressedModifierKeys.clear();
@@ -390,15 +398,15 @@ export class SystemEngine implements FlowEngine {
       case 'system.hover':
         return this.executeMouseAction(node.nodeType, params, variablePool, emitLog);
       case 'system.mouseDown':
-        return this.executeMouseDown(params, variablePool);
+        return this.executeMouseDown(params, variablePool, emitLog);
       case 'system.mouseUp': {
         const resolved = this.resolveMouseUpParams(params, segment, currentIndex);
-        return this.executeMouseUp(resolved);
+        return this.executeMouseUp(resolved, emitLog);
       }
       case 'system.input':
-        return this.executeInput(params, variablePool);
+        return this.executeInput(params, variablePool, emitLog);
       case 'system.keyboard':
-        return this.executeKeyboard(params, variablePool);
+        return this.executeKeyboard(params, variablePool, emitLog);
       case 'system.keyDown':
         return this.executeKeyToggle(params, variablePool, 'down', emitLog);
       case 'system.keyUp': {
@@ -406,7 +414,7 @@ export class SystemEngine implements FlowEngine {
         return this.executeKeyToggle(resolved, variablePool, 'up', emitLog);
       }
       case 'system.scroll':
-        return this.executeScroll(params, variablePool);
+        return this.executeScroll(params, variablePool, emitLog);
       case 'system.waitForImage':
         return this.executeWaitForImage(params, variablePool, signal, onEvent);
       default:
@@ -563,8 +571,14 @@ export class SystemEngine implements FlowEngine {
   private async executeInput(
     params: any,
     variablePool: Record<string, unknown>,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<boolean> {
     this.ensureRobot();
+
+    const log = (msg: string, meta?: Record<string, unknown>) => {
+      this.log.info(msg, meta);
+      emitLog?.('info', msg, meta);
+    };
 
     const needLocate = params.needLocate === true;
 
@@ -587,10 +601,13 @@ export class SystemEngine implements FlowEngine {
         }
         targetX = result.x;
         targetY = result.y;
+      } else {
+        throw new Error(`未知定位方式: ${locateMode}`);
       }
 
       const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
       const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+      log(`[INPUT ⌨️ 定位] locateMode=${locateMode}，移动鼠标到 (${targetX},${targetY}) 并点击输入框`, { moveDuration, moveMode });
       await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
       this.robot.mouseClick('left');
       await this.sleep(200);
@@ -598,7 +615,11 @@ export class SystemEngine implements FlowEngine {
 
     const text = String(this.resolveValue(params.value, variablePool) || '');
     if (text) {
+      const preview = text.length > 200 ? text.slice(0, 200) + '…' : text;
+      log(`[INPUT ⌨️ 输入] typeString ${text.length} chars：${JSON.stringify(preview)}`);
       this.robot.typeString(text);
+    } else {
+      log(`[INPUT ⌨️ 输入] 文本为空，跳过 typeString`);
     }
 
     return true;
@@ -607,24 +628,43 @@ export class SystemEngine implements FlowEngine {
   private async executeKeyboard(
     params: any,
     variablePool: Record<string, unknown>,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<boolean> {
     this.ensureRobot();
 
+    const log = (msg: string, meta?: Record<string, unknown>) => {
+      this.log.info(msg, meta);
+      emitLog?.('info', msg, meta);
+    };
+
     const keyGroups = Array.isArray(params.keyGroups) ? params.keyGroups : [];
     const groupInterval = Number(params.groupInterval || 300);
+
+    if (keyGroups.length === 0) {
+      log(`[KEYBOARD ⌨️] keyGroups 为空，跳过`);
+      return true;
+    }
+    log(`[KEYBOARD ⌨️ 开始] 共 ${keyGroups.length} 组按键，groupInterval=${groupInterval}ms`);
 
     for (let i = 0; i < keyGroups.length; i++) {
       const group = keyGroups[i];
       const keys = Array.isArray(group.keys) ? group.keys : [];
 
-      if (keys.length === 0) continue;
+      if (keys.length === 0) {
+        log(`[KEYBOARD ⌨️ 组 ${i + 1}/${keyGroups.length}] keys 为空，跳过`);
+        continue;
+      }
 
-      if (keys.length === 1) {
-        const keyName = this.normalizeKeyName(keys[0]);
+      const normalized = keys.map((k: string) => this.normalizeKeyName(k));
+
+      if (normalized.length === 1) {
+        const keyName = normalized[0];
+        log(`[KEYBOARD ⌨️ 组 ${i + 1}/${keyGroups.length}] 单击 keyTap(${keyName})`);
         this.robot.keyTap(keyName);
       } else {
-        const modifierKeys = keys.slice(0, -1).map((k: string) => this.normalizeKeyName(k));
-        const mainKey = this.normalizeKeyName(keys[keys.length - 1]);
+        const modifierKeys = normalized.slice(0, -1);
+        const mainKey = normalized[normalized.length - 1];
+        log(`[KEYBOARD ⌨️ 组 ${i + 1}/${keyGroups.length}] 快捷键 keyTap(${mainKey}, modifiers=[${modifierKeys.join(', ')}])`);
         this.robot.keyTap(mainKey, modifierKeys);
       }
 
@@ -632,6 +672,7 @@ export class SystemEngine implements FlowEngine {
         await this.sleep(groupInterval);
       }
     }
+    log(`[KEYBOARD ⌨️ 结束] 全部 ${keyGroups.length} 组按键执行完成`);
 
     return true;
   }
@@ -639,8 +680,14 @@ export class SystemEngine implements FlowEngine {
   private async executeMouseDown(
     params: any,
     variablePool: Record<string, unknown>,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<{ x: number; y: number }> {
     this.ensureRobot();
+
+    const log = (msg: string, meta?: Record<string, unknown>) => {
+      this.log.info(msg, meta);
+      emitLog?.('info', msg, meta);
+    };
 
     const locateMode = params.locateMode || 'coordinate';
     let targetX = 0;
@@ -654,6 +701,7 @@ export class SystemEngine implements FlowEngine {
       if (!result) {
         const onError = params.onError || 'stop';
         if (onError === 'continue') {
+          log(`[MOUSEDOWN 🖱️ 按下] 图片匹配失败，onError=continue → 跳过`, { locateMode });
           return { x: -1, y: -1 };
         }
         throw new Error('图片匹配失败，未找到目标位置');
@@ -666,10 +714,10 @@ export class SystemEngine implements FlowEngine {
 
     const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
     const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+    const button = params.button || 'left';
+    log(`[MOUSEDOWN 🖱️ 按下] locateMode=${locateMode}，移动到 (${targetX},${targetY})，mouseToggle(down, ${button})，moveDuration=${moveDuration}ms`, { moveMode });
     await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
 
-    // 注意：robotjs 的 mouseToggle 签名是 mouseToggle(state, button)，state 在前 button 在后
-    const button = params.button || 'left';
     this.robot.mouseToggle('down', button);
     this.pressedMouseButtons.add(button);
 
@@ -683,6 +731,7 @@ export class SystemEngine implements FlowEngine {
     this.robot.dragMouse(jx + 3, jy + 2);
     await this.sleep(20);
     this.robot.dragMouse(jx, jy);
+    log(`[MOUSEDOWN 🖱️ 按下] ${button} 键保持按下，完成 Finder 抖动 (±3px) 激活拖拽判定`);
 
     // 入运行时按下栈：后面的 mouseUp autoSync=true 时会自动从栈顶取对应 button
     this.pressStack.push({ type: 'mouseDown', button });
@@ -743,10 +792,20 @@ export class SystemEngine implements FlowEngine {
     return { keyGroups: Array.isArray(params?.keyGroups) ? params.keyGroups : emptyKeyGroups };
   }
 
-  private executeMouseUp(params: any): boolean {
+  private executeMouseUp(
+    params: any,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
+  ): boolean {
     this.ensureRobot();
+
+    const log = (msg: string, meta?: Record<string, unknown>) => {
+      this.log.info(msg, meta);
+      emitLog?.('info', msg, meta);
+    };
+
     // 注意：robotjs 的 mouseToggle 签名是 mouseToggle(state, button)，state 在前 button 在后
     const button = params.button || 'left';
+    log(`[MOUSEUP 🖱️ 抬起] mouseToggle(up, ${button})，当前 pressedMouseButtons=[${Array.from(this.pressedMouseButtons).join(', ')}]`);
     this.robot.mouseToggle('up', button);
     this.pressedMouseButtons.delete(button);
     return true;
@@ -864,15 +923,21 @@ export class SystemEngine implements FlowEngine {
   private async executeScroll(
     params: any,
     variablePool: Record<string, unknown>,
+    emitLog?: (level: 'info' | 'warn' | 'error', message: string, data?: Record<string, unknown>) => void,
   ): Promise<boolean> {
     this.ensureRobot();
 
+    const log = (msg: string, meta?: Record<string, unknown>) => {
+      this.log.info(msg, meta);
+      emitLog?.('info', msg, meta);
+    };
+
     const needLocate = params.needLocate === true;
+    let targetX = 0;
+    let targetY = 0;
 
     if (needLocate) {
       const locateMode = params.locateMode || 'coordinate';
-      let targetX = 0;
-      let targetY = 0;
 
       if (locateMode === 'coordinate') {
         targetX = Number(this.resolveValue(params.x, variablePool) || 0);
@@ -882,16 +947,20 @@ export class SystemEngine implements FlowEngine {
         if (!result) {
           const onError = params.onError || 'stop';
           if (onError === 'continue') {
+            log(`[SCROLL 📜 滚动] 图片匹配失败，onError=continue → 跳过`, { locateMode });
             return false;
           }
           throw new Error('图片匹配失败，未找到滚动位置');
         }
         targetX = result.x;
         targetY = result.y;
+      } else {
+        throw new Error(`未知定位方式: ${locateMode}`);
       }
 
       const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
       const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+      log(`[SCROLL 📜 定位] locateMode=${locateMode}，移动鼠标到 (${targetX},${targetY})`, { moveDuration, moveMode });
       await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
     }
 
@@ -916,6 +985,7 @@ export class SystemEngine implements FlowEngine {
         break;
     }
 
+    log(`[SCROLL 📜 滚动] direction=${direction}，amount=${amount}，scrollMouse(x=${scrollX}, y=${scrollY})`);
     this.robot.scrollMouse(scrollX, scrollY);
 
     return true;

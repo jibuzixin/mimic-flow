@@ -22,6 +22,25 @@ export class MidsceneEngine implements FlowEngine {
   private currentOnEvent: ((event: EngineEvent) => void) | null = null;
   private currentSegment: FlowNode[] = [];
   private isStopping = false;
+  /** 匹配 Midscene 内部的「按键/点击/滚动」相关关键词，把 console 输出转发到软件日志页 */
+  private static readonly KEY_LOG_REGEX = /(keyDown|keyup|keyboard|press|tap|type|click|mouse|scroll|drag|modifier|按下|抬起|按键|修饰符|快捷键|keyTap|keyToggle)/i;
+  /** 临时保存劫持前的原生 console 引用（try 块定义的 const 在 catch 里取不到，放实例字段就两边都能访问） */
+  private _savedConsole: {
+    log?: (...args: any[]) => void;
+    info?: (...args: any[]) => void;
+    warn?: (...args: any[]) => void;
+    error?: (...args: any[]) => void;
+    inHook?: boolean;
+  } | null = null;
+
+  private _restoreConsole(): void {
+    if (!this._savedConsole) return;
+    if (this._savedConsole.log) console.log = this._savedConsole.log;
+    if (this._savedConsole.info) console.info = this._savedConsole.info;
+    if (this._savedConsole.warn) console.warn = this._savedConsole.warn;
+    if (this._savedConsole.error) console.error = this._savedConsole.error;
+    this._savedConsole = null;
+  }
 
   private requireMidscene(moduleName: string): any {
     const require = createRequire(import.meta.url);
@@ -138,7 +157,8 @@ export class MidsceneEngine implements FlowEngine {
             return;
           }
           this.log.info('[MidsceneEngine] Task started', { tip });
-          if (this.currentOnEvent && this.currentSegment.length > 0) {
+          if (this.currentOnEvent) {
+            this.currentOnEvent({ type: 'log', level: 'info', message: `[MIDSCENE 🤖 步骤] ${tip}` });
             const currentIndex = this.currentSegment.findIndex(
               (n) => tip.includes(n.nodeName || n.nodeType)
             );
@@ -149,6 +169,16 @@ export class MidsceneEngine implements FlowEngine {
               });
             }
           }
+        },
+        onStep: (step: any) => {
+          try {
+            const text = typeof step === 'string' ? step : (step?.tip || step?.message || step?.description || JSON.stringify(step));
+            if (!text || text === '{}') return;
+            this.log.info('[MidsceneEngine] Step', { step: text });
+            if (this.currentOnEvent) {
+              this.currentOnEvent({ type: 'log', level: 'info', message: `[MIDSCENE 🤖 执行] ${text}` });
+            }
+          } catch { /* noop */ }
         },
       });
 
@@ -212,8 +242,54 @@ export class MidsceneEngine implements FlowEngine {
     });
 
     try {
+      // 在 Midscene 执行期间劫持 console.log/info/warn/error：
+      // 把「按键/鼠标/滚动/修饰符」相关的详细输出同步写入 this.log（软件日志页能看到）
+      // + 推给前端 onEvent（运行时控制台也能看到）。Midscene 内部本身会 console.log 每一次 keyDown/keyUp。
+      // 用实例字段 _savedConsole 保存引用，保证 try/catch 两条路径都能正确还原。
+      this._savedConsole = {
+        log: console.log.bind(console),
+        info: console.info.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console),
+        inHook: false,
+      };
+      const forward = (level: 'info' | 'warn' | 'error', args: any[]) => {
+        const saved = this._savedConsole;
+        if (!saved || saved.inHook) return; // 防止递归：this.log.info 内部也会 console.log
+        try {
+          const line = args
+            .map((a) => {
+              if (a == null) return String(a);
+              if (typeof a === 'string') return a;
+              if (a instanceof Error) return a.message + '\n' + (a.stack || '');
+              try { return JSON.stringify(a); } catch { return String(a); }
+            })
+            .join(' ');
+          if (line.length > 0 && MidsceneEngine.KEY_LOG_REGEX.test(line)) {
+            saved.inHook = true;
+            const prefix = level === 'warn' ? '[MIDSCENE ⚠️]' : level === 'error' ? '[MIDSCENE ❌]' : '[MIDSCENE 🤖]';
+            const msg = `${prefix} ${line}`;
+            if (level === 'error') this.log.error(msg);
+            else if (level === 'warn') this.log.warn(msg);
+            else this.log.info(msg);
+            if (this.currentOnEvent) {
+              this.currentOnEvent({ type: 'log', level, message: msg });
+            }
+          }
+        } catch {
+          /* noop */
+        } finally {
+          if (saved) saved.inHook = false;
+        }
+      };
+      console.log = (...args: any[]) => { this._savedConsole?.log?.apply(console, args); forward('info', args); };
+      console.info = (...args: any[]) => { this._savedConsole?.info?.apply(console, args); forward('info', args); };
+      console.warn = (...args: any[]) => { this._savedConsole?.warn?.apply(console, args); forward('warn', args); };
+      console.error = (...args: any[]) => { this._savedConsole?.error?.apply(console, args); forward('error', args); };
+
       const runPromise = this.agent.runYaml(yaml);
       const { result } = await Promise.race([runPromise, abortPromise]);
+      this._restoreConsole();
       signal.removeEventListener('abort', abortHandler);
 
       const duration = Date.now() - startTime;
@@ -280,6 +356,8 @@ export class MidsceneEngine implements FlowEngine {
 
       return { success: true, outputs };
     } catch (error) {
+      // 错误/取消路径也要还原 console，防止后面的全局 console 被永久劫持
+      this._restoreConsole();
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
 

@@ -169,7 +169,7 @@ export default function Logs() {
 
   const nodeLevelLogs = useMemo(() => {
     if (!detail?.logs) return [];
-    
+
     const filtered = detail.logs.filter((log) => {
       const msg = log.message;
       return (
@@ -185,15 +185,22 @@ export default function Logs() {
         msg.includes('✓') ||
         msg.includes('❌') ||
         msg.includes('⏱️') ||
-        msg.includes('工作流')
+        msg.includes('工作流') ||
+        // 引擎按键 / 鼠标 / 滚动 / 输入 / 清理 / AI 细节（之前被白名单过滤掉，现在也显示）
+        msg.startsWith('[KEY') ||
+        msg.startsWith('[INPUT ⌨️') ||
+        msg.startsWith('[CLICK') ||
+        msg.startsWith('[MOUSE') ||
+        msg.startsWith('[SCROLL') ||
+        msg.startsWith('[MIDSCREEN')
       );
     });
-    
+
     const seen = new Set<string>();
     return filtered.filter((log) => {
       const msg = log.message;
       const nodeId = (log as any).nodeId || '';
-      
+
       if (msg.includes('开始执行节点')) {
         const key = `start-${nodeId}`;
         if (seen.has(key)) return false;
@@ -433,9 +440,17 @@ export default function Logs() {
                           const isWorkflowStart = log.message.includes('▶️') || log.message.includes('工作流开始');
                           const isWorkflowEnd = log.message.includes('🏁') || log.message.includes('工作流结束') || log.message.includes('工作流执行成功') || log.message.includes('工作流执行失败');
                           const isSleep = log.message.includes('⏱️');
-                          
+                          // 引擎细粒度事件：按键 / 输入 / 点击 / 鼠标 / 滚动 / Midscene AI 细节
+                          const isKeyEvt = (msg: string) => msg.startsWith('[KEYDOWN') || msg.startsWith('[KEYUP') || msg.startsWith('[KEYBOARD') || msg.startsWith('[KEY/MOUSE');
+                          const isInputEvt = (msg: string) => msg.startsWith('[INPUT ⌨️');
+                          const isClickEvt = (msg: string) => msg.startsWith('[CLICK');
+                          const isMouseEvent = (msg: string) => msg.startsWith('[MOUSEDOWN') || msg.startsWith('[MOUSEUP') || (msg.startsWith('[MOUSE') && !isClickEvt(msg));
+                          const isScrollEvt = (msg: string) => msg.startsWith('[SCROLL');
+                          const isMidsceneEvt = (msg: string) => msg.startsWith('[MIDSCREEN');
+                          const msg = log.message;
+
                           const showData = log.data && Object.keys(log.data as any).length > 0 && !isNodeEnd;
-                          
+
                           let displayMessage = log.message;
                           const data = log.data as any;
                           if (isNodeEnd && data?.duration !== undefined && data?.duration !== null) {
@@ -459,17 +474,28 @@ export default function Logs() {
                               key={idx}
                               className={cn(
                                 'text-sm rounded-lg border p-2.5',
-                                log.level === 'error' && 'bg-rose-50 border-rose-100 text-rose-800',
-                                log.level === 'warn' && 'bg-amber-50 border-amber-100 text-amber-800',
+                                log.level === 'error' && !isMidsceneEvt(msg) && 'bg-rose-50 border-rose-100 text-rose-800',
+                                log.level === 'warn' && !isMidsceneEvt(msg) && 'bg-amber-50 border-amber-100 text-amber-800',
                                 log.level === 'debug' && 'bg-slate-100 border-slate-200 text-slate-600',
-                                log.level === 'info' && !isNodeStart && !isNodeEnd && !isVariable && !isWorkflowStart && !isWorkflowEnd && !isSleep && 'bg-slate-50 border-slate-100 text-slate-700',
+                                log.level === 'info' && !isNodeStart && !isNodeEnd && !isVariable && !isWorkflowStart && !isWorkflowEnd && !isSleep
+                                  && !isKeyEvt(msg) && !isInputEvt(msg) && !isClickEvt(msg) && !isMouseEvent(msg) && !isScrollEvt(msg) && !isMidsceneEvt(msg)
+                                  && 'bg-slate-50 border-slate-100 text-slate-700',
                                 isNodeStart && 'bg-sky-50 border-sky-100 text-sky-800',
                                 isNodeEnd && log.level === 'info' && 'bg-emerald-50 border-emerald-100 text-emerald-800',
                                 isLogOutput && log.level === 'info' && 'bg-violet-50/50 border-violet-100 text-violet-800',
                                 !isLogOutput && isVariable && log.level === 'info' && 'bg-violet-50/50 border-violet-100 text-violet-800',
                                 isWorkflowStart && 'bg-indigo-50 border-indigo-100 text-indigo-800',
                                 isWorkflowEnd && 'bg-emerald-50 border-emerald-200 text-emerald-800 font-medium',
-                                isSleep && 'bg-amber-50 border-amber-100 text-amber-800'
+                                isSleep && 'bg-amber-50 border-amber-100 text-amber-800',
+                                // 引擎事件专属配色
+                                isKeyEvt(msg) && 'bg-sky-50/80 border-sky-200 text-sky-900',
+                                isInputEvt(msg) && 'bg-indigo-50/80 border-indigo-200 text-indigo-900',
+                                isClickEvt(msg) && 'bg-emerald-50/80 border-emerald-200 text-emerald-900',
+                                isMouseEvent(msg) && 'bg-orange-50/80 border-orange-200 text-orange-900',
+                                isScrollEvt(msg) && 'bg-violet-50/80 border-violet-200 text-violet-900',
+                                isMidsceneEvt(msg) && log.level === 'info' && 'bg-fuchsia-50/80 border-fuchsia-200 text-fuchsia-900',
+                                isMidsceneEvt(msg) && log.level === 'warn' && 'bg-amber-100 border-amber-300 text-amber-900',
+                                isMidsceneEvt(msg) && log.level === 'error' && 'bg-rose-100 border-rose-300 text-rose-900',
                               )}
                             >
                               <div className="flex items-center gap-2 mb-1">
