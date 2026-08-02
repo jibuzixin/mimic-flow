@@ -2,6 +2,7 @@
 
 type MimicIpcChannel =
   | 'app:get-platform'
+  | 'app:get-version'
   | 'app:get-versions'
   | 'store:get'
   | 'store:set'

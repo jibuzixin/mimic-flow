@@ -40,6 +40,7 @@ import {
   Heart,
   Github as GithubIcon,
   Globe,
+  Home as HomeIcon,
   MousePointerClick,
 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
@@ -50,6 +51,9 @@ import { MODEL_TAG_META } from '../../types';
 import type { IpcResponse } from '../../types/flow';
 import { v4 as uuidv4 } from 'uuid';
 import { nodeConfigs, categoryLabels, type NodeCategory } from '../components/editor/nodeConfigs';
+// 直接从 package.json 读版本号，避免依赖 Electron 主进程重新编译
+import pkg from '../../package.json' with { type: 'json' };
+const APP_VERSION = (pkg as any)?.version || '0.2.2';
 
 const TAG_ICONS: Record<ModelTag, React.ElementType> = {
   multimodal: Eye,
@@ -645,6 +649,8 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   }, []);
   const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0, systemNodePostDelay: 500 });
   const [systemDpiScale, setSystemDpiScale] = useState(1.0);
+  // 版本号直接从 package.json 常量读（见 APP_VERSION 顶部），不走 IPC，避免开发模式下读到 Electron 自身版本（如 32.x）
+  const appVersion = APP_VERSION;
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState('simple');
@@ -1831,10 +1837,43 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                 </div>
                 <div className="space-y-1">
                   <div className="text-lg font-semibold text-gray-800">mimic-flow</div>
-                  <div className="text-sm text-gray-500">版本 0.1.0</div>
+                  <div className="text-sm text-gray-500">版本 {appVersion}</div>
                   <div className="text-sm text-gray-600">
                     基于 AI 的可视化桌面自动化工作流编排工具，让复杂的电脑操作变得简单直观。
                   </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <Heart className="w-4 h-4 text-rose-500" />
+                  相关链接
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => window.mimic?.invoke('shell:open-external', 'https://jibuzixin.github.io/mimic-flow/')}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center shrink-0">
+                      <HomeIcon className="w-4 h-4 text-sky-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">官方主页</div>
+                      <div className="text-xs text-gray-500">jibuzixin.github.io/mimic-flow</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => window.mimic?.invoke('shell:open-external', 'https://github.com/jibuzixin/mimic-flow')}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                      <GithubIcon className="w-4 h-4 text-gray-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">GitHub 仓库</div>
+                      <div className="text-xs text-gray-500">github.com/jibuzixin/mimic-flow</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -1868,21 +1907,12 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
               <div className="border-t border-gray-100 pt-4">
                 <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                   <GithubIcon className="w-4 h-4 text-gray-600" />
-                  联系方式
+                  联系方式 & 社区
                 </div>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => window.mimic?.invoke('shell:open-external', 'https://github.com/jibuzixin/mimic-flow')}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                      <GithubIcon className="w-4 h-4 text-gray-600" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-800">GitHub</div>
-                      <div className="text-xs text-gray-500">github.com/jibuzixin/mimic-flow</div>
-                    </div>
-                  </button>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-xs text-gray-500 leading-relaxed">
+                    如有问题或建议，欢迎通过 GitHub Issue 反馈，我们会尽快回复。
+                  </div>
                 </div>
               </div>
 

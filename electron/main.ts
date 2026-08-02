@@ -303,6 +303,19 @@ app.on('window-all-closed', () => {
 
 // IPC handlers
 ipcMain.handle('app:get-platform', () => process.platform);
+ipcMain.handle('app:get-version', () => {
+  try {
+    const packageJsonPath = join(app.getAppPath(), 'package.json');
+    const requireFromApp = createRequire(packageJsonPath);
+    const pkg = requireFromApp(packageJsonPath);
+    // 开发模式下 app.getVersion() 会返回 Electron 自身版本（如 32.x），必须显式从 package.json 读取
+    if (typeof pkg?.version === 'string' && pkg.version.length > 0) return pkg.version;
+    return app.getVersion();
+  } catch (e) {
+    console.error('Failed to read app version from package.json:', e);
+    return app.getVersion();
+  }
+});
 ipcMain.handle('app:get-versions', () => ({
   node: process.versions.node,
   chrome: process.versions.chrome,

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type IpcChannel =
   | 'app:get-platform'
+  | 'app:get-version'
   | 'app:get-versions'
   | 'store:get'
   | 'store:set'
