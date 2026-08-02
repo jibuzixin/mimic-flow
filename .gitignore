@@ -10,6 +10,15 @@ release
 .idea
 midscene_run
 
+# 锁文件冲突：流水线用 npm ci（认 package-lock.json），删除 yarn.lock 避免本地 npm/yarn 混用版本漂移；如团队有人用 yarn 可按需取消注释
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# 本地临时副本（常见 Finder/IDE 自动创建的"xxx copy.ext"）
+**/* copy.*
+**/*\ copy.*
+
 # 本地数据
 .data/
 userData/
@@ -34,3 +43,20 @@ temp/
 workflows/
 logs/
 midscene-reports/
+
+# macOS 额外
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows 额外
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux 额外
+*~
+
+# electron-builder 临时
+~/Library/Caches/electron-builder
+~/Library/Caches/electron

@@ -51,8 +51,8 @@ import { MODEL_TAG_META } from '../../types';
 import type { IpcResponse } from '../../types/flow';
 import { v4 as uuidv4 } from 'uuid';
 import { nodeConfigs, categoryLabels, type NodeCategory } from '../components/editor/nodeConfigs';
-// 直接从 package.json 读版本号，避免依赖 Electron 主进程重新编译
-import pkg from '../../package.json' with { type: 'json' };
+// 直接从 package.json 读版本号（tsconfig resolveJsonModule 已开启，Vite 原生支持 JSON import，不用 with type:json 以兼容更广泛的工具链版本）
+import pkg from '../../package.json';
 const APP_VERSION = (pkg as any)?.version || '0.2.2';
 
 const TAG_ICONS: Record<ModelTag, React.ElementType> = {
