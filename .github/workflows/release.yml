@@ -82,6 +82,16 @@ jobs:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           CL: ${{ runner.os == 'Windows' && '/DNOMINMAX' || '' }}
 
+      - name: Rebuild native modules for Electron ABI
+        run: npx electron-builder install-app-deps
+        env:
+          # 对 robotjs / better-sqlite3 / sharp 等 .node 原生模块，强制按 Electron 32 内部的
+          # NODE_MODULE_VERSION 重新编译，避免出现 "Module version mismatch. Expected XXX, Got YYY"
+          # 导致主进程 require 时直接崩溃，用户看到的就是"弹一下图标就没了"
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          SHARP_IGNORE_GLOBAL_LIBVIPS: "1"
+          SHARP_INSTALL_FALLBACK: "1"
+
       - name: Generate app icons
         run: npm run generate:icons
 
