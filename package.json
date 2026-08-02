@@ -94,9 +94,7 @@
       "dist-electron/**/*",
       "resources/**/*",
       "node_modules/**/*",
-      "!node_modules/.cache/**/*",
-      "!node_modules/**/*.{md,MD}",
-      "!node_modules/**/{test,__tests__,tests,example,examples,docs,.github}/**/*"
+      "!node_modules/.cache/**/*"
     ],
     "asarUnpack": [
       "node_modules/@midscene/**",
