@@ -654,12 +654,53 @@ function WorkflowEditorInner() {
   }, [nodes, edges, deleteNode, removeEdge]);
 
   useEffect(() => {
+    // 判断一个 DOM 元素是否是「可交互」的：在此类元素上按 Backspace/Delete 应优先给元素自身处理（删除字符/折叠等），不要误删流程图节点/连线
+    const isInteractiveElement = (el: HTMLElement | EventTarget | null): boolean => {
+      if (!el) return false;
+      const target = el as HTMLElement;
+      const tag = target.tagName;
+      if (!tag) return false;
+      // 所有原生可输入/可点击组件
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'OPTION'
+        || tag === 'BUTTON' || tag === 'A' || tag === 'DETAILS' || tag === 'SUMMARY'
+        || tag === 'VIDEO' || tag === 'AUDIO' || tag === 'OBJECT'
+        || tag === 'PROGRESS' || tag === 'METER') return true;
+      // div/span 等做的 contentEditable / 可编辑伪输入框（如 VariableInput）
+      if (target.isContentEditable) return true;
+      // role=combobox/listbox/menuitem/option/button/link/textbox/searchbox/spinbutton/slider 等 ARIA 可交互
+      const role = target.getAttribute && target.getAttribute('role');
+      if (role) {
+        const interactiveRoles = new Set(['combobox', 'listbox', 'menu', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
+          'option', 'button', 'link', 'textbox', 'searchbox', 'spinbutton', 'slider', 'switch', 'tab', 'tabpanel',
+          'tree', 'treeitem', 'grid', 'gridcell', 'radio', 'checkbox', 'option', 'dialog', 'alertdialog']);
+        if (interactiveRoles.has(role)) return true;
+      }
+      // 有 tabindex 但不是 node/edge（自定义的可焦点元素，如输入框下拉）
+      const tabIdx = target.getAttribute && target.getAttribute('tabindex');
+      if (tabIdx !== null && tabIdx !== undefined && parseInt(tabIdx, 10) >= 0) {
+        // 注意：react-flow 的节点本身也可能有 tabindex，但 react-flow 节点的 className 一般带 react-flow__node
+        const cls = typeof target.className === 'string' ? target.className : '';
+        if (!cls.includes('react-flow__node') && !cls.includes('react-flow__edge')) return true;
+      }
+      // 向上递归一层（有些点击在 label 或图标内，实际包着 input/button）
+      if (target.parentElement) return isInteractiveElement(target.parentElement);
+      return false;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-          return;
-        }
+        // ① 录制按键期间（PropertyPanel 在 document.body 打的全局标志）：严禁删节点，录制需要能捕获 Backspace/Delete
+        try {
+          if (document.body.dataset.keyRecording === 'true') return;
+        } catch { /* noop */ }
+        // ② 其它组件已经 preventDefault 了：说明事件已被接管（比如输入框、快捷键组件）
+        if (e.defaultPrevented) return;
+        // ③ 事件目标本身是可交互元素：让目标处理 Backspace（删除字符等）
+        if (isInteractiveElement(e.target)) return;
+        // ④ 当前焦点 activeElement 是可交互元素：也让焦点元素处理
+        try {
+          if (document.activeElement && isInteractiveElement(document.activeElement)) return;
+        } catch { /* noop */ }
         e.preventDefault();
         onDelete();
       }

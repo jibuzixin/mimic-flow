@@ -174,6 +174,8 @@ const KeyboardGroupsEditor: React.FC<KeyboardGroupsEditorProps> = ({ value, onCh
   const startRecording = (index: number) => {
     if (recordingIndex !== null) return;
     setRecordingIndex(index);
+    // 全局标志：告诉 WorkflowEditor 「正在录制按键期间 Backspace 不要删节点」
+    try { document.body.setAttribute('data-key-recording', 'true'); } catch { /* noop */ }
 
     const pressedKeys = new Set<string>();
 
@@ -205,8 +207,10 @@ const KeyboardGroupsEditor: React.FC<KeyboardGroupsEditorProps> = ({ value, onCh
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // capture 阶段：先阻止任何上层监听器（WorkflowEditor 的 window capture）拿到这个事件
       e.preventDefault();
       e.stopPropagation();
+      try { e.stopImmediatePropagation(); } catch { /* noop */ }
       const key = normalizeKey(e);
       if (!pressedKeys.has(key)) {
         pressedKeys.add(key);
@@ -216,6 +220,7 @@ const KeyboardGroupsEditor: React.FC<KeyboardGroupsEditorProps> = ({ value, onCh
     const handleKeyUp = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      try { e.stopImmediatePropagation(); } catch { /* noop */ }
       const keys = Array.from(pressedKeys);
       updateGroup(index, { keys });
       cleanup();
@@ -224,6 +229,7 @@ const KeyboardGroupsEditor: React.FC<KeyboardGroupsEditorProps> = ({ value, onCh
     const cleanup = () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       document.removeEventListener('keyup', handleKeyUp, true);
+      try { document.body.removeAttribute('data-key-recording'); } catch { /* noop */ }
       setRecordingIndex(null);
       recordingRef.current = null;
     };
