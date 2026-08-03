@@ -82,7 +82,7 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
     error: '#ef4444',
   };
 
-  const { setSelectedNode } = useWorkflowStore();
+  const { setSelectedNode, updateNode } = useWorkflowStore();
   const { uiSettings } = useAppStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(data.label);
@@ -232,16 +232,20 @@ export const CustomNode: React.FC<NodeProps<CustomNodeType>> = ({ id, data, sele
 
   const handleBlur = useCallback(() => {
     setIsEditing(false);
-    if (editName !== data.label) {
-      // TODO: 更新节点名称
+    const finalName = editName.trim() || data.label;
+    if (finalName !== data.label) {
+      // 写入 workflowStore 的节点 nodeName 字段（和属性面板 handleNameChange 保持一致）
+      updateNode(id, { nodeName: finalName });
     }
-  }, [editName, data.label]);
+  }, [editName, data.label, id, updateNode]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       handleBlur();
     }
     if (e.key === 'Escape') {
+      // Esc 回滚到原始名称，不保存
       setIsEditing(false);
       setEditName(data.label);
     }

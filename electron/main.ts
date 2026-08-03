@@ -143,7 +143,8 @@ function createFloatingWindow(): Promise<BrowserWindow> {
     floatingWindow.webContents.once('did-fail-load', handleFailed as any);
 
     if (isDev) {
-      floatingWindow.loadURL('http://localhost:5173/floating');
+      // 项目用 HashRouter：路由路径必须带 #/ 前缀，否则 HashRouter 匹配不到，渲染首页 Sidebar
+      floatingWindow.loadURL('http://localhost:5173/#/floating');
     } else {
       floatingWindow.loadFile(getDistPath('index.html'), {
         hash: '/floating',
@@ -174,6 +175,106 @@ function sendToFloating(channel: string, data: unknown) {
   if (floatingWindow && !floatingWindow.isDestroyed()) {
     floatingWindow.webContents.send(channel, data);
   }
+}
+
+/**
+ * 自定义右下角通知窗口（100% 保证视觉可见，不依赖 Windows 通知中心权限/快捷方式注册）
+ * 当用户开启了「缩小为悬浮小窗」，则自动使用浮窗显示状态，不额外弹通知。
+ * @param title 通知标题
+ * @param body  通知副标题
+ * @param status success | failed | stopped
+ */
+function showCustomNotification(title: string, body: string, status: 'success' | 'failed' | 'stopped') {
+  // 如果已经有浮窗（用户开启了缩小为悬浮小窗），直接复用浮窗展示，不重复弹
+  if (floatingWindow && !floatingWindow.isDestroyed()) return;
+
+  try {
+    const display = screen.getPrimaryDisplay();
+    const displayWidth = display.workAreaSize.width;
+    const displayHeight = display.workAreaSize.height;
+    const notifWidth = 360;
+    const notifHeight = 100;
+    const margin = 24;
+
+    const notifWin = new BrowserWindow({
+      width: notifWidth,
+      height: notifHeight,
+      x: displayWidth - notifWidth - margin,
+      y: displayHeight - notifHeight - margin,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: true,
+      roundedCorners: true,
+      show: false,
+      focusable: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const accentColor = status === 'success' ? '#10b981' : status === 'failed' ? '#ef4444' : '#64748b';
+    const accentBg = status === 'success' ? 'rgba(16,185,129,0.12)' : status === 'failed' ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.12)';
+    const emoji = status === 'success' ? '✅' : status === 'failed' ? '❌' : '⏹️';
+
+    const html = `
+      <html><head><meta charset="utf-8"><style>
+        * { box-sizing: border-box; }
+        html, body { margin:0; padding:0; background:transparent; height:100%; }
+        .wrap { width:100%; height:100%; border-radius:16px; background:rgba(255,255,255,0.98);
+                box-shadow: 0 12px 40px rgba(0,0,0,0.15); border:1px solid rgba(0,0,0,0.06);
+                padding: 14px 16px; display:flex; gap:12px; align-items:flex-start; cursor:pointer;
+                font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+        .bar { width:4px; min-height:100%; border-radius: 4px; background:${accentColor}; flex-shrink:0; }
+        .icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+                background:${accentBg}; font-size:15px; flex-shrink:0; margin-top:1px; }
+        .content { flex:1; min-width:0; }
+        .title { font-weight:600; color:#1e293b; font-size:14px; line-height:1.4; }
+        .body { margin-top:4px; color:#475569; font-size:12px; line-height:1.5; }
+        .time { position:absolute; right:14px; top:12px; color:#94a3b8; font-size:11px; }
+      </style></head>
+      <body>
+        <div class="wrap" id="wrap">
+          <div class="bar"></div>
+          <div class="icon">${emoji}</div>
+          <div class="content">
+            <div class="title">${title}</div>
+            <div class="body">${body}</div>
+          </div>
+        </div>
+        <script>
+          const wrap = document.getElementById('wrap');
+          let timer = null;
+          function closeMe() {
+            if (timer) clearTimeout(timer);
+            try { window.close(); } catch {}
+          }
+          wrap && wrap.addEventListener('click', closeMe);
+          timer = setTimeout(closeMe, 5000);
+          // 防止透明窗口未渲染完就关闭
+          setTimeout(() => { try { document.body.style.opacity = '1'; } catch {} }, 0);
+        </script>
+      </body></html>
+    `;
+
+    notifWin.once('ready-to-show', () => {
+      notifWin.showInactive();
+    });
+    notifWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {
+      notifWin.loadURL("about:blank").then(() => {
+        notifWin.webContents.executeJavaScript(`document.documentElement.innerHTML = \`${html.replace(/`/g, '\\`')}\`;`);
+        notifWin.showInactive();
+      }).catch(() => {});
+    });
+  } catch {}
 }
 
 function createMainWindow() {
@@ -229,11 +330,19 @@ function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Windows 通知中心需要 AppUserModelID，否则会静默不弹窗（Notification.isSupported() 也为 true 但不显示）
+  try {
+    app.setAppUserModelId(app.name || 'mimic-flow');
+  } catch {}
   getLogger().info('App ready', { platform: process.platform, version: app.getVersion() });
   try {
-    const customLogPath = getStore().get('logSavePath') as string | undefined;
-    await getExecutionRecordService().init(customLogPath || undefined);
-    getLogger().info('ExecutionRecordService initialized', { baseDir: getExecutionRecordService().getBaseDir() });
+    // ExecutionRecordService 使用独立的默认路径（userData/executions），不要复用 logger 的 logSavePath！
+    // 之前误传 logSavePath 导致 executions.db 被写到 logs 目录下，和 app-YYYY-MM-DD.log 混在一起，用户找不到。
+    await getExecutionRecordService().init(undefined);
+    getLogger().info('ExecutionRecordService initialized', {
+      baseDir: getExecutionRecordService().getBaseDir(),
+      dbPath: (getExecutionRecordService() as any).dbPath,
+    });
   } catch (e) {
     getLogger().error('Failed to initialize ExecutionRecordService', { error: e instanceof Error ? e.message : String(e) });
   }
@@ -752,7 +861,7 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       });
       
       try {
-        getExecutionRecordService().saveExecution(
+        const executionId = getExecutionRecordService().saveExecution(
           {
             workflowId: eventWorkflowId,
             workflowName: eventWorkflowName,
@@ -771,7 +880,21 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
           logs,
           reportPath || undefined,
         );
+        getLogger().info('[ExecutionRecordService] 执行记录保存成功', {
+          executionId,
+          workflowId: eventWorkflowId,
+          workflowName: eventWorkflowName,
+          status,
+          nodeTotal: nodeStats.total,
+          logsCount: logs?.length || 0,
+        });
       } catch (e) {
+        getLogger().error('[ExecutionRecordService] 执行记录保存失败', {
+          error: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+          workflowId: eventWorkflowId,
+          workflowName: eventWorkflowName,
+        });
         console.error('[flow-v2:run] Failed to save execution record:', e);
       }
       
@@ -788,8 +911,40 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
         body = `${flowName} 已被用户停止`;
       }
 
+      // ====== 声音 + 通知双通道反馈 ======
+      // 1. 先播放系统声音 fallback（通知被系统关闭/权限被拒也能听到）
+      try {
+        // shell.beep() 跨平台：Windows 播放提示音，macOS 播放 beep
+        if (status === 'success') {
+          shell.beep();
+        } else if (status === 'failed') {
+          shell.beep();
+          setTimeout(() => shell.beep(), 180); // 失败响 2 下
+        } else if (status === 'stopped') {
+          shell.beep();
+          setTimeout(() => shell.beep(), 180);
+          setTimeout(() => shell.beep(), 360); // 停止响 3 下
+        }
+      } catch {}
+      // 2. 再弹系统通知（如果 Notification 支持且有权限）
       if (Notification.isSupported() && title) {
-        new Notification({ title, body }).show();
+        try {
+          const notif = new Notification({ title, body, silent: false });
+          notif.show();
+        } catch (e) {
+          getLogger().warn('[Notification] 系统通知弹窗失败', {
+            error: e instanceof Error ? e.message : String(e),
+            platform: process.platform,
+          });
+        }
+      }
+      // 3. 强制弹自定义右下角通知窗口（100% 保证视觉可见，不依赖 Windows 通知中心任何权限/快捷方式）
+      if (title) {
+        setTimeout(() => {
+          try {
+            showCustomNotification(title, body, status as any);
+          } catch {}
+        }, 100);
       }
     }
   }, { workflowId: wfId, workflowName: flowName }).catch((err) => {

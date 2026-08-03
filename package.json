@@ -14,7 +14,7 @@
     "build:electron": "node -e \"try{require('fs').rmSync('dist-electron',{recursive:true,force:true})}catch(e){}\" && tsc -p tsconfig.electron.json && node -e \"const {buildSync}=require('esbuild'); buildSync({entryPoints:['electron/preload.ts'], bundle:true, platform:'node', format:'cjs', outfile:'dist-electron/electron/preload.cjs', external:['electron']}); console.log('preload.cjs built')\"",
     "build": "npm run build:electron && vite build",
     "preview": "vite preview",
-    "electron:preview": "npm run build && MIMIC_FORCE_PROD=true electron dist-electron/electron/main.js",
+    "electron:preview": "npm run build && node -e \"process.env.MIMIC_FORCE_PROD='true'; const {spawn}=require('child_process'); const electronPath=require('electron'); const p=spawn(electronPath, ['dist-electron/electron/main.js'], {stdio:'inherit', shell:process.platform==='win32'}); p.on('exit', (c)=>process.exit(c||0))\"",
     "dist": "npm run build && electron-builder --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",

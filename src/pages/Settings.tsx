@@ -876,11 +876,10 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   };
 
   const getDisplayPath = (type: 'log' | 'workflow') => {
-    if (type === 'log') {
-      return localLogPath || defaultPaths?.log || '默认应用数据目录';
-    } else {
-      return localWorkflowPath || defaultPaths?.workflow || '默认应用数据目录';
-    }
+    const raw = (type === 'log' ? (localLogPath || defaultPaths?.log || '') : (localWorkflowPath || defaultPaths?.workflow || '')) || '';
+    if (!raw) return '默认应用数据目录';
+    // 规范化显示：把正反斜杠统一成 Windows 风格的「反斜杠」（更符合 Windows 用户习惯，macOS 也能正常识别），避免显示成 a/b\c\d 这种混合
+    return raw.replace(/[\\/]+/g, '\\');
   };
 
   const handleReset = async () => {
