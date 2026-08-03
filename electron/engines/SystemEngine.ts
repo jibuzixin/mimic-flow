@@ -236,7 +236,7 @@ export class SystemEngine implements FlowEngine {
     this.log.info('[SystemEngine] Initializing system engine');
 
     try {
-      this.robot = this.require('robotjs');
+      this.robot = this.require('@jitsi/robotjs');
       this.log.info('[SystemEngine] robotjs loaded');
     } catch (e) {
       this.log.warn('[SystemEngine] robotjs not available', { error: (e as Error).message });
@@ -268,16 +268,34 @@ export class SystemEngine implements FlowEngine {
 
     const storedDpi = getStore().get('systemDpiScale') as number | undefined;
     if (storedDpi !== undefined && storedDpi !== null) {
+      // 用户手动设置过，优先使用用户值（覆盖自动检测）
       this.dpiScale = storedDpi;
+      this.log.info('[SystemEngine] DPI scale (user override)', { scale: this.dpiScale });
     } else {
-      const platform = process.platform;
-      if (platform === 'darwin') {
-        this.dpiScale = 2.0;
+      // 未手动设置：优先用 Electron screen API 自动检测真实 scaleFactor
+      let autoDetected: number | null = null;
+      try {
+        const { screen } = await import('electron');
+        const display = screen.getPrimaryDisplay();
+        if (display && typeof display.scaleFactor === 'number' && display.scaleFactor > 0) {
+          autoDetected = display.scaleFactor;
+        }
+      } catch (e) {
+        // screen API 不可用（如非 Electron 环境）时回落
+      }
+      if (autoDetected !== null) {
+        this.dpiScale = autoDetected;
+        this.log.info('[SystemEngine] DPI scale (auto-detected via screen)', { scale: this.dpiScale });
       } else {
-        this.dpiScale = 1.0;
+        const platform = process.platform;
+        if (platform === 'darwin') {
+          this.dpiScale = 2.0;
+        } else {
+          this.dpiScale = 1.0;
+        }
+        this.log.info('[SystemEngine] DPI scale (platform fallback)', { scale: this.dpiScale });
       }
     }
-    this.log.info('[SystemEngine] DPI scale', { scale: this.dpiScale });
   }
 
   async executeSegment(
@@ -466,7 +484,11 @@ export class SystemEngine implements FlowEngine {
 
     const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
     const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    log(`[MOVE 🎯] locateMode=${locateMode}, target(逻辑)=(${targetX}, ${targetY}), dpiScale=${this.dpiScale}, platform=${platform}, moveDuration=${moveDuration}ms, mode=${moveMode}`);
     await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
+    const afterPos = this.robot.getMousePos();
+    log(`[MOVE 🎯] 移动完成，robot.getMousePos()=( ${afterPos.x}, ${afterPos.y})`);
 
     if (nodeType === 'system.hover') {
       return { x: targetX, y: targetY };
@@ -1183,11 +1205,22 @@ export class SystemEngine implements FlowEngine {
 
     const dur = Math.max(0, Number(duration));
     const isDrag = this.pressedMouseButtons.size > 0;
+
+    // ⚠️ 坐标体系统一：
+    //   上层（工作流节点 / locateImage / pick-coordinate 返回给前端的）→ 全是「逻辑坐标」（与 DPI 无关）
+    //   robot.getMousePos() / robot.moveMouse() / robot.dragMouse() 的原生坐标体系：
+    //     - darwin: 逻辑坐标（点）—— 不用换算
+    //     - win32 / linux: 物理坐标（像素）—— 逻辑 × dpiScale
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    const needsDpiMult = platform !== 'darwin';
+    const physTargetX = needsDpiMult ? Math.round(Number(targetX) * this.dpiScale) : Math.round(Number(targetX));
+    const physTargetY = needsDpiMult ? Math.round(Number(targetY) * this.dpiScale) : Math.round(Number(targetY));
+
     const stepFn = (x: number, y: number) =>
       isDrag ? this.robot.dragMouse(x, y) : this.robot.moveMouse(x, y);
 
     if (Number.isNaN(dur) || dur <= 0) {
-      stepFn(targetX, targetY);
+      stepFn(physTargetX, physTargetY);
       return;
     }
 
@@ -1195,8 +1228,8 @@ export class SystemEngine implements FlowEngine {
     const fromX = Number(startPos.x) || 0;
     const fromY = Number(startPos.y) || 0;
 
-    const dx = targetX - fromX;
-    const dy = targetY - fromY;
+    const dx = physTargetX - fromX;
+    const dy = physTargetY - fromY;
 
     // 如果距离为 0，就直接等待一段时间，保证和原来的行为兼容
     if (dx === 0 && dy === 0) {
@@ -1228,7 +1261,7 @@ export class SystemEngine implements FlowEngine {
     }
 
     // 最后确保精准到达目标位置，消除累计舍入误差
-    stepFn(targetX, targetY);
+    stepFn(physTargetX, physTargetY);
   }
 
   async dispose(): Promise<void> {

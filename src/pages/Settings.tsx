@@ -649,6 +649,14 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
   }, []);
   const [localRuntimeOption, setLocalRuntimeOption] = useState({ defaultTimeout: 300000, defaultRetry: 0, systemNodePostDelay: 500 });
   const [systemDpiScale, setSystemDpiScale] = useState(1.0);
+  const [dpiDetectInfo, setDpiDetectInfo] = useState<{
+    detected: number;
+    detectedPercent: number;
+    overridden: boolean;
+    userValue?: number;
+    platform?: string;
+    displayName?: string;
+  } | null>(null);
   // 版本号直接从 package.json 常量读（见 APP_VERSION 顶部），不走 IPC，避免开发模式下读到 Electron 自身版本（如 32.x）
   const appVersion = APP_VERSION;
   const [saving, setSaving] = useState(false);
@@ -701,7 +709,8 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
     Promise.all([
       invoke<IpcResponse<{ globalRuntimeOption: { defaultTimeout: number; defaultRetry: number } }>>('config:get'),
       invoke<number>('system:get-dpi-scale'),
-    ]).then(([configRes, dpiRes]) => {
+      invoke<any>('system:detect-dpi-scale'),
+    ]).then(([configRes, dpiRes, detectRes]) => {
       if (configRes.success && configRes.data?.globalRuntimeOption) {
         setLocalRuntimeOption({
           systemNodePostDelay: 500,
@@ -715,6 +724,9 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
         if (typeof data === 'number') {
           setSystemDpiScale(data);
         }
+      }
+      if (detectRes && typeof detectRes === 'object' && 'detected' in detectRes) {
+        setDpiDetectInfo(detectRes as any);
       }
       setInitialLoaded(true);
     }).catch(() => {
@@ -741,6 +753,40 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
       maxImagesPerRequest: 10,
     };
     setLocalModels((prev) => [...prev, newModel]);
+  };
+
+  const handleRefreshDpiDetect = async () => {
+    try {
+      const info = await invoke<any>('system:detect-dpi-scale');
+      if (info && typeof info === 'object' && 'detected' in info) {
+        setDpiDetectInfo(info as any);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleUseRecommendedDpi = () => {
+    if (dpiDetectInfo && typeof dpiDetectInfo.detected === 'number') {
+      setSystemDpiScale(dpiDetectInfo.detected);
+    }
+  };
+
+  const handleClearDpiOverride = async () => {
+    try {
+      // 删除 store 中用户手动保存的值，让系统回落到自动检测
+      await invoke('store:delete', 'systemDpiScale');
+      await handleRefreshDpiDetect();
+      // 刷新当前显示为系统推荐值
+      const current = await invoke<number>('system:get-dpi-scale');
+      if (typeof current === 'number') {
+        setSystemDpiScale(current);
+      }
+      setStatus({ type: 'success', message: '已清除自定义 DPI，将使用系统自动检测值' });
+      setTimeout(() => setStatus(null), 2000);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setStatus({ type: 'error', message: '清除失败：' + message });
+      setTimeout(() => setStatus(null), 2000);
+    }
   };
 
   const handleDeleteModel = (id: string) => {
@@ -1217,7 +1263,22 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
             <CardContent className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>屏幕 DPI 缩放比例</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>屏幕 DPI 缩放比例</Label>
+                    {dpiDetectInfo && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[10px] px-2 py-0.5',
+                          dpiDetectInfo.overridden
+                            ? 'bg-orange-50 text-orange-600 border-orange-200'
+                            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                        )}
+                      >
+                        {dpiDetectInfo.overridden ? '用户自定义' : '自动检测中'}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3">
                     <Input
                       type="number"
@@ -1230,8 +1291,72 @@ export default function SettingsPage({ onDevModeToggle, devMode }: { onDevModeTo
                     />
                     <span className="text-xs text-muted-foreground">倍</span>
                   </div>
+                  {dpiDetectInfo && (
+                    <div
+                      className={cn(
+                        'rounded-lg p-3 text-xs space-y-2',
+                        dpiDetectInfo.overridden
+                          ? 'bg-orange-50 border border-orange-200'
+                          : 'bg-sky-50 border border-sky-200'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Info
+                            className={cn(
+                              'w-3.5 h-3.5 shrink-0',
+                              dpiDetectInfo.overridden ? 'text-orange-500' : 'text-sky-500'
+                            )}
+                          />
+                          <span className={cn(
+                            'truncate',
+                            dpiDetectInfo.overridden ? 'text-orange-700' : 'text-sky-700'
+                          )}>
+                            检测到「{dpiDetectInfo.displayName}」系统缩放：
+                            <span className="font-semibold">{dpiDetectInfo.detectedPercent}%</span>
+                            （推荐值 {dpiDetectInfo.detected}x）
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {dpiDetectInfo.detected && Math.abs(systemDpiScale - dpiDetectInfo.detected) > 0.01 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] bg-white hover:bg-white"
+                            onClick={handleUseRecommendedDpi}
+                          >
+                            使用推荐值 {dpiDetectInfo.detected}x
+                          </Button>
+                        )}
+                        {dpiDetectInfo.overridden && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] bg-white hover:bg-white text-orange-600 border-orange-200 hover:text-orange-700"
+                            onClick={handleClearDpiOverride}
+                          >
+                            清除自定义，跟随系统
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] hover:bg-transparent text-muted-foreground"
+                          onClick={handleRefreshDpiDetect}
+                        >
+                          <RotateCcw className="w-3 h-3 mr-1" />
+                          重新检测
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
-                    Retina 屏幕通常为 2.0，普通屏幕为 1.0。用于坐标计算和图片匹配。
+                    用于坐标计算和图片匹配。Windows 150% 缩放下建议填 1.5，Mac Retina 屏幕通常为 2.0。
+                    不确定时请使用「推荐值」或清除自定义让系统自动跟随。
                   </p>
                 </div>
                 <div className="space-y-2">
