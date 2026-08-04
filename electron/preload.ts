@@ -49,6 +49,7 @@ export type IpcChannel =
   | 'system:pick-coordinate'
   | 'system:record-keys'
   | 'system:get-dpi-scale'
+  | 'system:detect-dpi-scale'
   | 'system:set-dpi-scale'
   | 'system:move-mouse'
   | 'system:open-clt-installer'

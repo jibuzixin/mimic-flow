@@ -18,6 +18,7 @@ import {
   StopCircle,
   PlayCircle,
   ChevronUp,
+  FolderOpen,
 } from 'lucide-react';
 import { invoke } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -117,31 +118,69 @@ export default function Logs() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [logSearch, setLogSearch] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [baseDir, setBaseDir] = useState<string>('');
   const [showLogScrollTop, setShowLogScrollTop] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
+  const loadBaseDir = async () => {
+    try {
+      const res = await invoke<any>('execution:getBaseDir');
+      if (res.success && res.data) {
+        // 规范化显示：统一用 Windows 反斜杠风格
+        setBaseDir(String(res.data).replace(/[\\/]+/g, '\\'));
+      }
+    } catch {}
+  };
+
+  const openBaseDir = async () => {
+    try {
+      const res = await invoke<any>('execution:getBaseDir');
+      if (res.success && res.data) {
+        await invoke<any>('shell:open-path', res.data);
+      }
+    } catch (e) {
+      setErrorMsg('无法打开执行记录目录：' + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
   const loadRecords = async () => {
     setLoading(true);
-    const res = await invoke<any>('execution:list', { page: 1, pageSize: 50 });
-    if (res.success && res.data) {
-      setRecords(res.data.items || []);
-      if (!selectedId && res.data.items?.length > 0) {
-        setSelectedId(res.data.items[0].id);
+    setErrorMsg('');
+    try {
+      const res = await invoke<any>('execution:list', { page: 1, pageSize: 50 });
+      if (res.success && res.data) {
+        setRecords(res.data.items || []);
+        if (!selectedId && res.data.items?.length > 0) {
+          setSelectedId(res.data.items[0].id);
+        }
+      } else {
+        setErrorMsg(res?.message || '加载执行记录失败');
       }
+    } catch (e) {
+      setErrorMsg('加载执行记录异常：' + (e instanceof Error ? e.message : String(e)));
     }
     setLoading(false);
   };
 
   const loadDetail = async (id: string) => {
     setDetailLoading(true);
-    const res = await invoke<any>('execution:get', id);
-    if (res.success && res.data) {
-      setDetail(res.data);
+    setErrorMsg('');
+    try {
+      const res = await invoke<any>('execution:get', id);
+      if (res.success && res.data) {
+        setDetail(res.data);
+      } else {
+        setErrorMsg(res?.message || '加载执行详情失败');
+      }
+    } catch (e) {
+      setErrorMsg('加载执行详情异常：' + (e instanceof Error ? e.message : String(e)));
     }
     setDetailLoading(false);
   };
 
   useEffect(() => {
+    loadBaseDir();
     loadRecords();
   }, []);
 
@@ -167,8 +206,10 @@ export default function Logs() {
 
   const groupedRecords = useMemo(() => groupByDate(filteredRecords), [filteredRecords]);
 
+  const allLogs: LogEntry[] = (detail?.logs as LogEntry[]) || [];
+
   const nodeLevelLogs = useMemo(() => {
-    if (!detail?.logs) return [];
+    if (!detail?.logs || detail.logs.length === 0) return [];
 
     const filtered = detail.logs.filter((log) => {
       const msg = log.message;
@@ -186,18 +227,22 @@ export default function Logs() {
         msg.includes('❌') ||
         msg.includes('⏱️') ||
         msg.includes('工作流') ||
-        // 引擎按键 / 鼠标 / 滚动 / 输入 / 清理 / AI 细节（之前被白名单过滤掉，现在也显示）
+        msg.includes('初始化引擎') ||
+        // 引擎按键 / 鼠标 / 滚动 / 输入 / 清理 / AI 细节
         msg.startsWith('[KEY') ||
         msg.startsWith('[INPUT ⌨️') ||
         msg.startsWith('[CLICK') ||
         msg.startsWith('[MOUSE') ||
         msg.startsWith('[SCROLL') ||
-        msg.startsWith('[MIDSCREEN')
+        msg.startsWith('[MIDSCREEN') ||
+        msg.startsWith('[MOVE') ||
+        msg.startsWith('[SystemEngine]') ||
+        msg.startsWith('[FlowScheduler]')
       );
     });
 
     const seen = new Set<string>();
-    return filtered.filter((log) => {
+    const deduped = filtered.filter((log) => {
       const msg = log.message;
       const nodeId = (log as any).nodeId || '';
 
@@ -215,12 +260,21 @@ export default function Logs() {
       }
       return true;
     });
+
+    // 兜底：如果节点级过滤后为空，但原日志本身有内容，直接返回全部日志，避免显示「暂无日志」
+    if (deduped.length === 0 && detail.logs.length > 0) {
+      return detail.logs;
+    }
+    return deduped;
   }, [detail?.logs]);
 
+  const isFallbackAllLogs = allLogs.length > 0 && (nodeLevelLogs.length === allLogs.length);
+
   const filteredLogs = useMemo(() => {
-    if (!logSearch.trim()) return nodeLevelLogs;
+    const source = (isFallbackAllLogs ? allLogs : nodeLevelLogs) || [];
+    if (!logSearch.trim()) return source;
     const keyword = logSearch.toLowerCase();
-    return nodeLevelLogs.filter((log) => {
+    return source.filter((log) => {
       if (log.message.toLowerCase().includes(keyword)) return true;
       if (log.data) {
         try {
@@ -231,7 +285,7 @@ export default function Logs() {
       }
       return false;
     });
-  }, [nodeLevelLogs, logSearch]);
+  }, [nodeLevelLogs, allLogs, isFallbackAllLogs, logSearch]);
 
   const scrollLogToTop = () => {
     if (logContainerRef.current) {
@@ -303,10 +357,15 @@ export default function Logs() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto space-y-4">
+            {errorMsg ? (
+              <div className="text-sm rounded-lg border border-red-200 bg-red-50 text-red-600 px-4 py-3 mb-2">
+                ⚠️ {errorMsg}
+              </div>
+            ) : null}
             {loading ? (
               <div className="text-sm text-muted-foreground text-center py-8">加载中...</div>
             ) : filteredRecords.length === 0 ? (
-              <div className="text-sm text-muted-foreground text-center py-8">暂无执行记录</div>
+              <div className="text-sm text-muted-foreground text-center py-8">暂无执行记录，请先执行一次工作流</div>
             ) : (
               groupedRecords.map(([date, items]) => (
                 <div key={date}>
@@ -425,7 +484,47 @@ export default function Logs() {
                     setShowLogScrollTop(e.currentTarget.scrollTop > 300);
                   }}
                 >
-                    {filteredLogs.length === 0 ? (
+                    {detail?.logs?.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm gap-3 px-6 text-center">
+                        <div className="text-lg">暂无日志</div>
+                        {(detail as any)?.debugInfo ? (
+                          <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-slate-50 p-4 text-left text-[11px] leading-relaxed space-y-1.5 text-slate-600 font-mono">
+                            <div>
+                              <span className="font-semibold text-slate-500">record.directory:</span>{' '}
+                              <code className="break-all">{(detail as any).debugInfo.recordDirectory}</code>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">解析方式:</span>{' '}
+                              <Badge variant="outline" className="text-[10px] font-mono border-slate-300 text-slate-700">
+                                {(detail as any).debugInfo.resolvedVia}
+                              </Badge>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">fullDir:</span>{' '}
+                              <code className="break-all">{(detail as any).debugInfo.fullDir}</code>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-slate-500">logs.jsonl 路径:</span>{' '}
+                              <code className="break-all">{(detail as any).debugInfo.logsPath}</code>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="font-semibold text-slate-500">logs.jsonl 是否存在:</span>
+                              {(detail as any).debugInfo.logsExists ? (
+                                <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px]">存在</Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 text-[10px]">不存在 ❌</Badge>
+                              )}
+                            </div>
+                            <div className="pt-1">
+                              <span className="font-semibold text-slate-500">建议:</span>
+                              {(detail as any).debugInfo.logsExists
+                                ? '文件存在但读取为 0 条，请手动打开 logs.jsonl 检查格式（应为每行一个 JSON）'
+                                : 'logs.jsonl 不存在，说明执行时 saveExecution 没写进去，检查主进程日志中 saveExecution 的 logsCount'}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : filteredLogs.length === 0 ? (
                       <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                         {logSearch ? '没有匹配的日志' : '暂无日志'}
                       </div>

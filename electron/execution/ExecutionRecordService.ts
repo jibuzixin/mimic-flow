@@ -1,6 +1,6 @@
 import initSqlJs, { Database } from 'sql.js';
 import { app } from 'electron';
-import { join, basename, dirname, sep } from 'path';
+import { join, basename, dirname, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import {
   mkdirSync,
@@ -30,6 +30,16 @@ class ExecutionRecordService {
   private db: Database | null = null;
   private baseDir: string = '';
   private dbPath: string = '';
+
+  /**
+   * 统一目录解析：兼容旧记录的「绝对路径」和新记录的「相对路径」
+   * - 如果 directory 已经是绝对路径 → 原样返回
+   * - 否则 → 拼接 this.baseDir + directory 得到完整路径
+   */
+  private resolveDir(directory: string): string {
+    if (!directory) return this.baseDir;
+    return isAbsolute(directory) ? directory : join(this.baseDir, directory);
+  }
 
   async init(customDir?: string) {
     let baseDir = customDir;
@@ -142,7 +152,7 @@ class ExecutionRecordService {
       for (const row of allRecords) {
         try {
           const oldRelativeDir = row.directory;
-          const oldFullDir = join(this.baseDir, oldRelativeDir);
+          const oldFullDir = this.resolveDir(oldRelativeDir);
           
           if (!existsSync(oldFullDir)) continue;
           
@@ -159,7 +169,7 @@ class ExecutionRecordService {
           
           const newDirName = `${timeStr}_${shortId}`;
           const newRelativeDir = join(dateStr, safeName, newDirName);
-          const newFullDir = join(this.baseDir, newRelativeDir);
+          const newFullDir = this.resolveDir(newRelativeDir);
           
           if (oldFullDir === newFullDir) continue;
           
@@ -346,6 +356,27 @@ class ExecutionRecordService {
     const logsPath = join(directory, 'logs.jsonl');
     const logLines = logs.map((l) => JSON.stringify(l)).join('\n');
     writeFileSync(logsPath, logLines);
+    if (!logs || logs.length === 0) {
+      // 直接用 console.warn，避免跨目录 import getLogger 时的路径解析/编译问题
+      console.warn('[ExecutionRecordService.saveExecution] 传入的 logs 数组为空，logs.jsonl 将无内容', {
+        executionId: id,
+        workflowId: record.workflowId,
+        workflowName: record.workflowName,
+        status: record.status,
+      });
+      try {
+        // 尝试写一条最简单的占位日志进去，logs.jsonl 不至于空文件
+        const placeholder: LogEntry[] = [
+          {
+            timestamp: Date.now(),
+            level: 'warn',
+            source: 'scheduler',
+            message: 'FlowScheduler 未传入有效日志数组，可能是节点日志尚未全部写入。请重新运行工作流以获取完整日志。',
+          },
+        ];
+        writeFileSync(logsPath, placeholder.map((l) => JSON.stringify(l)).join('\n'));
+      } catch {}
+    }
 
     let hasMidsceneReport = false;
     if (midsceneReportDir && existsSync(midsceneReportDir)) {
@@ -368,7 +399,9 @@ class ExecutionRecordService {
       startTime,
       endTime: record.endTime || Date.now(),
       duration: record.duration,
-      directory: directory.replace(this.baseDir + '/', ''),
+      directory: directory
+        .replace(/\\/g, '/')
+        .replace(this.baseDir.replace(/\\/g, '/') + '/', ''),
       nodeTotal: record.nodeTotal || 0,
       nodeSuccess: record.nodeSuccess || 0,
       nodeFailed: record.nodeFailed || 0,
@@ -443,7 +476,7 @@ class ExecutionRecordService {
     if (!row || Object.keys(row).length === 0) return null;
 
     const record = this.rowToRecord(row);
-    const fullDir = join(this.baseDir, record.directory);
+    const fullDir = this.resolveDir(record.directory);
     const logsPath = join(fullDir, 'logs.jsonl');
 
     let logs: LogEntry[] = [];
@@ -479,13 +512,28 @@ class ExecutionRecordService {
       }
     }
 
+    const logsExists = existsSync(logsPath);
+    if (logs.length === 0) {
+      const dbgMsg = `[ExecutionRecordService.getExecution] logs 为空记录 ${id} | baseDir=${this.baseDir} | record.directory=${record.directory} | fullDir=${fullDir} | logsPath=${logsPath} | logsExists=${logsExists} | hasMidsceneReport=${hasMidsceneReport}`;
+      console.warn(dbgMsg);
+    }
+
     return {
       ...record,
       hasMidsceneReport,
       logs,
       midsceneReportPath,
       midsceneReportUrl,
-    };
+      debugInfo: {
+        baseDir: this.baseDir,
+        recordDirectory: record.directory,
+        fullDir,
+        logsPath,
+        logsExists,
+        logsCount: logs.length,
+        resolvedVia: isAbsolute(record.directory) ? 'absolute-directory' : 'join-baseDir',
+      },
+    } as ExecutionDetail & { debugInfo?: any };
   }
 
   listExecutions(query: ExecutionListQuery = {}): ExecutionListResult {
@@ -574,7 +622,7 @@ class ExecutionRecordService {
     
     if (!row || Object.keys(row).length === 0) return false;
 
-    const fullDir = join(this.baseDir, row.directory);
+    const fullDir = this.resolveDir(row.directory);
     this.removeDir(fullDir);
 
     this.db.run('DELETE FROM executions WHERE id = ?', [id]);
@@ -613,7 +661,7 @@ class ExecutionRecordService {
     stmt.free();
 
     for (const dir of dirs) {
-      const fullDir = join(this.baseDir, dir);
+      const fullDir = this.resolveDir(dir);
       this.removeDir(fullDir);
     }
 

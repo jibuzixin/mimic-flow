@@ -143,7 +143,8 @@ function createFloatingWindow(): Promise<BrowserWindow> {
     floatingWindow.webContents.once('did-fail-load', handleFailed as any);
 
     if (isDev) {
-      floatingWindow.loadURL('http://localhost:5173/floating');
+      // 项目用 HashRouter：路由路径必须带 #/ 前缀，否则 HashRouter 匹配不到，渲染首页 Sidebar
+      floatingWindow.loadURL('http://localhost:5173/#/floating');
     } else {
       floatingWindow.loadFile(getDistPath('index.html'), {
         hash: '/floating',
@@ -174,6 +175,106 @@ function sendToFloating(channel: string, data: unknown) {
   if (floatingWindow && !floatingWindow.isDestroyed()) {
     floatingWindow.webContents.send(channel, data);
   }
+}
+
+/**
+ * 自定义右下角通知窗口（100% 保证视觉可见，不依赖 Windows 通知中心权限/快捷方式注册）
+ * 当用户开启了「缩小为悬浮小窗」，则自动使用浮窗显示状态，不额外弹通知。
+ * @param title 通知标题
+ * @param body  通知副标题
+ * @param status success | failed | stopped
+ */
+function showCustomNotification(title: string, body: string, status: 'success' | 'failed' | 'stopped') {
+  // 如果已经有浮窗（用户开启了缩小为悬浮小窗），直接复用浮窗展示，不重复弹
+  if (floatingWindow && !floatingWindow.isDestroyed()) return;
+
+  try {
+    const display = screen.getPrimaryDisplay();
+    const displayWidth = display.workAreaSize.width;
+    const displayHeight = display.workAreaSize.height;
+    const notifWidth = 360;
+    const notifHeight = 100;
+    const margin = 24;
+
+    const notifWin = new BrowserWindow({
+      width: notifWidth,
+      height: notifHeight,
+      x: displayWidth - notifWidth - margin,
+      y: displayHeight - notifHeight - margin,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: true,
+      roundedCorners: true,
+      show: false,
+      focusable: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const accentColor = status === 'success' ? '#10b981' : status === 'failed' ? '#ef4444' : '#64748b';
+    const accentBg = status === 'success' ? 'rgba(16,185,129,0.12)' : status === 'failed' ? 'rgba(239,68,68,0.12)' : 'rgba(100,116,139,0.12)';
+    const emoji = status === 'success' ? '✅' : status === 'failed' ? '❌' : '⏹️';
+
+    const html = `
+      <html><head><meta charset="utf-8"><style>
+        * { box-sizing: border-box; }
+        html, body { margin:0; padding:0; background:transparent; height:100%; }
+        .wrap { width:100%; height:100%; border-radius:16px; background:rgba(255,255,255,0.98);
+                box-shadow: 0 12px 40px rgba(0,0,0,0.15); border:1px solid rgba(0,0,0,0.06);
+                padding: 14px 16px; display:flex; gap:12px; align-items:flex-start; cursor:pointer;
+                font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+        .bar { width:4px; min-height:100%; border-radius: 4px; background:${accentColor}; flex-shrink:0; }
+        .icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+                background:${accentBg}; font-size:15px; flex-shrink:0; margin-top:1px; }
+        .content { flex:1; min-width:0; }
+        .title { font-weight:600; color:#1e293b; font-size:14px; line-height:1.4; }
+        .body { margin-top:4px; color:#475569; font-size:12px; line-height:1.5; }
+        .time { position:absolute; right:14px; top:12px; color:#94a3b8; font-size:11px; }
+      </style></head>
+      <body>
+        <div class="wrap" id="wrap">
+          <div class="bar"></div>
+          <div class="icon">${emoji}</div>
+          <div class="content">
+            <div class="title">${title}</div>
+            <div class="body">${body}</div>
+          </div>
+        </div>
+        <script>
+          const wrap = document.getElementById('wrap');
+          let timer = null;
+          function closeMe() {
+            if (timer) clearTimeout(timer);
+            try { window.close(); } catch {}
+          }
+          wrap && wrap.addEventListener('click', closeMe);
+          timer = setTimeout(closeMe, 5000);
+          // 防止透明窗口未渲染完就关闭
+          setTimeout(() => { try { document.body.style.opacity = '1'; } catch {} }, 0);
+        </script>
+      </body></html>
+    `;
+
+    notifWin.once('ready-to-show', () => {
+      notifWin.showInactive();
+    });
+    notifWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {
+      notifWin.loadURL("about:blank").then(() => {
+        notifWin.webContents.executeJavaScript(`document.documentElement.innerHTML = \`${html.replace(/`/g, '\\`')}\`;`);
+        notifWin.showInactive();
+      }).catch(() => {});
+    });
+  } catch {}
 }
 
 function createMainWindow() {
@@ -229,11 +330,19 @@ function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Windows 通知中心需要 AppUserModelID，否则会静默不弹窗（Notification.isSupported() 也为 true 但不显示）
+  try {
+    app.setAppUserModelId(app.name || 'mimic-flow');
+  } catch {}
   getLogger().info('App ready', { platform: process.platform, version: app.getVersion() });
   try {
-    const customLogPath = getStore().get('logSavePath') as string | undefined;
-    await getExecutionRecordService().init(customLogPath || undefined);
-    getLogger().info('ExecutionRecordService initialized', { baseDir: getExecutionRecordService().getBaseDir() });
+    // ExecutionRecordService 使用独立的默认路径（userData/executions），不要复用 logger 的 logSavePath！
+    // 之前误传 logSavePath 导致 executions.db 被写到 logs 目录下，和 app-YYYY-MM-DD.log 混在一起，用户找不到。
+    await getExecutionRecordService().init(undefined);
+    getLogger().info('ExecutionRecordService initialized', {
+      baseDir: getExecutionRecordService().getBaseDir(),
+      dbPath: (getExecutionRecordService() as any).dbPath,
+    });
   } catch (e) {
     getLogger().error('Failed to initialize ExecutionRecordService', { error: e instanceof Error ? e.message : String(e) });
   }
@@ -752,7 +861,7 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
       });
       
       try {
-        getExecutionRecordService().saveExecution(
+        const executionId = getExecutionRecordService().saveExecution(
           {
             workflowId: eventWorkflowId,
             workflowName: eventWorkflowName,
@@ -771,7 +880,21 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
           logs,
           reportPath || undefined,
         );
+        getLogger().info('[ExecutionRecordService] 执行记录保存成功', {
+          executionId,
+          workflowId: eventWorkflowId,
+          workflowName: eventWorkflowName,
+          status,
+          nodeTotal: nodeStats.total,
+          logsCount: logs?.length || 0,
+        });
       } catch (e) {
+        getLogger().error('[ExecutionRecordService] 执行记录保存失败', {
+          error: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
+          workflowId: eventWorkflowId,
+          workflowName: eventWorkflowName,
+        });
         console.error('[flow-v2:run] Failed to save execution record:', e);
       }
       
@@ -788,8 +911,18 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
         body = `${flowName} 已被用户停止`;
       }
 
+      // ====== 统一使用系统 Notification（弹窗 + 系统默认声音，各平台表现一致）======
+      // silent: false 让系统通知自带默认提示音，不再额外 shell.beep 避免响两次
       if (Notification.isSupported() && title) {
-        new Notification({ title, body }).show();
+        try {
+          const notif = new Notification({ title, body, silent: false });
+          notif.show();
+        } catch (e) {
+          getLogger().warn('[Notification] 系统通知弹窗失败', {
+            error: e instanceof Error ? e.message : String(e),
+            platform: process.platform,
+          });
+        }
       }
     }
   }, { workflowId: wfId, workflowName: flowName }).catch((err) => {
@@ -1031,7 +1164,7 @@ function loadSystemRobot(): any {
   systemRobotLoaded = true;
   try {
     const req = createRequire(import.meta.url);
-    robot = req('robotjs');
+    robot = req('@jitsi/robotjs');
     getLogger().info('[System] robotjs loaded');
     return robot;
   } catch (e) {
@@ -1076,13 +1209,17 @@ ipcMain.handle('system:pick-coordinate', async (event) => {
         background:rgba(0,0,0,0.75); color:white; padding:10px 20px; border-radius:8px;
         font-family:system-ui; font-size:13px; pointer-events:none; z-index:9999;
         white-space:nowrap; }
+      .coord { position:fixed; top:64px; left:50%; transform:translateX(-50%);
+        background:rgba(124,58,237,0.85); color:white; padding:6px 14px; border-radius:6px;
+        font-family:ui-monospace, Consolas, monospace; font-size:12px; pointer-events:none; z-index:9999; }
       .crosshair-v { position:fixed; top:0; bottom:0; width:1px; 
         background:rgba(255,107,107,0.5); pointer-events:none; z-index:9998; }
       .crosshair-h { position:fixed; left:0; right:0; height:1px; 
         background:rgba(255,107,107,0.5); pointer-events:none; z-index:9998; }
     </style></head>
     <body>
-      <div class="hint">点击屏幕任意位置拾取坐标 &nbsp;|&nbsp; 按 ESC 取消</div>
+      <div class="hint">点击 / Enter / Space 拾取当前坐标 &nbsp;|&nbsp; ESC 取消</div>
+      <div class="coord" id="coord">(0, 0)</div>
       <div class="crosshair-v" id="cv"></div>
       <div class="crosshair-h" id="ch"></div>
       <script>
@@ -1090,13 +1227,15 @@ ipcMain.handle('system:pick-coordinate', async (event) => {
         window.__pickCancelled = false;
         var cv = document.getElementById('cv');
         var ch = document.getElementById('ch');
+        var coordBox = document.getElementById('coord');
         document.addEventListener('mousemove', function(e) {
           cv.style.left = e.clientX + 'px';
           ch.style.top = e.clientY + 'px';
+          // 显示物理像素坐标（用户可读，不含 DPI 换算，仅用于参考）
+          coordBox.textContent = '(' + e.clientX + ', ' + e.clientY + ')';
         });
-        document.addEventListener('click', function() {
-          window.__pickClicked = true;
-        });
+        function confirmPick() { window.__pickClicked = true; }
+        document.addEventListener('click', confirmPick);
         document.addEventListener('contextmenu', function(e) {
           e.preventDefault();
           window.__pickCancelled = true;
@@ -1104,6 +1243,10 @@ ipcMain.handle('system:pick-coordinate', async (event) => {
         document.addEventListener('keydown', function(e) {
           if (e.key === 'Escape') {
             window.__pickCancelled = true;
+          } else if (e.key === 'Enter' || e.key === ' ') {
+            // Enter / Space 确认当前鼠标位置（无需点击，可覆盖任务栏/系统区域）
+            e.preventDefault();
+            confirmPick();
           }
         });
       </script>
@@ -1141,12 +1284,31 @@ ipcMain.handle('system:pick-coordinate', async (event) => {
         if (clicked) {
           clearInterval(checkResult);
           pickerWin.webContents.executeJavaScript('window.__pickCancelled').then((cancelled: any) => {
-            const point = screen.getCursorScreenPoint();
+            const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+            const dpiScale = getEffectiveDpiScale();
+            const robot = loadSystemRobot();
+            let point: { x: number; y: number };
+            // 优先用 robot.getMousePos()（和我们 smoothMoveMouse 用的坐标体系完全一致），再按平台换算成统一的逻辑坐标返回给前端：
+            //   - darwin: robot 原生=逻辑 → 不变
+            //   - win32/linux: robot 原生=物理像素 → ÷ dpiScale = 逻辑
+            if (robot) {
+              const raw = robot.getMousePos();
+              const rawX = Number(raw.x) || 0;
+              const rawY = Number(raw.y) || 0;
+              if (platform === 'darwin') {
+                point = { x: Math.round(rawX), y: Math.round(rawY) };
+              } else {
+                point = { x: Math.round(rawX / dpiScale), y: Math.round(rawY / dpiScale) };
+              }
+            } else {
+              const p = screen.getCursorScreenPoint();
+              point = { x: p.x, y: p.y };
+            }
             cleanup();
             if (cancelled) {
               reject(new Error('用户取消拾取'));
             } else {
-              resolve({ x: point.x, y: point.y });
+              resolve(point);
             }
           }).catch(() => {
             cleanup();
@@ -1182,14 +1344,70 @@ ipcMain.handle('system:record-keys', async (event) => {
   });
 });
 
-ipcMain.handle('system:get-dpi-scale', async () => {
-  const stored = getStore().get('systemDpiScale') as number | undefined;
-  if (stored !== undefined && stored !== null) {
-    return stored;
+/**
+ * 自动检测当前主显示器的真实 DPI 缩放比
+ * - 使用 Electron screen API 直接读取 scaleFactor
+ * - 兜底：macOS 默认 2.0，其他平台默认 1.0
+ */
+function detectDpiScale(): number {
+  try {
+    const display = screen.getPrimaryDisplay();
+    if (display && typeof display.scaleFactor === 'number' && display.scaleFactor > 0) {
+      return display.scaleFactor;
+    }
+  } catch (e) {
+    // 读取失败时回落到平台默认
   }
   const platform = process.platform;
   if (platform === 'darwin') return 2.0;
   return 1.0;
+}
+
+/**
+ * 判断用户是否手动设置过 DPI（存在 store 中且非 null/undefined）
+ */
+function hasUserDpiOverride(): boolean {
+  const stored = getStore().get('systemDpiScale');
+  return stored !== undefined && stored !== null;
+}
+
+/**
+ * 取得最终生效的 DPI 缩放比（优先用户手动覆盖，否则自动检测）
+ * 供 pick-coordinate / dev-smooth-move-mouse 等需要坐标换算的 IPC 用
+ */
+function getEffectiveDpiScale(): number {
+  const stored = getStore().get('systemDpiScale') as number | undefined;
+  if (stored !== undefined && stored !== null) {
+    const num = Number(stored);
+    if (!Number.isNaN(num) && num > 0) return num;
+  }
+  return detectDpiScale();
+}
+
+ipcMain.handle('system:get-dpi-scale', async () => {
+  // 优先使用用户手动覆盖的值（如果设置过）
+  const stored = getStore().get('systemDpiScale') as number | undefined;
+  if (stored !== undefined && stored !== null) {
+    return stored;
+  }
+  // 否则使用自动检测到的真实 scaleFactor
+  return detectDpiScale();
+});
+
+ipcMain.handle('system:detect-dpi-scale', async () => {
+  const detected = detectDpiScale();
+  const overridden = hasUserDpiOverride();
+  const stored = getStore().get('systemDpiScale') as number | undefined;
+  return {
+    detected,
+    detectedPercent: Math.round(detected * 100),
+    overridden,
+    userValue: overridden ? stored : undefined,
+    platform: process.platform,
+    displayName: (() => {
+      try { return screen.getPrimaryDisplay().label || '主显示器'; } catch { return '主显示器'; }
+    })(),
+  };
 });
 
 ipcMain.handle('system:set-dpi-scale', async (_event, scale: number) => {
@@ -1201,7 +1419,15 @@ ipcMain.handle('system:move-mouse', async (_event, x: number, y: number) => {
   try {
     const robot = loadSystemRobot();
     if (!robot) return false;
-    robot.moveMouse(x, y);
+    // 坐标体系统一：前端传入的 x/y 是逻辑坐标，按平台转 robot 原生坐标：
+    //   darwin: robot 原生=逻辑 → 不变
+    //   win32/linux: robot 原生=物理像素 → × dpiScale
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    const dpiScale = getEffectiveDpiScale();
+    const needsDpiMult = platform !== 'darwin';
+    const physX = needsDpiMult ? Math.round(Number(x) * dpiScale) : Math.round(Number(x));
+    const physY = needsDpiMult ? Math.round(Number(y) * dpiScale) : Math.round(Number(y));
+    robot.moveMouse(physX, physY);
     return true;
   } catch (error) {
     console.error('[system:move-mouse] failed:', error);
@@ -1305,14 +1531,23 @@ ipcMain.handle('system:dev-smooth-move-mouse', async (_event, payload: { x: numb
     const stepFn = (x: number, y: number) =>
       isDrag ? r.dragMouse(x, y) : r.moveMouse(x, y);
 
+    // 坐标体系统一：前端传入的 payload.x/y 是逻辑坐标，按平台转 robot 原生坐标：
+    //   darwin: robot 原生=逻辑 → 不变
+    //   win32/linux: robot 原生=物理像素 → × dpiScale
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    const dpiScale = getEffectiveDpiScale();
+    const needsDpiMult = platform !== 'darwin';
+    const physTargetX = needsDpiMult ? Math.round(Number(payload.x) * dpiScale) : Math.round(Number(payload.x));
+    const physTargetY = needsDpiMult ? Math.round(Number(payload.y) * dpiScale) : Math.round(Number(payload.y));
+
     const startPos = r.getMousePos();
     const fromX = Number(startPos.x) || 0;
     const fromY = Number(startPos.y) || 0;
-    const dx = payload.x - fromX;
-    const dy = payload.y - fromY;
+    const dx = physTargetX - fromX;
+    const dy = physTargetY - fromY;
 
     if (duration <= 0 || (dx === 0 && dy === 0)) {
-      stepFn(payload.x, payload.y);
+      stepFn(physTargetX, physTargetY);
       return { ok: true };
     }
 
@@ -1330,7 +1565,7 @@ ipcMain.handle('system:dev-smooth-move-mouse', async (_event, payload: { x: numb
         await new Promise((res) => setTimeout(res, actualInterval));
       }
     }
-    stepFn(payload.x, payload.y);
+    stepFn(physTargetX, physTargetY);
     return { ok: true };
   } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
 });

@@ -13,6 +13,7 @@ import os from 'os';
 import { promisify } from 'util';
 import { exec as execCP } from 'child_process';
 import { getStore } from '../store.js';
+import crypto from 'crypto';
 
 const exec = promisify(execCP);
 
@@ -152,6 +153,13 @@ export class SystemEngine implements FlowEngine {
   /** 缓存编译好的 modclick 可执行文件路径（只编译一次） */
   private modClickPath: string | null = null;
   private modClickPromise: Promise<string> | null = null;
+  /** 模板图片 Mat 缓存：key = 模板内容的 SHA256，value = { mat, width, height }，避免重复解码+灰度化 */
+  private readonly templateMatCache = new Map<
+    string,
+    { mat: any; width: number; height: number }
+  >();
+  /** 最多缓存多少张模板，防止长流程里模板太多导致内存泄漏 */
+  private static readonly MAX_TEMPLATE_CACHE = 32;
 
   constructor() {
     this.require = createRequire(import.meta.url);
@@ -236,7 +244,7 @@ export class SystemEngine implements FlowEngine {
     this.log.info('[SystemEngine] Initializing system engine');
 
     try {
-      this.robot = this.require('robotjs');
+      this.robot = this.require('@jitsi/robotjs');
       this.log.info('[SystemEngine] robotjs loaded');
     } catch (e) {
       this.log.warn('[SystemEngine] robotjs not available', { error: (e as Error).message });
@@ -268,16 +276,34 @@ export class SystemEngine implements FlowEngine {
 
     const storedDpi = getStore().get('systemDpiScale') as number | undefined;
     if (storedDpi !== undefined && storedDpi !== null) {
+      // 用户手动设置过，优先使用用户值（覆盖自动检测）
       this.dpiScale = storedDpi;
+      this.log.info('[SystemEngine] DPI scale (user override)', { scale: this.dpiScale });
     } else {
-      const platform = process.platform;
-      if (platform === 'darwin') {
-        this.dpiScale = 2.0;
+      // 未手动设置：优先用 Electron screen API 自动检测真实 scaleFactor
+      let autoDetected: number | null = null;
+      try {
+        const { screen } = await import('electron');
+        const display = screen.getPrimaryDisplay();
+        if (display && typeof display.scaleFactor === 'number' && display.scaleFactor > 0) {
+          autoDetected = display.scaleFactor;
+        }
+      } catch (e) {
+        // screen API 不可用（如非 Electron 环境）时回落
+      }
+      if (autoDetected !== null) {
+        this.dpiScale = autoDetected;
+        this.log.info('[SystemEngine] DPI scale (auto-detected via screen)', { scale: this.dpiScale });
       } else {
-        this.dpiScale = 1.0;
+        const platform = process.platform;
+        if (platform === 'darwin') {
+          this.dpiScale = 2.0;
+        } else {
+          this.dpiScale = 1.0;
+        }
+        this.log.info('[SystemEngine] DPI scale (platform fallback)', { scale: this.dpiScale });
       }
     }
-    this.log.info('[SystemEngine] DPI scale', { scale: this.dpiScale });
   }
 
   async executeSegment(
@@ -466,7 +492,11 @@ export class SystemEngine implements FlowEngine {
 
     const moveDuration = params.moveDuration === undefined || params.moveDuration === null ? 200 : Number(params.moveDuration);
     const moveMode = params.moveMode === 'linear' ? 'linear' : 'ease';
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    log(`[MOVE 🎯] locateMode=${locateMode}, target(逻辑)=(${targetX}, ${targetY}), dpiScale=${this.dpiScale}, platform=${platform}, moveDuration=${moveDuration}ms, mode=${moveMode}`);
     await this.smoothMoveMouse(targetX, targetY, moveDuration, moveMode);
+    const afterPos = this.robot.getMousePos();
+    log(`[MOVE 🎯] 移动完成，robot.getMousePos()=( ${afterPos.x}, ${afterPos.y})`);
 
     if (nodeType === 'system.hover') {
       return { x: targetX, y: targetY };
@@ -1041,6 +1071,7 @@ export class SystemEngine implements FlowEngine {
     }
 
     const confidence = Number(params.confidence || 0.9);
+    const tTotal = Date.now();
 
     let templateBuffer: Buffer;
     if (typeof imageData === 'string' && imageData.startsWith('data:image')) {
@@ -1052,46 +1083,138 @@ export class SystemEngine implements FlowEngine {
       throw new Error('模板图片格式不正确');
     }
 
+    // ---- 模板 Mat 缓存：以模板内容 SHA256 为 key，避免重复解码 / 灰度化 / Mat 构造 ----
+    const tCache = Date.now();
+    const cacheKey = crypto.createHash('sha256').update(templateBuffer).digest('hex');
+    let cached = this.templateMatCache.get(cacheKey);
+    const cacheHit = cached !== undefined;
+    let templateWidth = 0;
+    let templateHeight = 0;
+
+    if (!cached) {
+      // 合并 sharp 两次 pipeline 为一次：灰度化 → raw buffer + info(宽/高) 一并返回
+      const templateProcessed = await this.sharp(templateBuffer)
+        .grayscale()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const templateMat = new this.cv.Mat(
+        templateProcessed.info.height,
+        templateProcessed.info.width,
+        this.cv.CV_8UC1,
+      );
+      templateMat.data.set(new Uint8Array(templateProcessed.data));
+      cached = {
+        mat: templateMat,
+        width: templateProcessed.info.width,
+        height: templateProcessed.info.height,
+      };
+      // 简单 LRU：超上限时淘汰最早插入的一条（Map 迭代按插入顺序）
+      if (this.templateMatCache.size >= SystemEngine.MAX_TEMPLATE_CACHE) {
+        const iter = this.templateMatCache.keys().next();
+        const oldestKey = iter.value as string;
+        if (oldestKey) {
+          const oldest = this.templateMatCache.get(oldestKey);
+          if (oldest) {
+            try { oldest.mat.delete(); } catch {}
+          }
+          this.templateMatCache.delete(oldestKey);
+        }
+      }
+      this.templateMatCache.set(cacheKey, cached);
+    }
+    const templateMat = cached.mat;
+    templateWidth = cached.width;
+    templateHeight = cached.height;
+    const tCacheMs = Date.now() - tCache;
+
     const displayId = this.initConfig?.displayId;
     const screenOpts: any = {};
     if (displayId !== undefined && displayId !== null) {
       screenOpts.id = displayId;
     }
 
+    // ---- 截图 ----
+    const tScreen = Date.now();
     const screenBuf: Buffer = await this.screenshot(screenOpts);
+    const tScreenMs = Date.now() - tScreen;
 
-    const templateGray = await this.sharp(templateBuffer).grayscale().raw().toBuffer();
-    const templateMeta = await this.sharp(templateBuffer).metadata();
+    // 屏幕图同样合并为一次 sharp pipeline：灰度化 → raw buffer + info(宽/高)
+    const tScreenProc = Date.now();
+    const screenProcessed = await this.sharp(screenBuf)
+      .grayscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const tScreenProcMs = Date.now() - tScreenProc;
 
-    const screenGray = await this.sharp(screenBuf).grayscale().raw().toBuffer();
-    const screenMeta = await this.sharp(screenBuf).metadata();
+    const screenMat = new this.cv.Mat(
+      screenProcessed.info.height,
+      screenProcessed.info.width,
+      this.cv.CV_8UC1,
+    );
+    screenMat.data.set(new Uint8Array(screenProcessed.data));
 
-    const screenMat = new this.cv.Mat(screenMeta.height, screenMeta.width, this.cv.CV_8UC1);
-    screenMat.data.set(new Uint8Array(screenGray));
-
-    const templateMat = new this.cv.Mat(templateMeta.height, templateMeta.width, this.cv.CV_8UC1);
-    templateMat.data.set(new Uint8Array(templateGray));
-
+    // ---- OpenCV matchTemplate ----
+    const tMatch = Date.now();
     const resultMat = new this.cv.Mat();
     this.cv.matchTemplate(screenMat, templateMat, resultMat, this.cv.TM_CCOEFF_NORMED);
 
     const minMax = this.cv.minMaxLoc(resultMat);
     const maxVal = minMax.maxVal;
     const maxLoc = minMax.maxLoc;
+    const tMatchMs = Date.now() - tMatch;
 
     let result: { x: number; y: number } | null = null;
     if (maxVal >= confidence) {
-      const physX = maxLoc.x + templateMeta.width / 2;
-      const physY = maxLoc.y + templateMeta.height / 2;
+      const physX = maxLoc.x + templateWidth / 2;
+      const physY = maxLoc.y + templateHeight / 2;
       result = {
         x: Math.round(physX / this.dpiScale),
         y: Math.round(physY / this.dpiScale),
       };
     }
 
+    // 注意：templateMat 来自缓存，不能在这里 delete，由 dispose / LRU 淘汰时统一释放
     screenMat.delete();
-    templateMat.delete();
     resultMat.delete();
+
+    const tTotalMs = Date.now() - tTotal;
+
+    this.log.info(
+      result
+        ? `[LOCATE 🖼️ ✅] 图片匹配成功：相似度=${maxVal.toFixed(3)}，阈值=${confidence}，总耗时=${tTotalMs}ms`
+        : `[LOCATE 🖼️ ❌] 图片匹配失败：相似度=${maxVal.toFixed(3)}，阈值=${confidence}，总耗时=${tTotalMs}ms`,
+      {
+        cache: cacheHit ? 'hit' : 'miss',
+        cacheMs: tCacheMs,
+        cacheSize: this.templateMatCache.size,
+        template: {
+          widthPx: templateWidth,
+          heightPx: templateHeight,
+        },
+        screen: {
+          widthPx: screenProcessed.info.width,
+          heightPx: screenProcessed.info.height,
+          screenshotMs: tScreenMs,
+          processMs: tScreenProcMs,
+        },
+        match: {
+          similarity: Number(maxVal.toFixed(4)),
+          threshold: confidence,
+          matchMs: tMatchMs,
+          topLeftPhys: maxVal >= 0 ? { x: maxLoc.x, y: maxLoc.y } : null,
+        },
+        result: result
+          ? {
+              xLogic: result.x,
+              yLogic: result.y,
+              xPhys: Math.round(maxLoc.x + templateWidth / 2),
+              yPhys: Math.round(maxLoc.y + templateHeight / 2),
+              dpiScale: this.dpiScale,
+            }
+          : null,
+        displayId: displayId ?? 'main',
+      },
+    );
 
     return result;
   }
@@ -1183,11 +1306,22 @@ export class SystemEngine implements FlowEngine {
 
     const dur = Math.max(0, Number(duration));
     const isDrag = this.pressedMouseButtons.size > 0;
+
+    // ⚠️ 坐标体系统一：
+    //   上层（工作流节点 / locateImage / pick-coordinate 返回给前端的）→ 全是「逻辑坐标」（与 DPI 无关）
+    //   robot.getMousePos() / robot.moveMouse() / robot.dragMouse() 的原生坐标体系：
+    //     - darwin: 逻辑坐标（点）—— 不用换算
+    //     - win32 / linux: 物理坐标（像素）—— 逻辑 × dpiScale
+    const platform = process.platform as 'darwin' | 'linux' | 'win32' | string;
+    const needsDpiMult = platform !== 'darwin';
+    const physTargetX = needsDpiMult ? Math.round(Number(targetX) * this.dpiScale) : Math.round(Number(targetX));
+    const physTargetY = needsDpiMult ? Math.round(Number(targetY) * this.dpiScale) : Math.round(Number(targetY));
+
     const stepFn = (x: number, y: number) =>
       isDrag ? this.robot.dragMouse(x, y) : this.robot.moveMouse(x, y);
 
     if (Number.isNaN(dur) || dur <= 0) {
-      stepFn(targetX, targetY);
+      stepFn(physTargetX, physTargetY);
       return;
     }
 
@@ -1195,8 +1329,8 @@ export class SystemEngine implements FlowEngine {
     const fromX = Number(startPos.x) || 0;
     const fromY = Number(startPos.y) || 0;
 
-    const dx = targetX - fromX;
-    const dy = targetY - fromY;
+    const dx = physTargetX - fromX;
+    const dy = physTargetY - fromY;
 
     // 如果距离为 0，就直接等待一段时间，保证和原来的行为兼容
     if (dx === 0 && dy === 0) {
@@ -1228,11 +1362,16 @@ export class SystemEngine implements FlowEngine {
     }
 
     // 最后确保精准到达目标位置，消除累计舍入误差
-    stepFn(targetX, targetY);
+    stepFn(physTargetX, physTargetY);
   }
 
   async dispose(): Promise<void> {
     this.log.info('[SystemEngine] Disposing');
+    // 释放缓存的模板 Mat，防止 WASM 内存泄漏
+    for (const { mat } of this.templateMatCache.values()) {
+      try { mat.delete(); } catch {}
+    }
+    this.templateMatCache.clear();
     this.robot = null;
     this.screenshot = null;
     this.sharp = null;
