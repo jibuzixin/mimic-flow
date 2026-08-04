@@ -911,22 +911,8 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
         body = `${flowName} 已被用户停止`;
       }
 
-      // ====== 声音 + 通知双通道反馈 ======
-      // 1. 先播放系统声音 fallback（通知被系统关闭/权限被拒也能听到）
-      try {
-        // shell.beep() 跨平台：Windows 播放提示音，macOS 播放 beep
-        if (status === 'success') {
-          shell.beep();
-        } else if (status === 'failed') {
-          shell.beep();
-          setTimeout(() => shell.beep(), 180); // 失败响 2 下
-        } else if (status === 'stopped') {
-          shell.beep();
-          setTimeout(() => shell.beep(), 180);
-          setTimeout(() => shell.beep(), 360); // 停止响 3 下
-        }
-      } catch {}
-      // 2. 再弹系统通知（如果 Notification 支持且有权限）
+      // ====== 统一使用系统 Notification（弹窗 + 系统默认声音，各平台表现一致）======
+      // silent: false 让系统通知自带默认提示音，不再额外 shell.beep 避免响两次
       if (Notification.isSupported() && title) {
         try {
           const notif = new Notification({ title, body, silent: false });
@@ -937,14 +923,6 @@ ipcMain.handle('flow-v2:run', async (event, flow: FlowSchemaV2, options?: { work
             platform: process.platform,
           });
         }
-      }
-      // 3. 强制弹自定义右下角通知窗口（100% 保证视觉可见，不依赖 Windows 通知中心任何权限/快捷方式）
-      if (title) {
-        setTimeout(() => {
-          try {
-            showCustomNotification(title, body, status as any);
-          } catch {}
-        }, 100);
       }
     }
   }, { workflowId: wfId, workflowName: flowName }).catch((err) => {
